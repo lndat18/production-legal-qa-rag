@@ -1,0 +1,20 @@
+[project]
+name = "production-legal-qa-rag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "lndat", email = "datdev181104@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "python-docx>=1.2.0",
+    "tqdm>=4.70.0",
+]
+
+[project.scripts]
+production-legal-qa-rag = "production_legal_qa_rag:main"
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
