@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.db
+.env
 
 src/rag/generation/*
 src/rag/retrieval/*
@@ -11,4 +12,7 @@ evals/*
 
 data/markdown/
 data/chunks/
+
+insights.md
+*_spec.md
 

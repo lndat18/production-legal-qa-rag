@@ -8,7 +8,16 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "docx2txt>=0.9",
+    "langchain>=1.3.15",
+    "langchain-chroma>=1.1.0",
+    "langchain-community>=0.4.2",
+    "langchain-openai>=1.5.1",
+    "langchain-text-splitters>=1.1.2",
+    "psycopg[binary]>=3.3.4",
     "python-docx>=1.2.0",
+    "pyyaml>=6.0.3",
+    "sentence-transformers>=5.7.0",
     "tqdm>=4.70.0",
 ]
 
@@ -18,3 +27,13 @@ production-legal-qa-rag = "production_legal_qa_rag:main"
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# "." để import được `tests.fixtures.blocks` và `tests.loader_under_test`.
+pythonpath = ["src", "."]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
