@@ -6,6 +6,8 @@ về là danh sách ``QcWarning`` để ``pipeline.py`` gom vào summary cuối 
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from production_legal_qa_rag.formatting.models import QcWarning
 from production_legal_qa_rag.formatting.patterns import (
     RE_DIEU,
@@ -41,23 +43,69 @@ def _monotonic_breaks(numbers: list[str]) -> list[str]:
     return breaks
 
 
-def validate(markdown: str) -> list[QcWarning]:
-    """Chạy toàn bộ rule QC trên markdown."""
-    warnings: list[QcWarning] = []
-    lines = _strip_front_matter(markdown)
+@dataclass
+class _HeadingScan:
+    """Dữ liệu thô thu được từ một lượt quét tuần tự các dòng heading.
+
+    ``warnings`` chỉ gồm các cảnh báo BẮT BUỘC phát ngay tại dòng phát sinh
+    (heading_too_deep, heading_level_skip, suspicious_heading_length) — thứ tự
+    của chúng phụ thuộc vị trí dòng nên không thể tách rời khỏi lượt quét. Các
+    trường còn lại là input cho những rule chạy sau khi quét xong (mục 3, 7
+    spec: monotonic Điều/Khoản, empty_dieu).
+    """
+
+    warnings: list[QcWarning] = field(default_factory=list)
+    heading_lines: list[tuple[int, str, str]] = field(default_factory=list)
+    dieu_numbers: list[str] = field(default_factory=list)
+    khoan_by_parent: dict[str, list[str]] = field(default_factory=dict)
+    dieu_has_content: dict[str, bool] = field(default_factory=dict)
+
+
+def _check_heading_too_deep(line_number: int, hashes: str) -> QcWarning | None:
+    """Rule: heading sâu hơn cấp 5 (Khoản) là bất thường."""
+    if len(hashes) <= 5:
+        return None
+    return QcWarning(code="heading_too_deep", detail=f"dòng {line_number}: {hashes}")
+
+
+def _check_heading_level_skip(
+    line_number: int, content: str, *, in_phu_luc: bool, seen_dieu: bool
+) -> QcWarning | None:
+    """Rule: heading cấp Khoản (`#####`) xuất hiện mà chưa qua Điều (`####`).
+
+    Trong Phụ lục, "#####" nằm trực tiếp dưới "#" là hợp lệ — không có ngoại lệ
+    này thì mọi văn bản có Phụ lục đều báo cảnh báo giả.
+    """
+    if in_phu_luc or seen_dieu:
+        return None
+    return QcWarning(code="heading_level_skip", detail=f"dòng {line_number}: {content}")
+
+
+def _check_suspicious_heading_length(line_number: int, line: str) -> QcWarning | None:
+    """Rule: dòng heading dài bất thường, dấu hiệu gộp nhầm nội dung."""
+    if len(line) <= HEADING_MAX_LEN:
+        return None
+    return QcWarning(
+        code="suspicious_heading_length",
+        detail=f"dòng {line_number}: {len(line)} ký tự",
+    )
+
+
+def _scan_headings(lines: list[str]) -> _HeadingScan:
+    """Quét tuần tự các dòng, thu thập dữ liệu thô cho toàn bộ rule QC.
+
+    Một lượt quét duy nhất vì nhiều rule phụ thuộc trạng thái tuần tự: cấp
+    heading hiện tại (``parent``), Điều đang mở (``current_dieu``), có đang ở
+    trong Phụ lục hay không. ``seen_dieu`` là sticky trong thân văn bản: Chương
+    /Mục không reset nó — level trên bị bỏ trống là hợp lệ.
+    """
+    scan = _HeadingScan()
 
     in_phu_luc = False
-    # seen_dieu là sticky trong thân văn bản: Chương/Mục không reset nó — level
-    # trên bị bỏ trống là hợp lệ.
     seen_dieu = False
     reported_level_skip = False
     in_code_or_table = False
-
-    heading_lines: list[tuple[int, str, str]] = []  # (số dòng, dấu #, nội dung)
-    dieu_numbers: list[str] = []
-    khoan_by_parent: dict[str, list[str]] = {}
     parent = "<none>"
-    dieu_has_content: dict[str, bool] = {}
     current_dieu: str | None = None
 
     for line_number, raw in enumerate(lines, start=1):
@@ -70,24 +118,21 @@ def validate(markdown: str) -> list[QcWarning]:
             continue
         if in_code_or_table or line.startswith("|"):
             if current_dieu is not None:
-                dieu_has_content[current_dieu] = True
+                scan.dieu_has_content[current_dieu] = True
             continue
 
         if not line.startswith("#"):
             if line.strip() and current_dieu is not None:
-                dieu_has_content[current_dieu] = True
+                scan.dieu_has_content[current_dieu] = True
             continue
 
         hashes = line[: len(line) - len(line.lstrip("#"))]
         content = line[len(hashes) :].strip()
-        heading_lines.append((line_number, hashes, content))
+        scan.heading_lines.append((line_number, hashes, content))
 
-        if len(hashes) > 5:
-            warnings.append(
-                QcWarning(
-                    code="heading_too_deep", detail=f"dòng {line_number}: {hashes}"
-                )
-            )
+        too_deep = _check_heading_too_deep(line_number, hashes)
+        if too_deep is not None:
+            scan.warnings.append(too_deep)
 
         if len(hashes) > len(content) and not content:
             continue
@@ -99,43 +144,51 @@ def validate(markdown: str) -> list[QcWarning]:
         elif len(hashes) == 4:
             seen_dieu = True
             current_dieu = content
-            dieu_has_content.setdefault(content, False)
+            scan.dieu_has_content.setdefault(content, False)
             match = RE_DIEU.match(content)
             if match is not None:
-                dieu_numbers.append(match.group(1))
+                scan.dieu_numbers.append(match.group(1))
                 parent = f"dieu:{match.group(1)}"
             else:
                 parent = f"dieu:{content}"
         elif len(hashes) == 5:
-            # Trong Phụ lục, "#####" nằm trực tiếp dưới "#" là hợp lệ — không có
-            # ngoại lệ này thì mọi văn bản có Phụ lục đều báo cảnh báo giả.
-            if not in_phu_luc and not seen_dieu and not reported_level_skip:
-                warnings.append(
-                    QcWarning(
-                        code="heading_level_skip",
-                        detail=f"dòng {line_number}: {content}",
-                    )
+            if not reported_level_skip:
+                skip_warning = _check_heading_level_skip(
+                    line_number, content, in_phu_luc=in_phu_luc, seen_dieu=seen_dieu
                 )
-                reported_level_skip = True
+                if skip_warning is not None:
+                    scan.warnings.append(skip_warning)
+                    reported_level_skip = True
             number = content.removeprefix("Khoản ").split(".")[0].strip()
-            khoan_by_parent.setdefault(parent, []).append(number)
+            scan.khoan_by_parent.setdefault(parent, []).append(number)
             if current_dieu is not None:
-                dieu_has_content[current_dieu] = True
+                scan.dieu_has_content[current_dieu] = True
 
-        if len(line) > HEADING_MAX_LEN:
-            warnings.append(
-                QcWarning(
-                    code="suspicious_heading_length",
-                    detail=f"dòng {line_number}: {len(line)} ký tự",
-                )
-            )
+        length_warning = _check_suspicious_heading_length(line_number, line)
+        if length_warning is not None:
+            scan.warnings.append(length_warning)
 
-    if not heading_lines:
-        warnings.append(QcWarning(code="no_heading", detail=""))
+    return scan
 
-    for number in _monotonic_breaks(dieu_numbers):
-        warnings.append(QcWarning(code="dieu_not_monotonic", detail=f"Điều {number}"))
 
+def _check_no_heading(heading_lines: list[tuple[int, str, str]]) -> list[QcWarning]:
+    """Rule: file không có heading nào là dấu hiệu parser lỗi nặng."""
+    if heading_lines:
+        return []
+    return [QcWarning(code="no_heading", detail="")]
+
+
+def _check_dieu_monotonic(dieu_numbers: list[str]) -> list[QcWarning]:
+    """Rule: số hiệu Điều phải tăng dần xuyên suốt văn bản."""
+    return [
+        QcWarning(code="dieu_not_monotonic", detail=f"Điều {number}")
+        for number in _monotonic_breaks(dieu_numbers)
+    ]
+
+
+def _check_khoan_monotonic(khoan_by_parent: dict[str, list[str]]) -> list[QcWarning]:
+    """Rule: số hiệu Khoản phải tăng dần trong cùng một Điều/Phụ lục cha."""
+    warnings: list[QcWarning] = []
     for parent_key, numbers in khoan_by_parent.items():
         for number in _monotonic_breaks(numbers):
             warnings.append(
@@ -143,18 +196,49 @@ def validate(markdown: str) -> list[QcWarning]:
                     code="khoan_not_monotonic", detail=f"{parent_key} -> khoản {number}"
                 )
             )
+    return warnings
 
-    for dieu, has_content in dieu_has_content.items():
-        if not has_content:
-            warnings.append(QcWarning(code="empty_dieu", detail=dieu))
 
+def _check_empty_dieu(dieu_has_content: dict[str, bool]) -> list[QcWarning]:
+    """Rule: Điều không có nội dung nào (chỉ trơ heading) là dấu hiệu cắt nhầm."""
+    return [
+        QcWarning(code="empty_dieu", detail=dieu)
+        for dieu, has_content in dieu_has_content.items()
+        if not has_content
+    ]
+
+
+def _check_orphan_footnotes(markdown: str) -> list[QcWarning]:
+    """Rule: marker "[n]" còn sót ngoài blockquote/vùng dời cuối văn bản.
+
+    Trong hai vùng đó (blockquote "Sửa đổi:" hoặc dòng in đậm dời xuống cuối)
+    thì "[n]" là nhãn cố ý, không phải marker sót lại.
+    """
+    warnings: list[QcWarning] = []
     for match in RE_FOOTNOTE_MARKER.finditer(markdown):
-        # Marker còn sót ngoài blockquote/vùng dời là lỗi thật; trong hai vùng
-        # đó thì "[n]" là nhãn cố ý.
         line_start = markdown.rfind("\n", 0, match.start()) + 1
         prefix = markdown[line_start : match.start()].lstrip()
         if prefix.startswith((">", "**")):
             continue
         warnings.append(QcWarning(code="orphan_footnote", detail=match.group(0)))
+    return warnings
 
+
+def validate(markdown: str) -> list[QcWarning]:
+    """Chạy toàn bộ rule QC trên markdown.
+
+    Compose lại từ một lượt quét tuần tự (`_scan_headings`, bắt buộc vì nhiều
+    rule phụ thuộc trạng thái vị trí) và các rule độc lập chạy sau đó, đúng
+    theo thứ tự đã có trước khi tách hàm (heading-level rule trong lúc quét,
+    rồi no_heading, dieu/khoan monotonic, empty_dieu, orphan_footnote).
+    """
+    lines = _strip_front_matter(markdown)
+    scan = _scan_headings(lines)
+
+    warnings = list(scan.warnings)
+    warnings.extend(_check_no_heading(scan.heading_lines))
+    warnings.extend(_check_dieu_monotonic(scan.dieu_numbers))
+    warnings.extend(_check_khoan_monotonic(scan.khoan_by_parent))
+    warnings.extend(_check_empty_dieu(scan.dieu_has_content))
+    warnings.extend(_check_orphan_footnotes(markdown))
     return warnings

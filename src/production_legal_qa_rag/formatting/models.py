@@ -9,9 +9,36 @@ vào).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from production_legal_qa_rag.formatting.patterns import PARSER_VERSION
+
+# Toàn bộ mã QcWarning mà package này phát ra, gom một chỗ để mypy bắt được
+# typo (vd. gõ nhầm "orphan_foot_note") ngay lúc type-check thay vì phải chờ
+# chạy test rồi so KNOWN_WARNING_CODES trong `tests/test_formatting.py`.
+# Cập nhật danh sách này trong cùng lúc thêm rule QC mới ở bất kỳ module nào.
+QcWarningCode = Literal[
+    "orphan_footnote",
+    "long_footnote_deferred",
+    "unused_footnote",
+    "dropped_noi_nhan_table",
+    "dropped_attachment_table",
+    "missing_quoc_hieu_table",
+    "missing_frontmatter_field",
+    "missing_optional_frontmatter_field",
+    "ambiguous_footnote_region",
+    "footnote_number_gap",
+    "footnote_marker_in_table",
+    "heading_too_deep",
+    "heading_level_skip",
+    "suspicious_heading_length",
+    "no_heading",
+    "dieu_not_monotonic",
+    "khoan_not_monotonic",
+    "empty_dieu",
+]
 
 
 class QcWarning(BaseModel):
@@ -20,7 +47,7 @@ class QcWarning(BaseModel):
     Tên có tiền tố ``Qc`` là cố ý: ``Warning`` trần sẽ che builtin exception.
     """
 
-    code: str
+    code: QcWarningCode
     detail: str = ""
 
 

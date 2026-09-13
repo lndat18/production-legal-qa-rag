@@ -9,6 +9,9 @@ dung ngắn), còn Điểm thì xuất nguyên văn như đoạn văn thường.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
+
 from production_legal_qa_rag.formatting.docx_reader import Block
 from production_legal_qa_rag.formatting.footnotes import (
     FOOTNOTE_INLINE_MAX_CHARS,
@@ -26,6 +29,11 @@ from production_legal_qa_rag.formatting.patterns import (
     RE_PHU_LUC,
     is_structural,
 )
+
+# Chèn footnote inline ngay tại điểm nó xuất hiện (không phải cuối văn bản), nên
+# mỗi hàm `_emit_*` bên dưới cần gọi lại đúng `flush` được truyền vào từ `emit()`
+# (bind sẵn qua `functools.partial`) để thứ tự các đoạn trong `parts` không đổi.
+_FlushFn = Callable[[list[int]], None]
 
 # Trong Phụ lục ghi "##### 28. Thành phố Hồ Chí Minh" thay cho "##### Khoản 28",
 # để tên tỉnh/thành nằm trong breadcrumb của mọi chunk con.
@@ -102,6 +110,113 @@ def _join_title(
     return title, extra, consumed, collected
 
 
+def _flush_footnotes(
+    numbers: list[int],
+    *,
+    footnote_map: dict[int, Footnote],
+    parts: list[str],
+    deferred: list[str],
+    used: set[int],
+    warnings: list[QcWarning],
+) -> None:
+    """Chèn blockquote chú thích ứng với các số hiệu chú thích tại vị trí này.
+
+    Chú thích ngắn chèn inline ngay vào `parts`; chú thích quá dài chỉ inline
+    đoạn đầu và dời phần còn lại xuống `deferred` (báo `long_footnote_deferred`).
+    Số hiệu không có trong `footnote_map` báo `orphan_footnote`.
+    """
+    for number in numbers:
+        footnote = footnote_map.get(number)
+        if footnote is None:
+            warnings.append(QcWarning(code="orphan_footnote", detail=f"[{number}]"))
+            continue
+        used.add(number)
+        inline, tail = render_blockquote(footnote, inline_max=FOOTNOTE_INLINE_MAX_CHARS)
+        if inline:
+            parts.append(inline)
+        if tail is not None:
+            deferred.append(tail)
+            warnings.append(
+                QcWarning(code="long_footnote_deferred", detail=f"[{number}]")
+            )
+
+
+def _emit_titled_heading(
+    blocks: list[Block],
+    index: int,
+    refs: dict[int, list[int]],
+    parts: list[str],
+    flush: _FlushFn,
+    level: str,
+    separator: str,
+) -> int:
+    """Xuất heading có thể gộp tiêu đề dòng sau (Phụ lục/Phần/Chương).
+
+    Dùng chung cho ba nhánh vì cả ba đều cần `_join_title` để gộp dòng tiêu đề
+    viết hoa theo sau và tách phần "(Kèm theo ...)" nếu có.
+
+    Returns:
+        Số block đã tiêu thụ (1, hoặc 2 nếu gộp thêm dòng tiêu đề).
+    """
+    title, extra, consumed, merged = _join_title(blocks, index, refs, separator)
+    parts.append(f"{level} {title}")
+    flush(merged)
+    if extra:
+        parts.append(extra)
+    return consumed
+
+
+def _emit_phu_luc(
+    blocks: list[Block],
+    index: int,
+    refs: dict[int, list[int]],
+    parts: list[str],
+    flush: _FlushFn,
+) -> int:
+    """Xuất heading Phụ lục (cấp `#`), đánh dấu đang ở trong Phụ lục."""
+    return _emit_titled_heading(blocks, index, refs, parts, flush, "#", " — ")
+
+
+def _emit_phan(
+    blocks: list[Block],
+    index: int,
+    refs: dict[int, list[int]],
+    parts: list[str],
+    flush: _FlushFn,
+) -> int:
+    """Xuất heading Phần (cấp `#`), ra khỏi phạm vi Phụ lục nếu đang ở đó."""
+    return _emit_titled_heading(blocks, index, refs, parts, flush, "#", ". ")
+
+
+def _emit_chuong(
+    blocks: list[Block],
+    index: int,
+    refs: dict[int, list[int]],
+    parts: list[str],
+    flush: _FlushFn,
+) -> int:
+    """Xuất heading Chương (cấp `##`), ra khỏi phạm vi Phụ lục nếu đang ở đó."""
+    return _emit_titled_heading(blocks, index, refs, parts, flush, "##", ". ")
+
+
+def _emit_khoan(number: str, content: str, parts: list[str], in_phu_luc: bool) -> None:
+    """Xuất heading Khoản (cấp `#####`).
+
+    Trong Phụ lục, nếu nội dung đủ ngắn thì gộp vào heading (tên tỉnh/thành là
+    thông tin định danh quan trọng nhất của mục, cần có trong breadcrumb của
+    chunk con); ngoài ra heading chỉ chứa nhãn, nội dung xuống dòng riêng.
+    """
+    if (
+        in_phu_luc
+        and PHU_LUC_HEADING_WITH_TITLE
+        and len(content) <= PHU_LUC_HEADING_MAX_CHARS
+    ):
+        parts.append(f"##### {number}. {content}")
+    else:
+        parts.append(f"##### Khoản {number}")
+        parts.append(content)
+
+
 def emit(
     blocks: list[Block],
     refs: dict[int, list[int]],
@@ -126,23 +241,14 @@ def emit(
     in_phu_luc = False
     used: set[int] = set()
 
-    def flush(numbers: list[int]) -> None:
-        for number in numbers:
-            footnote = footnote_map.get(number)
-            if footnote is None:
-                warnings.append(QcWarning(code="orphan_footnote", detail=f"[{number}]"))
-                continue
-            used.add(number)
-            inline, tail = render_blockquote(
-                footnote, inline_max=FOOTNOTE_INLINE_MAX_CHARS
-            )
-            if inline:
-                parts.append(inline)
-            if tail is not None:
-                deferred.append(tail)
-                warnings.append(
-                    QcWarning(code="long_footnote_deferred", detail=f"[{number}]")
-                )
+    flush: _FlushFn = partial(
+        _flush_footnotes,
+        footnote_map=footnote_map,
+        parts=parts,
+        deferred=deferred,
+        used=used,
+        warnings=warnings,
+    )
 
     index = 0
     while index < len(blocks):
@@ -164,33 +270,18 @@ def emit(
         text = block.text
 
         if RE_PHU_LUC.match(text):
-            title, extra, consumed, merged = _join_title(blocks, index, refs, " — ")
-            parts.append(f"# {title}")
-            flush(merged)
-            if extra:
-                parts.append(extra)
+            index += _emit_phu_luc(blocks, index, refs, parts, flush)
             in_phu_luc = True
-            index += consumed
             continue
 
         if RE_PHAN.match(text):
-            title, extra, consumed, merged = _join_title(blocks, index, refs, ". ")
-            parts.append(f"# {title}")
-            flush(merged)
-            if extra:
-                parts.append(extra)
+            index += _emit_phan(blocks, index, refs, parts, flush)
             in_phu_luc = False
-            index += consumed
             continue
 
         if RE_CHUONG.match(text):
-            title, extra, consumed, merged = _join_title(blocks, index, refs, ". ")
-            parts.append(f"## {title}")
-            flush(merged)
-            if extra:
-                parts.append(extra)
+            index += _emit_chuong(blocks, index, refs, parts, flush)
             in_phu_luc = False
-            index += consumed
             continue
 
         if RE_MUC.match(text):
@@ -208,19 +299,7 @@ def emit(
 
         khoan = RE_KHOAN.match(text)
         if khoan is not None:
-            number, content = khoan.group(1), khoan.group(2)
-            if (
-                in_phu_luc
-                and PHU_LUC_HEADING_WITH_TITLE
-                and len(content) <= PHU_LUC_HEADING_MAX_CHARS
-            ):
-                # Tên tỉnh/thành là thông tin định danh quan trọng nhất của mục,
-                # giữ nó trên dòng heading để breadcrumb của chunk con có tên.
-                parts.append(f"##### {number}. {content}")
-            else:
-                # Heading của Khoản chỉ chứa nhãn, nội dung xuống dòng riêng.
-                parts.append(f"##### Khoản {number}")
-                parts.append(content)
+            _emit_khoan(khoan.group(1), khoan.group(2), parts, in_phu_luc)
             flush(here)
             index += 1
             continue
