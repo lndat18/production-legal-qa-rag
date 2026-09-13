@@ -4,20 +4,5 @@ __pycache__/
 *.db
 .env
 
-src/rag/generation/*
-src/rag/retrieval/*
-src/rag/indexing/*
 
-evals/*
-
-data/markdown/
-data/chunks/
-
-insights.md
-*_spec.md
-test.py
-pre_chunker
-tools
-tests
-progress.md
 
