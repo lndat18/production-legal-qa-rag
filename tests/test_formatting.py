@@ -9,6 +9,7 @@ patterns, footnotes, tables, frontmatter, emitter, validator, models
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -52,6 +53,11 @@ from production_legal_qa_rag.formatting.pipeline import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 REFERENCE_MD_DIR = PROJECT_ROOT / "data" / "markdown"
+
+# Rich (dùng bởi Typer để render --help) vẫn chèn mã CSI cho style (bold, dim)
+# dù đã set NO_COLOR — NO_COLOR chỉ tắt màu, không tắt style. Gỡ mã ANSI trước
+# khi so khớp chuỗi để không phụ thuộc vào việc Rich style output ra sao.
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 RAW_FILES = sorted(RAW_DIR.glob("*.docx")) if RAW_DIR.exists() else []
 
@@ -822,4 +828,5 @@ def test_cli_thuc_thi_duoc_qua_module_chinh():
         env=env,
     )
     assert completed.returncode == 0
-    assert "raw-dir" in completed.stdout
+    plain_stdout = _ANSI_ESCAPE_RE.sub("", completed.stdout)
+    assert "raw-dir" in plain_stdout
