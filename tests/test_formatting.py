@@ -8,6 +8,7 @@ patterns, footnotes, tables, frontmatter, emitter, validator, models
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -804,7 +805,13 @@ def test_cli_chuyen_doi_toan_bo_thu_muc(tmp_path: Path):
 
 
 def test_cli_thuc_thi_duoc_qua_module_chinh():
-    """`python tools/format_documents.py --help` không lỗi (kiểm tra entry point)."""
+    """`python tools/format_documents.py --help` không lỗi (kiểm tra entry point).
+
+    Ép NO_COLOR + COLUMNS rộng: Rich (dùng bởi Typer) tô màu ANSI và tự xuống
+    dòng theo bề rộng terminal, nên trên CI (không phải TTY, COLUMNS khác máy
+    dev) "raw-dir" có thể bị mã màu hoặc dấu xuống dòng chen vào giữa.
+    """
+    env = {**os.environ, "NO_COLOR": "1", "COLUMNS": "200"}
     completed = subprocess.run(
         [sys.executable, str(PROJECT_ROOT / "tools" / "format_documents.py"), "--help"],
         cwd=PROJECT_ROOT,
@@ -812,6 +819,7 @@ def test_cli_thuc_thi_duoc_qua_module_chinh():
         text=True,
         timeout=30,
         check=False,
+        env=env,
     )
     assert completed.returncode == 0
     assert "raw-dir" in completed.stdout
