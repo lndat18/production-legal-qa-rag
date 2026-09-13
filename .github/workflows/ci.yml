@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,3 +24,75 @@ jobs:
 
       - name: Run tests (skip slow/model-loading tests)
         run: uv run pytest -m "not slow"
+
+      - name: Lint (ruff check)
+        run: uv run ruff check .
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy src
+
+      - name: Dependency audit (pip-audit)
+        run: uvx pip-audit
+        continue-on-error: true
+
+  tester-agent:
+    needs: checks
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run tester agent
+        id: tester
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Bạn đóng vai `tester` (xem `.claude/agents/tester.md`), nhưng đang chạy
+            trong CI ở CHẾ ĐỘ READ-ONLY:
+
+            - TUYỆT ĐỐI không dùng Write/Edit để sửa bất kỳ file nào (kể cả tests/).
+              Nếu thấy thiếu test cho thay đổi trong PR, chỉ nêu trong feedback.
+            - Chạy lại các lệnh đã có sẵn để kiểm tra:
+              `uv run pytest -m "not slow"`, `uv run ruff check .`,
+              `uv run ruff format --check .`, `uv run mypy src`.
+            - Đối chiếu diff của PR (`gh pr diff`) với spec.md liên quan (nếu tìm
+              thấy trong repo) để đánh giá test coverage có đủ không.
+            - Post feedback lên PR bằng `gh pr comment`, đúng format:
+              `file | dòng | loại lỗi (test-fail/lint/type/schema) | mô tả cụ thể`.
+            - Không submit review text as message — chỉ post qua gh pr comment.
+
+            Note: PR branch đã được checkout sẵn ở thư mục hiện tại.
+
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,Bash(uv run pytest:*),Bash(uv run ruff:*),Bash(uv run mypy:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --disallowedTools "Write,Edit"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","REVISE"]},"summary":{"type":"string"}},"required":["verdict","summary"]}'
+
+      - name: Enforce tester verdict
+        if: fromJSON(steps.tester.outputs.structured_output).verdict == 'REVISE'
+        run: |
+          echo "Tester agent kết luận REVISE — xem PR comment để biết chi tiết."
+          exit 1
