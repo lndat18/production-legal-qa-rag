@@ -35,6 +35,24 @@ QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa, xem báo cáo bàn gia
   giống bảng pipe — `has_table=True`, giữ nguyên không cắt (mục 5.1), dù
   mục 5 của spec chỉ mô tả literal bảng pipe. Xem `tables.py` để biết cách
   chuẩn hoá riêng cho dạng này.
+- Khoản lồng trong Khoản (vd. Điều 219 `Văn bản hợp nhất bộ luật lao động.md`
+  trích dẫn nguyên văn nhiều Điều/Khoản của luật khác, mà `formatting/` vẫn
+  render bằng chính heading cấp 5 ``##### Khoản N`` cho nội dung trích dẫn):
+  phát hiện qua độ sâu dấu ngoặc kép trích dẫn kiểu Việt "“" / "”" (quy ước
+  soạn thảo văn bản pháp luật khi sửa đổi, bổ sung — trích nguyên văn điều
+  luật được đặt trong 1 cặp ngoặc kép). Heading cấp 5 xuất hiện khi độ sâu
+  ngoặc kép > 0 (đang ở trong 1 đoạn trích dẫn) không được coi là 1 Khoản
+  mới cấp Điều — nội dung này chỉ là văn bản trích dẫn, không phải cấu trúc
+  thật của văn bản đang parse. Heading đó được gộp làm văn bản thường vào
+  Khoản đang mở (không flush, không đổi `khoan_number`/breadcrumb), để toàn
+  bộ đoạn trích dẫn (bao gồm các "Khoản" lồng bên trong nó) nằm chung 1
+  `KhoanNode` với Khoản thật đang chứa nó — vừa giữ đúng "vị trí pháp lý"
+  (breadcrumb trỏ về Khoản thật), vừa tránh `chunk_id` trùng lặp khi nhiều
+  đoạn trích dẫn tự đánh số lại từ "Khoản 1" (mục 1, 2). Không dùng số thứ
+  tự Khoản để phát hiện (vd. "đã thấy nhãn này trong Điều hiện tại") vì số
+  trong đoạn trích dẫn có thể trùng ngẫu nhiên với số Khoản thật kế tiếp
+  (false negative), trong khi ngoặc kép là tín hiệu cấu trúc trực tiếp của
+  chính quy ước soạn thảo tạo ra tình huống này.
 """
 
 from __future__ import annotations
@@ -75,8 +93,21 @@ def _split_front_matter(text: str) -> tuple[dict[str, object], str]:
 
 
 def _split_blocks(body: str) -> list[str]:
-    """Tách thân markdown thành các block theo dòng trống."""
-    return [block for block in _RE_BLOCK_SPLIT.split(body) if block.strip()]
+    """Tách thân markdown thành các block theo dòng trống, đã `strip()`.
+
+    `_split_front_matter` nối phần thân bằng ``"\\n".join(...)``, có thể để
+    lại 1 ký tự "\\n" thừa ở đầu thân (khi không có đoạn mở đầu trước heading
+    đầu tiên). "\\n" đơn lẻ đó không đủ để `_RE_BLOCK_SPLIT` tách ra, nên
+    dính vào block đầu tiên và làm hỏng `RE_HEADING.match` (dùng ``^``, không
+    ``MULTILINE``). `strip()` từng block loại bỏ khoảng trắng thừa này (và
+    mọi khoảng trắng đầu/cuối tương tự) trước khi so khớp heading.
+    """
+    blocks = []
+    for block in _RE_BLOCK_SPLIT.split(body):
+        stripped = block.strip()
+        if stripped:
+            blocks.append(stripped)
+    return blocks
 
 
 def _phan_segment(text: str) -> str:
@@ -145,6 +176,11 @@ def parse_markdown(path: str | Path) -> DocumentTree:
     prefix = doc_prefix
     paragraphs: list[str] = []
     tables: list[str] = []
+    # Độ sâu dấu ngoặc kép trích dẫn "“"/"”" hiện tại -- dùng để phát hiện
+    # Khoản lồng trong đoạn trích dẫn (xem docstring đầu file). Reset về 0
+    # mỗi khi gặp heading cấp 1-4 (quy ước soạn thảo không để 1 đoạn trích
+    # dẫn vắt qua ranh giới Phần/Chương/Mục/Điều).
+    quote_depth = 0
 
     def flush() -> None:
         # Vùng nội dung chỉ được ghi thành KhoanNode khi có nhãn Khoản rõ ràng
@@ -171,11 +207,22 @@ def parse_markdown(path: str | Path) -> DocumentTree:
     for block in _split_blocks(body):
         heading_match = RE_HEADING.match(block)
         if heading_match:
+            level = len(heading_match.group(1))
+            text = heading_match.group(2).strip()
+
+            if level == 5 and quote_depth > 0:
+                # Khoản lồng trong đoạn trích dẫn (xem docstring đầu file):
+                # không phải cấu trúc thật của văn bản đang parse -- gộp làm
+                # văn bản thường vào Khoản thật đang mở, không flush, không
+                # đổi khoan_number/breadcrumb.
+                paragraphs.append(text)
+                continue
+
             flush()
             paragraphs = []
             tables = []
-            level = len(heading_match.group(1))
-            text = heading_match.group(2).strip()
+            if level != 5:
+                quote_depth = 0
 
             if level == 1:
                 phan = _phan_segment(text)
@@ -214,6 +261,7 @@ def parse_markdown(path: str | Path) -> DocumentTree:
             continue
 
         stripped = block.strip()
+        quote_depth = max(quote_depth + stripped.count("“") - stripped.count("”"), 0)
         if stripped.startswith(">"):
             continue  # blockquote chú thích sửa đổi — không phải nội dung Khoản
         if RE_TABLE_LINE.match(stripped) or RE_HTML_TABLE_LINE.match(stripped):
