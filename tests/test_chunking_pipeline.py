@@ -8,6 +8,7 @@ nhanh -- việc chạy pipeline với tokenizer THẬT trên toàn bộ
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -183,8 +184,8 @@ def test_convert_directory_file_chunk_id_trung_lap_khong_chan_ca_batch(
     exit_code = convert_directory(markdown_dir, out_dir)
 
     assert exit_code == 1
-    assert (out_dir / "hop_le.jsonl").exists()
-    assert not (out_dir / "loi.jsonl").exists()
+    assert (out_dir / "hop_le.json").exists()
+    assert not (out_dir / "loi.json").exists()
 
 
 # ==========================================================================
@@ -202,23 +203,24 @@ def _sample_chunk() -> Chunk:
     )
 
 
-def test_write_atomic_ghi_dung_noi_dung_jsonl(tmp_path: Path):
-    output_path = tmp_path / "out" / "file.jsonl"
+def test_write_atomic_ghi_dung_noi_dung_json(tmp_path: Path):
+    output_path = tmp_path / "out" / "file.json"
     write_atomic(output_path, [_sample_chunk(), _sample_chunk()])
 
-    lines = output_path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2
+    data = json.loads(output_path.read_text(encoding="utf-8"))
+    assert len(data) == 2
+    assert data[0]["chunk_id"] == "abc"
     assert list(tmp_path.rglob("*.tmp")) == []
 
 
 def test_write_atomic_ghi_danh_sach_rong(tmp_path: Path):
-    output_path = tmp_path / "empty.jsonl"
+    output_path = tmp_path / "empty.json"
     write_atomic(output_path, [])
-    assert output_path.read_text(encoding="utf-8") == ""
+    assert json.loads(output_path.read_text(encoding="utf-8")) == []
 
 
 def test_write_atomic_don_dep_file_tam_khi_loi(tmp_path: Path, monkeypatch):
-    output_path = tmp_path / "file.jsonl"
+    output_path = tmp_path / "file.json"
 
     def _boom(_fileno):
         raise OSError("giả lập lỗi ghi đĩa")
@@ -248,8 +250,8 @@ def test_convert_directory_loi_mot_file_khong_chan_ca_batch(tmp_path: Path, caps
     exit_code = convert_directory(markdown_dir, out_dir)
 
     assert exit_code == 1
-    assert (out_dir / "hop_le.jsonl").exists()
-    assert not (out_dir / "hong.jsonl").exists()
+    assert (out_dir / "hop_le.json").exists()
+    assert not (out_dir / "hong.json").exists()
 
     captured = capsys.readouterr()
     assert "Thành công" in captured.out
@@ -286,7 +288,7 @@ def test_convert_directory_giu_cau_truc_thu_muc_con(tmp_path: Path):
 
     convert_directory(markdown_dir, out_dir)
 
-    assert (out_dir / "sub" / "a.jsonl").exists()
+    assert (out_dir / "sub" / "a.json").exists()
 
 
 def test_convert_directory_deterministic_qua_2_lan_chay(tmp_path: Path):
@@ -299,8 +301,8 @@ def test_convert_directory_deterministic_qua_2_lan_chay(tmp_path: Path):
     convert_directory(markdown_dir, out_dir_1)
     convert_directory(markdown_dir, out_dir_2)
 
-    content_1 = (out_dir_1 / "a.jsonl").read_text(encoding="utf-8")
-    content_2 = (out_dir_2 / "a.jsonl").read_text(encoding="utf-8")
+    content_1 = (out_dir_1 / "a.json").read_text(encoding="utf-8")
+    content_2 = (out_dir_2 / "a.json").read_text(encoding="utf-8")
     assert content_1 == content_2
 
 
@@ -323,7 +325,7 @@ def test_cli_chuyen_doi_toan_bo_thu_muc(tmp_path: Path):
     )
 
     assert result.exit_code == 0
-    assert (out_dir / "a.jsonl").exists()
+    assert (out_dir / "a.json").exists()
 
 
 def test_cli_tra_ve_exit_code_1_khi_co_file_loi(tmp_path: Path):

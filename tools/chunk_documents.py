@@ -1,7 +1,7 @@
 """CLI mỏng gọi `chunking.pipeline.convert_directory`.
 
 Chuyển toàn bộ file `.md` trong thư mục đầu vào (output của `formatting/`)
-thành chunk JSONL trong thư mục đầu ra. Không giữ trạng thái giữa các lần
+thành chunk JSON trong thư mục đầu ra. Không giữ trạng thái giữa các lần
 chạy: mỗi lần chạy xử lý lại toàn bộ input và ghi đè output.
 
 Cách dùng:
@@ -28,9 +28,9 @@ def main(
     markdown_dir: Path = typer.Option(
         DEFAULT_MARKDOWN_DIR, help="Thư mục .md đầu vào."
     ),
-    out_dir: Path = typer.Option(DEFAULT_OUT_DIR, help="Thư mục .jsonl đầu ra."),
+    out_dir: Path = typer.Option(DEFAULT_OUT_DIR, help="Thư mục .json đầu ra."),
 ) -> None:
-    """Chuyển toàn bộ `.md` trong `markdown_dir` thành chunk JSONL trong `out_dir`."""
+    """Chuyển toàn bộ `.md` trong `markdown_dir` thành chunk JSON trong `out_dir`."""
     exit_code = convert_directory(markdown_dir, out_dir)
     raise typer.Exit(code=exit_code)
 

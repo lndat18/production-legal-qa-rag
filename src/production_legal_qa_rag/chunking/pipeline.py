@@ -8,6 +8,7 @@ lại trong batch (mục 9).
 
 from __future__ import annotations
 
+import json
 import os
 import traceback
 from pathlib import Path
@@ -91,7 +92,7 @@ def convert_markdown_to_chunks(
 
 
 def write_atomic(path: str | Path, chunks: list[Chunk]) -> None:
-    """Ghi danh sách `Chunk` ra JSONL bằng file tạm + rename nguyên tử.
+    """Ghi danh sách `Chunk` ra 1 file JSON (mảng) bằng file tạm + rename nguyên tử.
 
     Giống `formatting/pipeline.py::write_atomic`: không bao giờ để lại file
     dở dang nếu tiến trình bị ngắt giữa chừng.
@@ -102,9 +103,13 @@ def write_atomic(path: str | Path, chunks: list[Chunk]) -> None:
     temporary_path = output_path.with_name(f"{output_path.name}.{os.getpid()}.tmp")
     try:
         with temporary_path.open("w", encoding="utf-8", newline="\n") as handle:
-            for chunk in chunks:
-                handle.write(chunk.model_dump_json())
-                handle.write("\n")
+            json.dump(
+                [chunk.model_dump(mode="json") for chunk in chunks],
+                handle,
+                ensure_ascii=False,
+                indent=2,
+            )
+            handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary_path, output_path)
@@ -124,9 +129,9 @@ def _scan_markdown_files(markdown_dir: Path) -> list[Path]:
 
 
 def _output_path_for(source: Path, markdown_dir: Path, out_dir: Path) -> Path:
-    """Giữ nguyên cấu trúc thư mục con, đổi đuôi thành `.jsonl`."""
+    """Giữ nguyên cấu trúc thư mục con, đổi đuôi thành `.json`."""
     relative = source.relative_to(markdown_dir)
-    return (out_dir / relative).with_suffix(".jsonl")
+    return (out_dir / relative).with_suffix(".json")
 
 
 def _print_summary(
@@ -147,14 +152,14 @@ def _print_summary(
 
 
 def convert_directory(markdown_dir: Path, out_dir: Path) -> int:
-    """Chunk hoá toàn bộ `.md` trong `markdown_dir`, ghi JSONL vào `out_dir`.
+    """Chunk hoá toàn bộ `.md` trong `markdown_dir`, ghi JSON vào `out_dir`.
 
     Xử lý tuần tự, lỗi ở 1 file không chặn các file còn lại. In summary (số
     file thành công/lỗi, tổng số chunk, số Khoản bị cắt) khi kết thúc.
 
     Args:
         markdown_dir: Thư mục chứa file `.md` nguồn.
-        out_dir: Thư mục ghi file `.jsonl` đầu ra.
+        out_dir: Thư mục ghi file `.json` đầu ra.
 
     Returns:
         0 nếu tất cả thành công, 1 nếu có ít nhất một file lỗi.

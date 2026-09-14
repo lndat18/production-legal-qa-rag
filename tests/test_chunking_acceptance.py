@@ -198,8 +198,8 @@ def test_convert_directory_tren_toan_bo_corpus_that_co_summary(tmp_path: Path, c
 
     assert exit_code == 1  # có 1 file lỗi
     for path in MARKDOWN_FILES:
-        assert (out_dir / f"{path.stem}.jsonl").exists()
-    assert not (out_dir / "hong.jsonl").exists()
+        assert (out_dir / f"{path.stem}.json").exists()
+    assert not (out_dir / "hong.json").exists()
 
     captured = capsys.readouterr()
     assert f"Thành công        : {len(MARKDOWN_FILES)}" in captured.out

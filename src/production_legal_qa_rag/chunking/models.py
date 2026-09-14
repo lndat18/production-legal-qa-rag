@@ -1,7 +1,7 @@
 """Pydantic models trao đổi giữa các module của `chunking/` (mục 2, 10).
 
 `KhoanNode`/`DocumentTree` là kết quả trung gian của `parser.py`; `Chunk`/
-`ChunkingResult` là kết quả cuối cùng ghi ra `data/chunks/*.jsonl`.
+`ChunkingResult` là kết quả cuối cùng ghi ra `data/chunks/*.json`.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class DocumentTree(BaseModel):
 
 
 class Chunk(BaseModel):
-    """1 chunk sẵn sàng ghi ra `data/chunks/*.jsonl` (mục 2)."""
+    """1 chunk sẵn sàng ghi ra `data/chunks/*.json` (mục 2)."""
 
     chunk_id: str
     source_document: str
