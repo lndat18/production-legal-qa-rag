@@ -320,7 +320,7 @@ phù hợp. Thay vào đó:
        chunk_size=MAX_TOKENS,
        chunk_overlap=0,
        length_function=count_tokens,  # chunking/tokenizer.py (mục 6) — đếm
-                                       # token PhoBERT thật, không phải ký tự
+       # token PhoBERT thật, không phải ký tự
        separators=["\n\n", "\n", ". ", "; ", " ", ""],
    )
    pieces = splitter.split_text(vùng_content)
