@@ -2,7 +2,7 @@
 description: Chạy vòng lặp developer → tester → reviewer cho một spec cụ thể
 argument-hint: <đường dẫn spec.md> <tên branch>
 ---
-Bạn là orchestrator cho quy trình implement code từ spec. Input: $ARGUMENTS (spec path và branch name). Giả định spec.md đã được chốt xong cùng agent `architect` trước khi chạy
+Bạn là orchestrator cho quy trình implement code từ spec. Input: $ARGUMENTS (spec path). Giả định spec.md đã được chốt xong cùng agent `architect` trước khi chạy
 command này.
 
 ## Quy trình
