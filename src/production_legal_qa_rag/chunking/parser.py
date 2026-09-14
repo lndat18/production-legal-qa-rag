@@ -58,6 +58,7 @@ QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa, xem báo cáo bàn gia
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 
 import yaml
@@ -253,8 +254,13 @@ def parse_markdown(path: str | Path) -> DocumentTree:
                     paragraphs = [merged_match.group(2).strip()]
                 else:
                     # Heading Khoản không khớp dạng nào đã biết: bỏ nhãn, giữ
-                    # nội dung theo sau như Khoản ngầm định thay vì làm hỏng
-                    # cả file — lỗi 1 Khoản không được chặn cả file/batch.
+                    # nội dung theo sau như Khoản ngầm định thay vì bỏ luôn
+                    # nội dung đó. Nếu heading lỗi này xuất hiện 2 lần trong
+                    # cùng 1 Điều (dữ liệu hỏng/OCR), 2 Khoản ngầm định sẽ
+                    # cùng breadcrumb_prefix -> cùng chunk_id; invariant check
+                    # chung ở `pipeline.py::_ensure_unique_chunk_ids` sẽ raise
+                    # và chặn riêng file đó (không âm thầm ghi đè), thay vì
+                    # chặn ở đây ngay từ ca đầu (vốn vô hại 1 mình).
                     khoan_number = None
 
             prefix = _build_prefix(doc_prefix, phan, chuong, muc, dieu)
@@ -270,5 +276,18 @@ def parse_markdown(path: str | Path) -> DocumentTree:
         paragraphs.append(block)
 
     flush()
+
+    if quote_depth != 0:
+        # Cơ chế quote_depth (xem docstring đầu file) chỉ an toàn trên corpus
+        # hiện tại vì đã xác nhận thủ công ngoặc kép cân bằng ở cả 6 file
+        # `data/markdown/*.md`. Cảnh báo runtime ở đây để phát hiện SỚM văn
+        # bản mới có ngoặc kép không cân (thay vì âm thầm nuốt mất 1 Khoản
+        # thật, xem test_HAN_CHE_... trong test_chunking_parser.py).
+        warnings.warn(
+            f"{path}: ngoặc kép trích dẫn không cân (quote_depth={quote_depth} "
+            "cuối file) -- có thể đã bỏ sót nội dung Khoản thật, xem "
+            "parser.py docstring mục 'Khoản lồng trong Khoản'.",
+            stacklevel=2,
+        )
 
     return DocumentTree(source_document=source_document, khoans=khoans)

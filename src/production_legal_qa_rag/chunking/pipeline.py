@@ -18,16 +18,56 @@ from production_legal_qa_rag.chunking.splitter import split_khoan
 from production_legal_qa_rag.config import EmbeddingSettings
 
 
-def convert_markdown_to_chunks(path: str | Path) -> ChunkingResult:
+def _ensure_unique_chunk_ids(chunks: list[Chunk], source_document: str) -> None:
+    """Invariant chung: `chunk_id` phải duy nhất trong 1 file (mục 2).
+
+    Pinecone upsert theo `chunk_id` (mục 2) -- 2 chunk cùng id khiến dòng ghi
+    sau âm thầm đè dòng trước, mất dữ liệu vĩnh viễn, không có cảnh báo nào.
+    Đây là lớp bảo vệ chung đặt tại điểm sinh ra TOÀN BỘ chunk của 1 file,
+    bất kể nguyên nhân trùng lặp là gì (vd. 2 heading cấp 5 không khớp dạng
+    nào đã biết trong cùng 1 Điều -> 2 Khoản ngầm định cùng
+    `breadcrumb_prefix`, xem `parser.py`) -- fail loud (raise) thay vì âm
+    thầm ghi đè, thay vì chỉ vá riêng từng nguyên nhân cụ thể mỗi lần phát
+    hiện. Đúng triết lý mục 9 "lỗi 1 file không chặn cả batch": raise ở đây
+    khiến `convert_directory` coi file này là lỗi (catch `Exception`) nhưng
+    vẫn tiếp tục xử lý các file còn lại.
+    """
+    seen_breadcrumbs: dict[str, str] = {}
+    for chunk in chunks:
+        previous_breadcrumb = seen_breadcrumbs.get(chunk.chunk_id)
+        if previous_breadcrumb is not None:
+            raise ValueError(
+                f"chunk_id trùng lặp trong {source_document!r}: "
+                f"{chunk.chunk_id!r} được sinh bởi 2 breadcrumb khác nhau "
+                f"({previous_breadcrumb!r} và {chunk.breadcrumb!r}) -- sẽ "
+                "ghi đè âm thầm khi upsert lên Pinecone, từ chối ghi file này."
+            )
+        seen_breadcrumbs[chunk.chunk_id] = chunk.breadcrumb
+
+
+def convert_markdown_to_chunks(
+    path: str | Path, *, max_tokens: int | None = None
+) -> ChunkingResult:
     """Chuyển 1 file `.md` (`data/markdown/*.md`) thành `ChunkingResult`.
 
     Args:
         path: Đường dẫn tới file `.md` nguồn.
+        max_tokens: Ngân sách token tối đa cho 1 chunk. Mặc định `None` ->
+            đọc từ `EmbeddingSettings().max_tokens` (đọc lại `.env` mỗi lần
+            gọi) -- dùng khi gọi hàm này độc lập (vd. test, script rời).
+            `convert_directory` load `EmbeddingSettings()` 1 lần rồi truyền
+            xuống đây cho mọi file trong batch, tránh đọc lại `.env` mỗi file.
 
     Returns:
         Toàn bộ chunk sinh ra từ file, kèm thống kê số Khoản/số Khoản bị cắt.
+
+    Raises:
+        ValueError: 2 chunk trong cùng file có `chunk_id` trùng nhau (xem
+            `_ensure_unique_chunk_ids`) -- lỗi dữ liệu nguồn, chặn file này
+            nhưng không chặn `convert_directory` xử lý các file khác.
     """
-    max_tokens = EmbeddingSettings().max_tokens
+    if max_tokens is None:
+        max_tokens = EmbeddingSettings().max_tokens
     tree = parse_markdown(path)
 
     chunks: list[Chunk] = []
@@ -39,6 +79,8 @@ def convert_markdown_to_chunks(path: str | Path) -> ChunkingResult:
         chunks.extend(khoan_chunks)
         if len(khoan_chunks) > 1:
             split_khoan_count += 1
+
+    _ensure_unique_chunk_ids(chunks, tree.source_document)
 
     return ChunkingResult(
         source_path=str(path),
@@ -122,6 +164,8 @@ def convert_directory(markdown_dir: Path, out_dir: Path) -> int:
         print(f"Không tìm thấy .md nào trong {markdown_dir}")
         return 0
 
+    max_tokens = EmbeddingSettings().max_tokens
+
     successful: list[str] = []
     failed: list[tuple[str, str]] = []
     total_chunks = 0
@@ -130,7 +174,7 @@ def convert_directory(markdown_dir: Path, out_dir: Path) -> int:
     for source_path in sources:
         output_path = _output_path_for(source_path, markdown_dir, out_dir)
         try:
-            result = convert_markdown_to_chunks(source_path)
+            result = convert_markdown_to_chunks(source_path, max_tokens=max_tokens)
             write_atomic(output_path, result.chunks)
         except Exception as error:  # noqa: BLE001 - lỗi 1 file không được chặn cả batch
             traceback.print_exc()

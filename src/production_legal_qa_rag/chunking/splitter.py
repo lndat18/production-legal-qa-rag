@@ -264,6 +264,9 @@ def _build_table_chunk(khoan: KhoanNode, base: str, source_document: str) -> Chu
     standardization = standardize_table(khoan.raw_table or "")
     narrative = khoan.content.strip()
     content = f"{narrative}\n\n{standardization}" if narrative else standardization
+    # QUYẾT ĐỊNH THIẾT KẾ: mục 5 spec không nói tới negation_note cho Khoản có
+    # bảng, nhưng câu dẫn (narrative) trước bảng có thể chứa phủ định giống
+    # Khoản thường (mục 4.5) -- áp dụng cùng logic để không bỏ sót.
     negation_sentence = _find_negation_sentence(narrative) if narrative else None
 
     return Chunk(

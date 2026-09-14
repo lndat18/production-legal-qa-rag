@@ -421,6 +421,85 @@ def test_quote_depth_reset_o_ranh_gioi_dieu_moi(tmp_path: Path):
     )
 
 
+def test_quote_depth_khong_can_canh_bao_runtime(
+    tmp_path: Path, recwarn: pytest.WarningsRecorder
+):
+    # Góp ý non-blocking reviewer vòng 3: cảnh báo runtime khi quote_depth
+    # != 0 cuối file (ngoặc kép trích dẫn không cân), thay vì âm thầm nuốt
+    # mất nội dung mà không ai biết.
+    text = _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 1. Điều có trích dẫn lỗi\n\n"
+        "##### Khoản 1\n\n"
+        "Trích dẫn: “Điều 54. Điều kiện (thiếu dấu đóng ngoặc kép).\n",
+    )
+    parse_markdown(_write(tmp_path, "a.md", text))
+    messages = [str(warning.message) for warning in recwarn.list]
+    assert any("quote_depth" in message for message in messages)
+
+
+def test_quote_depth_can_bang_khong_canh_bao(
+    tmp_path: Path, recwarn: pytest.WarningsRecorder
+):
+    text = _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 1. Điều có trích dẫn cân\n\n"
+        "##### Khoản 1\n\n"
+        "Trích dẫn: “Điều 54. Điều kiện.”\n",
+    )
+    parse_markdown(_write(tmp_path, "a.md", text))
+    assert len(recwarn.list) == 0
+
+
+# ==========================================================================
+# Regression: chunk_id trùng lặp khi 2 heading cấp 5 không khớp dạng nào đã
+# biết ("Khoản ngầm định") xuất hiện trong cùng 1 Điều (dữ liệu lỗi/OCR).
+# Cả 2 KhoanNode ngầm định dừng ở cùng breadcrumb_prefix (cấp Điều) ->
+# `_make_chunk_id` sinh cùng chunk_id -> nếu ghi ra JSONL rồi upsert lên
+# Pinecone theo id, dòng sau sẽ âm thầm đè dòng trước, mất dữ liệu vĩnh viễn
+# không cảnh báo. Sửa bằng invariant check chung
+# `pipeline.py::_ensure_unique_chunk_ids` (feedback REVISE vòng 3 của
+# reviewer): raise `ValueError` rõ ràng thay vì âm thầm ghi đè, chặn RIÊNG
+# file lỗi mà không chặn cả batch (mục 9) -- bảo vệ chung cho MỌI nguyên nhân
+# trùng chunk_id, không riêng ca này.
+# ==========================================================================
+
+
+def _dieu_2_heading_khong_khop_dang_nao() -> str:
+    return _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 1. Điều có heading lỗi\n\n"
+        "##### ???\n\n"
+        "Nội dung khoản ngầm định thứ nhất.\n\n"
+        "##### ???\n\n"
+        "Nội dung khoản ngầm định thứ hai.\n",
+    )
+
+
+def test_2_heading_loi_cung_dieu_tao_2_khoan_ngam_dinh_cung_breadcrumb(
+    tmp_path: Path,
+):
+    tree = parse_markdown(
+        _write(tmp_path, "a.md", _dieu_2_heading_khong_khop_dang_nao())
+    )
+    assert len(tree.khoans) == 2
+    assert tree.khoans[0].khoan_number is None
+    assert tree.khoans[1].khoan_number is None
+    # Đúng như mô tả bug: 2 Khoản ngầm định khác nội dung nhưng cùng
+    # breadcrumb_prefix -> sẽ cùng chunk_id nếu không có invariant check.
+    assert tree.khoans[0].breadcrumb_prefix == tree.khoans[1].breadcrumb_prefix
+    assert tree.khoans[0].content != tree.khoans[1].content
+
+
+def test_2_heading_loi_cung_dieu_chunk_id_trung_lap_bi_chan_loud(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(splitter, "count_tokens", lambda text: len(text.split()))
+    path = _write(tmp_path, "a.md", _dieu_2_heading_khong_khop_dang_nao())
+    with pytest.raises(ValueError, match="chunk_id trùng lặp"):
+        convert_markdown_to_chunks(path)
+
+
 def test_HAN_CHE_biet_truoc_ngoac_kep_khong_can_trong_cung_1_dieu_nuot_khoan_that(
     tmp_path: Path,
 ):

@@ -80,6 +80,113 @@ def test_convert_markdown_to_chunks_dem_dung_so_khoan_bi_cat(
     assert len(result.chunks) > 1
 
 
+def test_convert_markdown_to_chunks_nhan_max_tokens_truyen_vao_khong_doc_env(
+    tmp_path: Path, monkeypatch
+):
+    # Góp ý non-blocking reviewer vòng 3: `convert_directory` load
+    # `EmbeddingSettings()` 1 lần rồi truyền `max_tokens` xuống, thay vì mỗi
+    # file đọc lại `.env`. Ở đây gọi trực tiếp `convert_markdown_to_chunks`
+    # với `max_tokens=3` (khác hẳn env "1000" do fixture set) để xác nhận
+    # tham số truyền vào được ưu tiên, không đọc lại `EmbeddingSettings()`.
+    path = tmp_path / "a.md"
+    _write_markdown(
+        path,
+        khoan_content="Một hai ba bốn năm. Sáu bảy tám chín mười. Mười một mười hai.",
+    )
+    result = convert_markdown_to_chunks(path, max_tokens=3)
+    assert result.split_khoan_count == 1
+    assert len(result.chunks) > 1
+
+
+# ==========================================================================
+# Invariant chung: chunk_id phải duy nhất trong 1 file (mục 2, 9)
+# ==========================================================================
+
+
+def test_ensure_unique_chunk_ids_khong_raise_khi_id_khac_nhau():
+    chunks = [
+        Chunk(
+            chunk_id="a",
+            source_document="doc",
+            breadcrumb="bc1",
+            content="x",
+            token_count=1,
+        ),
+        Chunk(
+            chunk_id="b",
+            source_document="doc",
+            breadcrumb="bc2",
+            content="y",
+            token_count=1,
+        ),
+    ]
+    pipeline._ensure_unique_chunk_ids(chunks, "doc")  # không raise
+
+
+def test_ensure_unique_chunk_ids_raise_khi_id_trung_lap():
+    chunks = [
+        Chunk(
+            chunk_id="a",
+            source_document="doc",
+            breadcrumb="bc1",
+            content="x",
+            token_count=1,
+        ),
+        Chunk(
+            chunk_id="a",
+            source_document="doc",
+            breadcrumb="bc2",
+            content="y",
+            token_count=1,
+        ),
+    ]
+    with pytest.raises(ValueError, match="chunk_id trùng lặp"):
+        pipeline._ensure_unique_chunk_ids(chunks, "doc")
+
+
+def _write_markdown_2_heading_loi_cung_dieu(path: Path) -> None:
+    # Nguyên nhân thật gây trùng chunk_id (feedback REVISE vòng 3): 2 heading
+    # cấp 5 không khớp dạng nào đã biết trong cùng 1 Điều -> 2 Khoản ngầm
+    # định cùng breadcrumb_prefix (xem test_chunking_parser.py).
+    path.write_text(
+        "---\n"
+        'so_hieu: "01/2020/QH"\n'
+        'ten_van_ban: "Văn bản mẫu"\n'
+        "---\n\n"
+        "Tiêu đề văn bản mẫu.\n\n"
+        "#### Điều 1. Điều có heading lỗi\n\n"
+        "##### ???\n\n"
+        "Nội dung khoản ngầm định thứ nhất.\n\n"
+        "##### ???\n\n"
+        "Nội dung khoản ngầm định thứ hai.\n",
+        encoding="utf-8",
+    )
+
+
+def test_convert_markdown_to_chunks_raise_khi_chunk_id_trung_lap(tmp_path: Path):
+    path = tmp_path / "a.md"
+    _write_markdown_2_heading_loi_cung_dieu(path)
+    with pytest.raises(ValueError, match="chunk_id trùng lặp"):
+        convert_markdown_to_chunks(path)
+
+
+def test_convert_directory_file_chunk_id_trung_lap_khong_chan_ca_batch(
+    tmp_path: Path,
+):
+    markdown_dir = tmp_path / "markdown"
+    out_dir = tmp_path / "out"
+    markdown_dir.mkdir()
+
+    _write_markdown(markdown_dir / "hop_le.md")
+    _write_markdown_2_heading_loi_cung_dieu(markdown_dir / "loi.md")
+
+    exit_code = convert_directory(markdown_dir, out_dir)
+
+    assert exit_code == 1
+    assert (out_dir / "hop_le.jsonl").exists()
+    assert not (out_dir / "loi.jsonl").exists()
+
+
 # ==========================================================================
 # write_atomic (giống triết lý `formatting/pipeline.py::write_atomic`)
 # ==========================================================================
