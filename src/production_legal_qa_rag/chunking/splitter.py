@@ -118,12 +118,16 @@ def _make_group(units: list[_Unit]) -> _Group:
     joiner = " " if use_space else "\n\n"
     text = joiner.join(unit.text for unit in units)
     labels = list(
-        dict.fromkeys(unit.label for unit in units if unit.kind == "point" and unit.label)
+        dict.fromkeys(
+            unit.label for unit in units if unit.kind == "point" and unit.label
+        )
     )
     return _Group(text=text, point_labels=labels)
 
 
-def _pack_with_overlap(fragments: list[_Unit], max_tokens: int, tier: int) -> list[_Group]:
+def _pack_with_overlap(
+    fragments: list[_Unit], max_tokens: int, tier: int
+) -> list[_Group]:
     """Cận dưới ở cấp câu, cho phép overlap 1 câu cuối (mục 4.4).
 
     `tier` là tầng tách hiện tại trong `_FALLBACK_SPLITTERS` — truyền tiếp
@@ -276,7 +280,9 @@ def _build_table_chunk(khoan: KhoanNode, base: str, source_document: str) -> Chu
     )
 
 
-def split_khoan(khoan: KhoanNode, *, source_document: str, max_tokens: int) -> list[Chunk]:
+def split_khoan(
+    khoan: KhoanNode, *, source_document: str, max_tokens: int
+) -> list[Chunk]:
     """Cắt 1 `KhoanNode` thành 1 hoặc nhiều `Chunk` (mục 4, 5).
 
     Args:
@@ -315,7 +321,9 @@ def split_khoan(khoan: KhoanNode, *, source_document: str, max_tokens: int) -> l
         units = []
         if preamble:
             units.append(_Unit(kind="unit0", label=None, text=preamble))
-        units.extend(_Unit(kind="point", label=label, text=text) for label, text in points)
+        units.extend(
+            _Unit(kind="point", label=label, text=text) for label, text in points
+        )
     else:
         units = [
             _Unit(kind="sentence", label=None, text=sentence)

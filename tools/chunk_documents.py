@@ -25,7 +25,9 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(
-    markdown_dir: Path = typer.Option(DEFAULT_MARKDOWN_DIR, help="Thư mục .md đầu vào."),
+    markdown_dir: Path = typer.Option(
+        DEFAULT_MARKDOWN_DIR, help="Thư mục .md đầu vào."
+    ),
     out_dir: Path = typer.Option(DEFAULT_OUT_DIR, help="Thư mục .jsonl đầu ra."),
 ) -> None:
     """Chuyển toàn bộ `.md` trong `markdown_dir` thành chunk JSONL trong `out_dir`."""

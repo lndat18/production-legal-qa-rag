@@ -277,16 +277,18 @@ class EmbeddingSettings(BaseSettings):
     model_name: str = "CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2"
     max_tokens: int = 236
 
+
 class VectorDBSettings(BaseSettings):
-    pinecone_api_key: str      # từ PINECONE_API_KEY, cần thêm vào .env
-    index_name: str            # từ PINECONE_INDEX_NAME, cần thêm vào .env
+    pinecone_api_key: str  # từ PINECONE_API_KEY, cần thêm vào .env
+    index_name: str  # từ PINECONE_INDEX_NAME, cần thêm vào .env
     # VectorDB = Pinecone (đổi từ Postgres/pgvector ban đầu). docker-compose.yml
     # hiện vẫn chạy Postgres — spec này không quyết định có bỏ Postgres hay
     # không (Postgres có thể vẫn cần cho việc khác ngoài lưu vector), để ngỏ
     # cho quyết định sau.
 
+
 class LLMSettings(BaseSettings):
-    groq_api_key: str          # từ GROQ_API_KEY trong .env, đã có sẵn
+    groq_api_key: str  # từ GROQ_API_KEY trong .env, đã có sẵn
     # model name: chưa chốt — để trống/TODO, thuộc phạm vi bước retrieval/
     # generation sau này, không đoán trước trong spec này
 ```
