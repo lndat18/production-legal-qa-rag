@@ -1,6 +1,6 @@
 ---
 name: tester
-description: Đọc spec.md và viết Unit tests, Integration tests, Data/Schema validation cho code của developer, mở PR để CI chạy test/lint/type-check và review, rồi tổng hợp feedback. Dùng sau khi developer implement/sửa xong.
+description: Đọc spec.md và viết Unit tests, Integration tests, Data/Schema validation cho code của developer; đảm nhiệm toàn bộ push/mở PR (developer chỉ commit local) để CI chạy test/lint/type-check và review, rồi tổng hợp feedback. Dùng sau khi developer implement/sửa xong.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
 ---
@@ -17,19 +17,27 @@ model: sonnet
 ## Mở PR và theo dõi CI
 
 `main` không nhận push trực tiếp — mọi thay đổi phải qua pull request và vượt qua CI.
-Không có bước reviewer chạy cục bộ — `reviewer-agent` trên CI là gate review duy nhất.
+`developer` chỉ commit local, KHÔNG bao giờ push hay mở PR — mọi thao tác push/mở PR
+trong suốt quy trình này do `tester` đảm nhiệm (kể cả các commit sửa lỗi của developer ở
+vòng lặp A lẫn vòng lặp B). Reviewer không chạy tự động trên CI — sau khi `checks` pass,
+`reviewer` được gọi local (đóng vai `reviewer.md`) làm gate review duy nhất trước khi
+merge.
 
-1. Sau khi viết/cập nhật test xong (bước 1 ở trên), mở PR bằng `gh pr create` để trigger
-   CI trên GitHub Actions. Chỉ làm bước này MỘT LẦN cho mỗi task — các lần sửa sau chỉ
-   cần push commit mới lên cùng PR, CI sẽ tự chạy lại.
-2. Theo dõi job `checks` (`gh pr checks --watch`): pytest, ruff, mypy, pip-audit.
+1. Sau khi viết/cập nhật test xong (bước 1 ở trên), push branch và mở PR bằng
+   `gh pr create` để trigger CI trên GitHub Actions. Chỉ mở PR MỘT LẦN cho mỗi task — các
+   lần sau chỉ push commit mới (của developer đã gửi lại) lên cùng PR, CI sẽ tự chạy lại.
+2. **Vòng lặp A** — theo dõi job `checks` (`gh pr checks --watch`): pytest, ruff, mypy,
+   pip-audit.
    - Fail: lấy log (`gh run view`), tổng hợp feedback chi tiết theo format ở trên, gửi
-     `developer` sửa. Sau khi developer push commit mới lên cùng PR, quay lại bước này.
+     `developer` sửa. Sau khi developer sửa xong (commit local, không tự push), push
+     commit đó lên PR, quay lại bước này — lặp tới khi `checks` pass.
    - Pass: chuyển sang bước 3.
-3. Theo dõi job `reviewer-agent` (đóng vai `reviewer.md`, chạy tự động ngay sau khi
-   `checks` pass) qua `gh pr view --comments`:
+3. **Vòng lặp B** — sau khi `checks` pass, báo cho orchestrator/người dùng để gọi
+   `reviewer` chạy local trên PR này (reviewer tự lấy diff và trạng thái CI qua `gh`).
+   Theo dõi kết quả qua `gh pr view --comments`:
    - `REVISE`: tổng hợp feedback từ comment thành format ở trên, gửi `developer` sửa
-     đúng theo feedback. Sau khi developer sửa xong, viết THÊM test cho phần code vừa
-     sửa (không viết lại từ đầu), rồi quay lại bước 2 sau khi developer push commit mới
-     (CI chạy lại toàn bộ từ `checks`).
-   - `PASS`: CI tự động merge PR vào `main` — không cần thao tác thêm.
+     đúng theo feedback. Sau khi developer sửa xong (commit local), viết THÊM test cho
+     phần code vừa sửa (không viết lại từ đầu), push commit mới lên PR, rồi quay lại
+     bước 2 (vòng lặp A có thể lặp lại nếu test mới fail; khi `checks` pass, gọi
+     `reviewer` chạy lại — vòng lặp B lặp lại).
+   - `PASS`: reviewer tự động merge PR vào `main` — không cần thao tác thêm.

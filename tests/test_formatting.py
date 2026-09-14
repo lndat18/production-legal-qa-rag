@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import yaml
@@ -21,10 +22,12 @@ from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 from typer.testing import CliRunner
 
+from production_legal_qa_rag.config import LLMSettings
 from production_legal_qa_rag.formatting import (
     emitter,
     footnotes,
     frontmatter,
+    llm_client,
     pipeline,
     tables,
     validator,
@@ -32,8 +35,11 @@ from production_legal_qa_rag.formatting import (
 from production_legal_qa_rag.formatting.docx_reader import Block, read_docx
 from production_legal_qa_rag.formatting.footnotes import Footnote
 from production_legal_qa_rag.formatting.models import (
+    FootnoteEntry,
+    FootnoteExtraction,
     FormattingResult,
     FrontMatter,
+    FrontMatterExtraction,
     QcWarning,
 )
 from production_legal_qa_rag.formatting.patterns import (
@@ -83,6 +89,10 @@ KNOWN_WARNING_CODES = {
     "dieu_not_monotonic",
     "khoan_not_monotonic",
     "empty_dieu",
+    "llm_frontmatter_extraction_failed",
+    "llm_footnote_extraction_failed",
+    "llm_frontmatter_mismatch",
+    "llm_footnote_count_mismatch",
 }
 
 
@@ -92,6 +102,38 @@ def P(text: str, *, style: str | None = None, bold: bool = False) -> Block:
 
 def T(text: str) -> Block:
     return Block(kind="table", text=text)
+
+
+# ==========================================================================
+# Không bao giờ gọi Groq API thật trong test suite (CI không có
+# GROQ_API_KEY; máy dev có thể có key thật trong `.env` -- không nên phụ
+# thuộc vào việc thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
+# ==========================================================================
+
+# Giữ tham chiếu tới hàm THẬT trước khi fixture session dưới đây ghi đè
+# `llm_client.extract_structured` -- section "llm_client.py" cần gọi đúng
+# implementation thật (chỉ mock `_client`, không mock `extract_structured`
+# chính nó) để kiểm tra logic try/except/tham số thật của nó. Chạy ở mức
+# module (import-time), trước khi bất kỳ fixture nào được khởi tạo.
+_REAL_EXTRACT_STRUCTURED = llm_client.extract_structured
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_llm_calls():
+    """Mặc định `llm_client.extract_structured` luôn trả `None` (LLM "lỗi")
+    cho toàn bộ session test.
+
+    Scope session, không dùng fixture `monkeypatch` (chỉ function-scope):
+    `real_results` (dưới đây) cũng session-scope và gọi
+    `convert_docx_to_markdown` trên 6 file thật ngay lần đầu được yêu cầu --
+    nếu chỉ tắt LLM ở fixture function-scope thì fixture session đó có thể
+    build sớm hơn, vẫn lọt qua gọi API thật. `real_results` khai báo phụ
+    thuộc trực tiếp vào fixture này để đảm bảo thứ tự.
+    """
+    original = llm_client.extract_structured
+    llm_client.extract_structured = lambda *args, **kwargs: None
+    yield
+    llm_client.extract_structured = original
 
 
 # ==========================================================================
@@ -322,6 +364,103 @@ def test_render_blockquote_rong_tra_ve_rong():
     assert deferred is None
 
 
+# --- resolve_region: LLM là đường chính, parse_region là baseline ---------
+
+
+def test_resolve_region_llm_thanh_cong_dung_gia_tri_llm(monkeypatch):
+    region_blocks = [
+        P("[1] Nội dung chú thích một."),
+        P("2 Nội dung chú thích hai."),
+    ]
+    monkeypatch.setattr(
+        footnotes.llm_client,
+        "extract_structured",
+        lambda *a, **k: FootnoteExtraction(
+            entries=[
+                FootnoteEntry(number=1, content="Nội dung theo LLM một."),
+                FootnoteEntry(number=2, content="Nội dung theo LLM hai."),
+            ]
+        ),
+    )
+    footnote_map, warnings = footnotes.resolve_region(region_blocks)
+    assert footnote_map[1].text == "Nội dung theo LLM một."
+    assert footnote_map[2].text == "Nội dung theo LLM hai."
+    assert not any(w.code.startswith("llm_footnote") for w in warnings)
+
+
+def test_resolve_region_llm_loi_hoan_toan_fallback_baseline():
+    """LLM trả `None` (mặc định của fixture session -- mô phỏng hết
+    `max_retries`/timeout) -- dùng nguyên map từ `parse_region` (baseline)
+    và phát `llm_footnote_extraction_failed`."""
+    region_blocks = [
+        P("[1] Nội dung chú thích một."),
+        P("2 Nội dung chú thích hai."),
+    ]
+    footnote_map, warnings = footnotes.resolve_region(region_blocks)
+    assert footnote_map[1].text == "Nội dung chú thích một."
+    assert footnote_map[2].text == "Nội dung chú thích hai."
+    assert any(w.code == "llm_footnote_extraction_failed" for w in warnings)
+
+
+def test_resolve_region_llm_tra_rong_coi_nhu_loi_fallback_baseline(monkeypatch):
+    region_blocks = [P("[1] Nội dung chú thích một.")]
+    monkeypatch.setattr(
+        footnotes.llm_client,
+        "extract_structured",
+        lambda *a, **k: FootnoteExtraction(entries=[]),
+    )
+    footnote_map, warnings = footnotes.resolve_region(region_blocks)
+    assert footnote_map[1].text == "Nội dung chú thích một."
+    assert any(w.code == "llm_footnote_extraction_failed" for w in warnings)
+
+
+def test_resolve_region_llm_lech_so_luong_dung_llm_va_canh_bao(monkeypatch):
+    """LLM trả kết quả hợp lệ nhưng số lượng chú thích khác baseline -- vẫn
+    dùng map của LLM (đường chính), chỉ phát cảnh báo lệch (mục 7 spec)."""
+    region_blocks = [
+        P("[1] Nội dung chú thích một."),
+        P("2 Nội dung chú thích hai."),
+    ]
+    monkeypatch.setattr(
+        footnotes.llm_client,
+        "extract_structured",
+        lambda *a, **k: FootnoteExtraction(
+            entries=[FootnoteEntry(number=1, content="Chỉ một chú thích theo LLM.")]
+        ),
+    )
+    footnote_map, warnings = footnotes.resolve_region(region_blocks)
+    assert set(footnote_map) == {1}
+    assert footnote_map[1].text == "Chỉ một chú thích theo LLM."
+    assert any(w.code == "llm_footnote_count_mismatch" for w in warnings)
+
+
+def test_resolve_region_giu_canh_bao_baseline_du_llm_thanh_cong(monkeypatch):
+    """Cảnh báo từ `parse_region` (vd. lỗ hổng số hiệu) là tín hiệu QC từ
+    chính vùng văn bản, độc lập với nguồn nội dung được chọn -- vẫn giữ dù
+    LLM trả kết quả hợp lệ."""
+    region_blocks = [P("[1] Đầu tiên."), P("[3] Nhảy cóc.")]
+    monkeypatch.setattr(
+        footnotes.llm_client,
+        "extract_structured",
+        lambda *a, **k: FootnoteExtraction(
+            entries=[
+                FootnoteEntry(number=1, content="Đầu tiên."),
+                FootnoteEntry(number=3, content="Nhảy cóc."),
+            ]
+        ),
+    )
+    _footnote_map, warnings = footnotes.resolve_region(region_blocks)
+    assert any(w.code == "footnote_number_gap" for w in warnings)
+
+
+def test_extract_footnotes_llm_ket_qua_sai_kieu_tra_ve_none(monkeypatch):
+    monkeypatch.setattr(
+        footnotes.llm_client, "extract_structured", lambda *a, **k: "không phải schema"
+    )
+    result = footnotes.extract_footnotes_llm([P("[1] Nội dung.")])
+    assert result is None
+
+
 # ==========================================================================
 # tables.py
 # ==========================================================================
@@ -381,6 +520,84 @@ def test_triage_tables_canh_bao_khi_khong_co_quoc_hieu():
 
 
 # ==========================================================================
+# llm_client.py -- Groq + instructor, mock hoàn toàn (không gọi API thật)
+# ==========================================================================
+
+
+def test_extract_structured_thanh_cong_goi_dung_tham_so_tu_settings(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    expected = FrontMatterExtraction(so_hieu="293/2025/NĐ-CP")
+
+    fake_client = Mock()
+    fake_client.chat.completions.create.return_value = expected
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_EXTRACT_STRUCTURED("prompt nội dung", FrontMatterExtraction)
+
+    assert result is expected
+    kwargs = fake_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "openai/gpt-oss-120b"
+    assert kwargs["max_retries"] == 2
+    assert kwargs["timeout"] == 30
+    assert kwargs["response_model"] is FrontMatterExtraction
+    assert kwargs["messages"] == [{"role": "user", "content": "prompt nội dung"}]
+
+
+def test_extract_structured_max_retries_tham_so_ghi_de_settings(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.chat.completions.create.return_value = FrontMatterExtraction()
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction, max_retries=5)
+
+    assert fake_client.chat.completions.create.call_args.kwargs["max_retries"] == 5
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("groq lỗi giả lập"),
+        TimeoutError("hết thời gian chờ"),
+        ValueError("x"),
+    ],
+)
+def test_extract_structured_client_loi_tra_ve_none_khong_raise(monkeypatch, error):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.chat.completions.create.side_effect = error
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
+    assert result is None
+
+
+def test_extract_structured_loi_khoi_tao_client_tra_ve_none(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+
+    def _boom():
+        raise RuntimeError("không kết nối được Groq")
+
+    monkeypatch.setattr(llm_client, "_client", _boom)
+
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
+    assert result is None
+
+
+def test_extract_structured_thieu_groq_api_key_tra_ve_none_khong_raise(monkeypatch):
+    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()` raise
+    `ValidationError`, `extract_structured` phải bắt và trả `None`, không để
+    lộ exception (mục 5, 7 spec: lỗi LLM không bao giờ chặn pipeline)."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
+    assert result is None
+
+
+# ==========================================================================
 # frontmatter.py
 # ==========================================================================
 
@@ -406,20 +623,41 @@ def test_extract_quoc_hieu_khong_co_bang():
     }
 
 
-def test_build_frontmatter_day_du_truong():
-    body = [
-        P("NGHỊ ĐỊNH"),
-        P("Quy định về ban hành Nghị định về mức lương tối thiểu."),
-        P("Điều 10. Hiệu lực thi hành"),
-        P("Nghị định này có hiệu lực thi hành kể từ ngày 01 tháng 01 năm 2026."),
-    ]
-    quoc_hieu = {
-        "so_hieu": "293/2025/NĐ-CP",
-        "co_quan_ban_hanh": "CHÍNH PHỦ",
-        "ngay_ban_hanh": "2025-11-10",
-    }
+_QUOC_HIEU_BLOCK_293 = T(
+    "| CHÍNH PHỦ | CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM |\n"
+    "| --- | --- |\n"
+    "| Số: 293/2025/NĐ-CP | Hà Nội, ngày 10 tháng 11 năm 2025 |"
+)
+
+_BODY_293 = [
+    P("NGHỊ ĐỊNH"),
+    P("Quy định về ban hành Nghị định về mức lương tối thiểu."),
+    P("Điều 10. Hiệu lực thi hành"),
+    P("Nghị định này có hiệu lực thi hành kể từ ngày 01 tháng 01 năm 2026."),
+]
+
+
+def test_build_frontmatter_day_du_truong(monkeypatch):
+    """`quoc_hieu_block` là raw `Block` (bảng quốc hiệu), không phải dict đã
+    trích sẵn -- prompt LLM cần đọc nguyên văn bảng (mục 6, 7 spec). Ở đây
+    LLM trả kết quả khớp hoàn toàn baseline regex nên không có cảnh báo lệch
+    hay thiếu trường."""
+    extraction = FrontMatterExtraction(
+        so_hieu="293/2025/NĐ-CP",
+        loai_van_ban="Nghị định",
+        ten_van_ban="Nghị định về mức lương tối thiểu",
+        co_quan_ban_hanh="CHÍNH PHỦ",
+        ngay_ban_hanh="2025-11-10",
+        ngay_hieu_luc="2026-01-01",
+    )
+    monkeypatch.setattr(
+        frontmatter.llm_client, "extract_structured", lambda *a, **k: extraction
+    )
     front_matter, warnings = frontmatter.build_frontmatter(
-        body, quoc_hieu, source_path="data/raw/x.docx", is_phu_luc=False
+        _BODY_293,
+        _QUOC_HIEU_BLOCK_293,
+        source_path="data/raw/x.docx",
+        is_phu_luc=False,
     )
     assert front_matter.so_hieu == "293/2025/NĐ-CP"
     assert front_matter.loai_van_ban == "Nghị định"
@@ -428,10 +666,69 @@ def test_build_frontmatter_day_du_truong():
     assert warnings == []
 
 
+def test_build_frontmatter_llm_loi_hoan_toan_fallback_baseline():
+    """LLM trả `None` (hết `max_retries`/timeout, mục 5 spec) -- fallback về
+    baseline regex, phát `llm_frontmatter_extraction_failed` cho MỖI trường
+    bắt buộc (số hiệu, ngày hiệu lực), không fail, không mất giá trị baseline.
+    """
+    front_matter, warnings = frontmatter.build_frontmatter(
+        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path="data/raw/x.docx", is_phu_luc=False
+    )
+    assert front_matter.so_hieu == "293/2025/NĐ-CP"
+    assert front_matter.loai_van_ban == "Nghị định"
+    assert front_matter.ngay_hieu_luc == "2026-01-01"
+    codes_detail = {(w.code, w.detail) for w in warnings}
+    assert ("llm_frontmatter_extraction_failed", "so_hieu") in codes_detail
+    assert ("llm_frontmatter_extraction_failed", "ngay_hieu_luc") in codes_detail
+    assert not any(w.code == "llm_frontmatter_mismatch" for w in warnings)
+
+
+def test_build_frontmatter_llm_thieu_truong_bat_buoc_rieng_le(monkeypatch):
+    """LLM trả object hợp lệ nhưng thiếu MỘT trường bắt buộc (`so_hieu`) --
+    trường đó fallback baseline + cảnh báo, trường bắt buộc còn lại
+    (`ngay_hieu_luc`) và trường tuỳ chọn vẫn dùng giá trị LLM."""
+    monkeypatch.setattr(
+        frontmatter.llm_client,
+        "extract_structured",
+        lambda *a, **k: FrontMatterExtraction(
+            so_hieu=None, loai_van_ban="Nghị định", ngay_hieu_luc="2026-01-01"
+        ),
+    )
+    front_matter, warnings = frontmatter.build_frontmatter(
+        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path=None, is_phu_luc=False
+    )
+    assert front_matter.so_hieu == "293/2025/NĐ-CP"  # fallback baseline
+    assert front_matter.ngay_hieu_luc == "2026-01-01"  # từ LLM
+    assert any(
+        w.code == "llm_frontmatter_extraction_failed" and w.detail == "so_hieu"
+        for w in warnings
+    )
+
+
+def test_build_frontmatter_llm_lech_baseline_dung_gia_tri_llm_va_canh_bao(monkeypatch):
+    """LLM và baseline đều có giá trị nhưng khác nhau -- dùng giá trị LLM
+    (đường chính), KHÔNG tự động chọn baseline, chỉ phát cảnh báo lệch (mục 7
+    spec: "không tự động chọn baseline khi có lệch")."""
+    monkeypatch.setattr(
+        frontmatter.llm_client,
+        "extract_structured",
+        lambda *a, **k: FrontMatterExtraction(
+            so_hieu="999/2025/XX-YY", ngay_hieu_luc="2026-01-01"
+        ),
+    )
+    front_matter, warnings = frontmatter.build_frontmatter(
+        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path=None, is_phu_luc=False
+    )
+    assert front_matter.so_hieu == "999/2025/XX-YY"
+    assert any(
+        w.code == "llm_frontmatter_mismatch" and w.detail == "so_hieu" for w in warnings
+    )
+
+
 def test_build_frontmatter_thieu_truong_bat_buoc_canh_bao():
     front_matter, warnings = frontmatter.build_frontmatter(
         [P("Một dòng bất kỳ.")],
-        {"so_hieu": None, "co_quan_ban_hanh": None, "ngay_ban_hanh": None},
+        None,
         source_path=None,
         is_phu_luc=False,
     )
@@ -441,14 +738,28 @@ def test_build_frontmatter_thieu_truong_bat_buoc_canh_bao():
 
 
 def test_build_frontmatter_van_ban_hop_nhat_qua_so_hieu():
+    quoc_hieu_block = T("Số: 01/VBHN-BLĐTBXH")
     front_matter, _ = frontmatter.build_frontmatter(
         [P("một dòng")],
-        {"so_hieu": "01/VBHN-BLĐTBXH", "co_quan_ban_hanh": None, "ngay_ban_hanh": None},
+        quoc_hieu_block,
         source_path=None,
         is_phu_luc=False,
     )
     assert front_matter.is_van_ban_hop_nhat is True
     assert front_matter.loai_van_ban == "Văn bản hợp nhất"
+
+
+def test_extract_frontmatter_llm_ket_qua_sai_kieu_tra_ve_none(monkeypatch):
+    """`llm_client.extract_structured` (mock) trả về giá trị không đúng
+    schema kỳ vọng -- `extract_frontmatter_llm` phải tự bọc lại thành
+    `None`, không để lộ giá trị sai kiểu ra cho caller."""
+    monkeypatch.setattr(
+        frontmatter.llm_client,
+        "extract_structured",
+        lambda *a, **k: "không phải schema",
+    )
+    result = frontmatter.extract_frontmatter_llm(None, [P("Một dòng.")])
+    assert result is None
 
 
 # ==========================================================================
@@ -657,7 +968,7 @@ def test_read_docx_in_dam_toan_doan_la_bold(tmp_path: Path):
 
 
 @pytest.fixture(scope="session")
-def real_results() -> dict[str, FormattingResult]:
+def real_results(_no_real_llm_calls) -> dict[str, FormattingResult]:
     return {path.stem: convert_docx_to_markdown(path) for path in RAW_FILES}
 
 
@@ -666,10 +977,34 @@ def test_data_raw_co_du_6_file():
     assert len(RAW_FILES) == 6
 
 
+def _strip_front_matter(markdown: str) -> str:
+    """Bỏ khối YAML front matter -- mục 7 spec (sửa): giá trị field do LLM
+    sinh, không so khớp byte-for-byte."""
+    return markdown.split("\n---\n", 1)[1]
+
+
+def _mask_blockquote_content(markdown: str) -> str:
+    """Giữ đúng VỊ TRÍ chèn blockquote chú thích (mỗi dòng blockquote vẫn là
+    một dòng riêng, đúng thứ tự so với heading/nội dung xung quanh) nhưng
+    thay nội dung text bên trong bằng placeholder cố định -- mục 7 spec
+    (sửa): nội dung đó do LLM sinh, không so khớp byte-for-byte, chỉ vị trí
+    chèn (do `find_region_start`/`strip_all`/`emitter` quyết định) mới cần.
+    """
+    return "\n".join(
+        "> [nội dung chú thích, không so khớp byte-for-byte]"
+        if line.startswith(">")
+        else line
+        for line in markdown.splitlines()
+    )
+
+
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
 @pytest.mark.parametrize("path", RAW_FILES, ids=lambda p: p.stem)
 def test_convert_khop_voi_tham_chieu_data_markdown(path: Path):
-    """Khớp byte-for-byte với `data/markdown/*.md` hiện có (mục 7 spec).
+    """Khớp byte-for-byte với `data/markdown/*.md` hiện có, CHỈ cho heading
+    markdown, nội dung Khoản/Điều gốc và vị trí chèn blockquote chú thích
+    (mục 7 spec, sửa cho LLM extraction). Front matter YAML và nội dung text
+    bên trong blockquote do LLM sinh, không so khớp byte-for-byte.
 
     `data/markdown/*.md` không phải golden-file chính thức nhưng là tham
     chiếu đã được đối chiếu thủ công (theo commit message); một khác biệt ở
@@ -680,11 +1015,18 @@ def test_convert_khop_voi_tham_chieu_data_markdown(path: Path):
         pytest.skip(f"Không có tham chiếu cho {path.stem}")
     # Tham chiếu được sinh bằng CLI gọi với `--raw-dir data/raw` (đường dẫn
     # tương đối, từ thư mục gốc repo) nên `source_path` trong front matter là
-    # tương đối. Dùng cùng dạng đường dẫn ở đây để so khớp byte-for-byte thật
-    # sự (không lệch mỗi khác biệt chỉ vì absolute/relative).
+    # tương đối. Dùng cùng dạng đường dẫn ở đây để so khớp thật sự (không
+    # lệch mỗi khác biệt chỉ vì absolute/relative) -- dù front matter giờ
+    # không so khớp byte-for-byte nữa, giữ nguyên cho nhất quán với cách
+    # tham chiếu được sinh ra.
     relative_path = Path("data") / "raw" / path.name
     result = convert_docx_to_markdown(relative_path)
-    assert result.markdown == reference_path.read_text(encoding="utf-8")
+
+    actual_body = _mask_blockquote_content(_strip_front_matter(result.markdown))
+    expected_body = _mask_blockquote_content(
+        _strip_front_matter(reference_path.read_text(encoding="utf-8"))
+    )
+    assert actual_body == expected_body
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")

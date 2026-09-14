@@ -1,10 +1,13 @@
-"""Chú thích sửa đổi ở cuối văn bản: tìm vùng, parse và render lại inline.
+"""Chú thích sửa đổi ở cuối văn bản: tìm vùng, đọc nội dung, render lại inline.
 
 Văn bản hợp nhất/sửa đổi đánh dấu điều khoản bị thay đổi bằng marker
 ``[n]`` trong thân văn bản, rồi liệt kê nội dung sửa đổi tương ứng ở một
-vùng riêng tại cuối file. Module này tìm vùng đó, parse thành map
-``số hiệu -> nội dung`` và render lại thành blockquote để chèn ngay sau
-Khoản/Điều liên quan (hoặc dời xuống cuối nếu quá dài).
+vùng riêng tại cuối file. ``find_region_start`` tìm **vị trí** vùng đó —
+100% deterministic, không đổi. Đường chính đọc **nội dung** từng chú thích
+trong vùng là LLM (``llm_client``, schema ``FootnoteExtraction`` —
+formatting_spec.md mục 1, 6), qua ``resolve_region``; ``parse_region``
+(regex) giữ nguyên logic, đổi vai trò thành baseline: fallback khi LLM lỗi,
+và so sánh số lượng chú thích để phát ``QcWarning`` khi lệch nhau.
 """
 
 from __future__ import annotations
@@ -12,8 +15,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from production_legal_qa_rag.formatting import llm_client
 from production_legal_qa_rag.formatting.docx_reader import Block
-from production_legal_qa_rag.formatting.models import QcWarning
+from production_legal_qa_rag.formatting.models import FootnoteExtraction, QcWarning
 from production_legal_qa_rag.formatting.patterns import (
     RE_FN_DEF_BARE,
     RE_FN_DEF_BRACKET,
@@ -25,6 +29,19 @@ from production_legal_qa_rag.formatting.patterns import (
 # Chú thích dài hơn ngưỡng này chỉ inline đoạn đầu, phần còn lại dời xuống cuối
 # file dưới dòng in đậm **[n]** (không phải heading).
 FOOTNOTE_INLINE_MAX_CHARS = 1200
+
+_FOOTNOTE_PROMPT_TEMPLATE = """\
+Bạn là trợ lý trích xuất chú thích sửa đổi trong văn bản pháp luật Việt Nam.
+
+Vùng văn bản dưới đây liệt kê các chú thích sửa đổi theo thứ tự, mỗi chú \
+thích thường mở đầu bằng số hiệu trong dấu ngoặc vuông (vd. "[1]", "[2]"), \
+một số dòng không có dấu ngoặc nhưng vẫn mở đầu bằng số thứ tự. Với MỖI chú \
+thích, trích số hiệu và toàn bộ nội dung của chú thích đó, giữ nguyên văn,
+không tóm tắt hay bỏ sót đoạn nào.
+
+Vùng chú thích:
+{text}
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +152,56 @@ def parse_region(blocks: list[Block]) -> tuple[dict[int, Footnote], list[QcWarni
         if number > 0
     }
     return footnotes, warnings
+
+
+def _region_text(region_blocks: list[Block]) -> str:
+    return "\n".join(block.text for block in region_blocks if block.kind == "paragraph")
+
+
+def extract_footnotes_llm(region_blocks: list[Block]) -> FootnoteExtraction | None:
+    """Gọi LLM đọc nội dung toàn bộ chú thích trong vùng, làm đường chính.
+
+    Trả ``None`` khi ``llm_client.extract_structured`` thất bại (lỗi/timeout/
+    hết số lần thử) — caller (``resolve_region``) tự fallback baseline.
+    """
+    prompt = _FOOTNOTE_PROMPT_TEMPLATE.format(text=_region_text(region_blocks))
+    result = llm_client.extract_structured(prompt, FootnoteExtraction)
+    if not isinstance(result, FootnoteExtraction):
+        return None
+    return result
+
+
+def resolve_region(
+    region_blocks: list[Block],
+) -> tuple[dict[int, Footnote], list[QcWarning]]:
+    """Phân giải nội dung vùng chú thích: LLM là đường chính, ``parse_region``
+    (regex) là baseline để fallback/so sánh (mục 1, 6, 7 spec).
+
+    Cảnh báo từ ``parse_region`` (vd. ``footnote_number_gap``) luôn được giữ
+    lại — đó là tín hiệu QC từ chính vùng văn bản, độc lập với việc chọn
+    nguồn nội dung nào làm kết quả cuối cùng.
+    """
+    baseline_map, warnings = parse_region(region_blocks)
+
+    extraction = extract_footnotes_llm(region_blocks)
+    if extraction is None or not extraction.entries:
+        warnings.append(QcWarning(code="llm_footnote_extraction_failed", detail=""))
+        return baseline_map, warnings
+
+    llm_map = {
+        entry.number: Footnote(number=entry.number, paragraphs=(entry.content,))
+        for entry in extraction.entries
+    }
+
+    if len(llm_map) != len(baseline_map):
+        warnings.append(
+            QcWarning(
+                code="llm_footnote_count_mismatch",
+                detail=f"llm={len(llm_map)} baseline={len(baseline_map)}",
+            )
+        )
+
+    return llm_map, warnings
 
 
 def strip_markers(text: str) -> tuple[str, list[int]]:
