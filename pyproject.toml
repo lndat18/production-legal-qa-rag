@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "groq>=1.7.0",
+    "instructor>=1.17.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.7.0",
     "python-docx>=1.2.0",
@@ -44,6 +46,13 @@ dev = [
 # typer.Option()/typer.Argument() làm default value là idiom chuẩn của Typer,
 # không phải bug thật như B008 giả định (mutable default argument).
 extend-immutable-calls = ["typer.Option", "typer.Argument"]
+
+[tool.mypy]
+# `LLMSettings` (`config.py`) có field bắt buộc không default (`groq_api_key`,
+# nạp từ biến môi trường qua `pydantic-settings`) — không có plugin này, mypy
+# báo giả "Missing named argument" ở mọi nơi gọi `LLMSettings()` mà không
+# truyền `groq_api_key` trực tiếp (formatting/llm_client.py).
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 # pyvi không phát hành type stub / py.typed marker.

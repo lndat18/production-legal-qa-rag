@@ -1,10 +1,12 @@
 """Pydantic models trao đổi giữa các module của bước formatting.
 
-Định nghĩa ba kiểu dữ liệu công khai: ``QcWarning`` (một cảnh báo QC không
+Định nghĩa các kiểu dữ liệu công khai: ``QcWarning`` (một cảnh báo QC không
 bao giờ làm fail file), ``FrontMatter`` (metadata cấp văn bản, render được
-thành YAML) và ``FormattingResult`` (kết quả cuối cùng của
+thành YAML), ``FormattingResult`` (kết quả cuối cùng của
 ``pipeline.convert_docx_to_markdown``, dùng bởi cả CLI lẫn package khác gọi
-vào).
+vào) và hai schema structured-output cho LLM (``FrontMatterExtraction``,
+``FootnoteExtraction``) dùng bởi ``llm_client.extract_structured`` — xem
+``formatting_spec.md`` mục 1, 6.
 """
 
 from __future__ import annotations
@@ -38,6 +40,10 @@ QcWarningCode = Literal[
     "dieu_not_monotonic",
     "khoan_not_monotonic",
     "empty_dieu",
+    "llm_frontmatter_extraction_failed",
+    "llm_footnote_extraction_failed",
+    "llm_frontmatter_mismatch",
+    "llm_footnote_count_mismatch",
 ]
 
 
@@ -105,3 +111,61 @@ class FormattingResult(BaseModel):
     markdown: str
     front_matter: FrontMatter
     warnings: list[QcWarning] = Field(default_factory=list)
+
+
+class FrontMatterExtraction(BaseModel):
+    """Structured output LLM đọc giá trị các field front matter.
+
+    Đường chính (formatting_spec.md mục 1, 6) thay cho các hàm regex trong
+    ``frontmatter.py`` (nay là baseline: fallback khi field ở đây là
+    ``None``, và để so sánh phát ``QcWarning`` khi lệch nhau). ``None``
+    nghĩa là LLM không tìm thấy giá trị trong văn bản, không phải lỗi gọi
+    API — lỗi gọi API được ``llm_client.extract_structured`` bắt riêng và
+    trả nguyên ``None`` cho cả object.
+    """
+
+    so_hieu: str | None = Field(
+        default=None,
+        description="Số hiệu văn bản, giữ nguyên định dạng gốc, vd. '293/2025/NĐ-CP'.",
+    )
+    loai_van_ban: str | None = Field(
+        default=None,
+        description="Loại văn bản, vd. 'Nghị định', 'Luật', 'Thông tư', 'Nghị quyết'.",
+    )
+    ten_van_ban: str | None = Field(default=None, description="Tên đầy đủ của văn bản.")
+    co_quan_ban_hanh: str | None = Field(
+        default=None,
+        description="Tên cơ quan ban hành văn bản, giữ nguyên viết hoa gốc.",
+    )
+    ngay_ban_hanh: str | None = Field(
+        default=None, description="Ngày ban hành văn bản, định dạng YYYY-MM-DD."
+    )
+    ngay_hieu_luc: str | None = Field(
+        default=None,
+        description="Ngày văn bản có hiệu lực thi hành, định dạng YYYY-MM-DD.",
+    )
+
+
+class FootnoteEntry(BaseModel):
+    """Một chú thích sửa đổi riêng lẻ trong ``FootnoteExtraction.entries``."""
+
+    number: int = Field(description="Số hiệu chú thích, vd. 1 cho '[1]'.")
+    content: str = Field(description="Nội dung đầy đủ của chú thích, giữ nguyên văn.")
+
+
+class FootnoteExtraction(BaseModel):
+    """Structured output LLM đọc nội dung toàn bộ chú thích sửa đổi.
+
+    Đường chính (formatting_spec.md mục 1, 6) thay cho ``parse_region``
+    (regex, nay là baseline) để đọc **nội dung** từng chú thích trong vùng
+    chú thích ở cuối văn bản; **vị trí** vùng chú thích vẫn do
+    ``find_region_start`` xác định, LLM không tham gia bước đó.
+    """
+
+    entries: list[FootnoteEntry] = Field(
+        default_factory=list,
+        description=(
+            "Danh sách chú thích tìm được trong vùng văn bản, mỗi chú thích "
+            "một số hiệu và nội dung đầy đủ."
+        ),
+    )

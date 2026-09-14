@@ -39,9 +39,18 @@ class VectorDBSettings(BaseSettings):
 
 
 class LLMSettings(BaseSettings):
-    """Config LLM. Tên model chưa chốt — thuộc phạm vi bước retrieval/
-    generation sau này, không đoán trước ở đây."""
+    """Config LLM dùng chung cho nhiều bước.
+
+    `model_name`/`max_retries`/`timeout_seconds` đã chốt cho nhu cầu của
+    `formatting/` (trích xuất nội dung front matter/footnote bằng Groq-hosted
+    `openai/gpt-oss-120b`, xem `formatting_spec.md` mục 4). Bước retrieval/
+    generation sau này có thể cần model khác — chưa đoán trước ở đây, để ngỏ
+    cho quyết định sau (tránh over-engineering).
+    """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     groq_api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = "openai/gpt-oss-120b"
+    max_retries: int = 2
+    timeout_seconds: int = 30

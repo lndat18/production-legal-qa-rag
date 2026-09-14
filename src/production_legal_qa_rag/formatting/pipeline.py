@@ -56,7 +56,7 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
     if region_start is None:
         footnote_map = {}
     else:
-        footnote_map, parse_warnings = footnotes.parse_region(body[region_start:])
+        footnote_map, parse_warnings = footnotes.resolve_region(body[region_start:])
         warnings.extend(parse_warnings)
         body = body[:region_start]
 
@@ -76,7 +76,7 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
     # S4 — front matter, dựng trên body đã gỡ marker.
     front_matter, fm_warnings = frontmatter.build_frontmatter(
         body,
-        frontmatter.extract_quoc_hieu(quoc_hieu_block),
+        quoc_hieu_block,
         source_path=str(path),
         is_phu_luc=is_phu_luc,
     )
