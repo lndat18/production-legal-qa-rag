@@ -556,7 +556,11 @@ def test_extract_structured_max_retries_tham_so_ghi_de_settings(monkeypatch):
 
 @pytest.mark.parametrize(
     "error",
-    [RuntimeError("groq lỗi giả lập"), TimeoutError("hết thời gian chờ"), ValueError("x")],
+    [
+        RuntimeError("groq lỗi giả lập"),
+        TimeoutError("hết thời gian chờ"),
+        ValueError("x"),
+    ],
 )
 def test_extract_structured_client_loi_tra_ve_none_khong_raise(monkeypatch, error):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
@@ -750,7 +754,9 @@ def test_extract_frontmatter_llm_ket_qua_sai_kieu_tra_ve_none(monkeypatch):
     schema kỳ vọng -- `extract_frontmatter_llm` phải tự bọc lại thành
     `None`, không để lộ giá trị sai kiểu ra cho caller."""
     monkeypatch.setattr(
-        frontmatter.llm_client, "extract_structured", lambda *a, **k: "không phải schema"
+        frontmatter.llm_client,
+        "extract_structured",
+        lambda *a, **k: "không phải schema",
     )
     result = frontmatter.extract_frontmatter_llm(None, [P("Một dòng.")])
     assert result is None
