@@ -110,6 +110,13 @@ def T(text: str) -> Block:
 # thuộc vào việc thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
 # ==========================================================================
 
+# Giữ tham chiếu tới hàm THẬT trước khi fixture session dưới đây ghi đè
+# `llm_client.extract_structured` -- section "llm_client.py" cần gọi đúng
+# implementation thật (chỉ mock `_client`, không mock `extract_structured`
+# chính nó) để kiểm tra logic try/except/tham số thật của nó. Chạy ở mức
+# module (import-time), trước khi bất kỳ fixture nào được khởi tạo.
+_REAL_EXTRACT_STRUCTURED = llm_client.extract_structured
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _no_real_llm_calls():
@@ -525,7 +532,7 @@ def test_extract_structured_thanh_cong_goi_dung_tham_so_tu_settings(monkeypatch)
     fake_client.chat.completions.create.return_value = expected
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
-    result = llm_client.extract_structured("prompt nội dung", FrontMatterExtraction)
+    result = _REAL_EXTRACT_STRUCTURED("prompt nội dung", FrontMatterExtraction)
 
     assert result is expected
     kwargs = fake_client.chat.completions.create.call_args.kwargs
@@ -542,7 +549,7 @@ def test_extract_structured_max_retries_tham_so_ghi_de_settings(monkeypatch):
     fake_client.chat.completions.create.return_value = FrontMatterExtraction()
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
-    llm_client.extract_structured("prompt", FrontMatterExtraction, max_retries=5)
+    _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction, max_retries=5)
 
     assert fake_client.chat.completions.create.call_args.kwargs["max_retries"] == 5
 
@@ -557,7 +564,7 @@ def test_extract_structured_client_loi_tra_ve_none_khong_raise(monkeypatch, erro
     fake_client.chat.completions.create.side_effect = error
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
-    result = llm_client.extract_structured("prompt", FrontMatterExtraction)
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
     assert result is None
 
 
@@ -569,7 +576,7 @@ def test_extract_structured_loi_khoi_tao_client_tra_ve_none(monkeypatch):
 
     monkeypatch.setattr(llm_client, "_client", _boom)
 
-    result = llm_client.extract_structured("prompt", FrontMatterExtraction)
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
     assert result is None
 
 
@@ -582,7 +589,7 @@ def test_extract_structured_thieu_groq_api_key_tra_ve_none_khong_raise(monkeypat
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
 
-    result = llm_client.extract_structured("prompt", FrontMatterExtraction)
+    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
     assert result is None
 
 
