@@ -43,7 +43,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       id-token: write
 
@@ -96,5 +96,14 @@ jobs:
         run: |
           echo "::warning::Reviewer agent không trả về kết quả (thường do PR này tự sửa" \
             "workflow file, GitHub tạm chặn action để chống lạm dụng secret). Job vẫn" \
-            "pass nhưng CHƯA có review thật — xem lại PR này bằng reviewer local trước" \
-            "khi merge; các PR sau khi merge sẽ được reviewer-agent chạy bình thường."
+            "pass nhưng CHƯA có review thật và CHƯA tự động merge — tự kiểm tra thủ công" \
+            "PR này trước khi merge; các PR sau sẽ được reviewer-agent review và tự merge" \
+            "bình thường."
+
+      - name: Merge pull request when reviewer agent PASS
+        if: >-
+          steps.reviewer.outputs.structured_output != '' &&
+          fromJSON(steps.reviewer.outputs.structured_output).verdict == 'PASS'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch
