@@ -3,13 +3,16 @@
 Dựng `DocumentTree` từ markdown tổng hợp (không phụ thuộc `data/markdown/`
 thật, trừ 1 nhóm test đối chiếu trực tiếp với file thật để khoá hành vi lại).
 
-Mọi fixture (trừ nhóm test tái hiện lỗi ở cuối file) đều có 1 đoạn tiêu đề
+Mọi fixture (trừ 2 nhóm regression test ở cuối file) đều có 1 đoạn tiêu đề
 văn bản ("Tiêu đề văn bản mẫu.") ngay sau front matter, trước heading cấu
 trúc đầu tiên — đúng quy ước thật của `formatting/emitter.py` (xem toàn bộ
 `data/markdown/*.md`: luôn có đoạn "LUẬT"/"NGHỊ ĐỊNH" + tên văn bản trước
-heading đầu tiên). Xem nhóm test cuối file để biết lý do quy ước này quan
-trọng: heading đứng NGAY sau front matter (không có đoạn văn bản nào ở
-giữa) không được nhận diện đúng — lỗi thật trong `parser.py`, xem feedback.
+heading đầu tiên).
+
+2 nhóm regression test ở cuối file khoá lại hành vi của 2 bug thật đã được
+`parser.py` sửa (commit f4c3d2e, sau feedback REVISE vòng 1 của tester):
+heading ngay sau front matter, và Khoản lồng trong đoạn trích dẫn nguyên văn
+điều luật khác (`quote_depth`).
 """
 
 from __future__ import annotations
@@ -18,7 +21,9 @@ from pathlib import Path
 
 import pytest
 
+from production_legal_qa_rag.chunking import splitter
 from production_legal_qa_rag.chunking.parser import parse_markdown
+from production_legal_qa_rag.chunking.pipeline import convert_markdown_to_chunks
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MARKDOWN_DIR = PROJECT_ROOT / "data" / "markdown"
@@ -292,53 +297,151 @@ def test_parse_file_that_luong_toi_thieu_dieu_3_khoan_1_co_bang():
 
 
 # ==========================================================================
-# BUG THẬT: heading đứng NGAY sau front matter (không có đoạn văn bản mở đầu
-# nào ở giữa) không được nhận diện -- xem feedback gửi developer.
-#
-# `_split_front_matter` nối `lines[index + 1:]` (bắt đầu bằng dòng trống ngay
-# sau front matter) bằng "\n", nên `body` luôn có 1 ký tự "\n" thừa ở đầu.
-# `_split_blocks` chỉ tách trên `\n{2,}` (>= 2 dòng trống), nên "\n" đơn lẻ
-# này KHÔNG bị tách ra -- nó dính vào block đầu tiên. Nếu block đầu tiên đó
-# là 1 heading, `RE_HEADING.match(block)` (dùng `^`/`$`, không có
-# `re.MULTILINE`) thất bại vì block không bắt đầu bằng "#" ở vị trí 0 nữa,
-# mà bắt đầu bằng "\n#...". Toàn bộ heading/Khoản bên dưới bị rơi rụng âm
-# thầm, không có exception nào được raise.
-#
-# Corpus hiện tại (`data/markdown/*.md`) luôn có đoạn tiêu đề ("LUẬT",
-# "NGHỊ ĐỊNH", tên văn bản...) trước heading cấu trúc đầu tiên nên bug này
-# đang bị che khuất -- nhưng là hành vi sai thật, vi phạm mục 1 "dựng lại
-# cây cấu trúc ... từ heading markdown" (input hợp lệ theo mục 2 chỉ yêu cầu
-# "front matter YAML + heading", không đảm bảo có đoạn văn bản mở đầu).
+# Regression: heading đứng NGAY sau front matter (không có đoạn văn bản mở
+# đầu nào ở giữa) -- sửa ở commit f4c3d2e (`_split_blocks` giờ `strip()` từng
+# block trước khi match `RE_HEADING`). Trước fix, "\n" thừa do
+# `_split_front_matter` nối `lines[index + 1:]` bằng "\n" dính vào block đầu
+# tiên khiến `RE_HEADING.match` (dùng `^`/`$`, không `re.MULTILINE`) thất bại
+# âm thầm, rớt hết heading/Khoản theo sau. Giữ lại các test này (đã sửa từ
+# "BUG_..." khoá hành vi sai) làm regression test cho tương lai.
 # ==========================================================================
 
 
-def test_BUG_heading_ngay_sau_front_matter_khong_duoc_nhan_dien(tmp_path: Path):
+def test_heading_ngay_sau_front_matter_van_duoc_nhan_dien(tmp_path: Path):
     text = (
         '---\nso_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"\n---\n\n'
         "#### Điều 1. Điều không chia khoản\n\n"
         "Nội dung nằm thẳng dưới Điều, không có heading Khoản.\n"
     )
     tree = parse_markdown(_write(tmp_path, "a.md", text))
-    # Hành vi ĐÚNG mong đợi (giống hệt test có đoạn tiêu đề ở trên): 1 Khoản
-    # ngầm định được dựng ra. Assertion dưới đây khoá lại hành vi SAI hiện
-    # tại (rớt hết nội dung) để CI báo đỏ cho tới khi developer sửa.
-    assert len(tree.khoans) == 1, (
-        "parser.py: heading đứng ngay sau front matter (không có đoạn văn bản "
-        "mở đầu) không được nhận diện -- xem docstring nhóm test này."
+    assert len(tree.khoans) == 1
+    assert (
+        tree.khoans[0].content
+        == "Nội dung nằm thẳng dưới Điều, không có heading Khoản."
     )
 
 
-def test_BUG_heading_dau_tien_sau_front_matter_khong_bi_mat_chuong(tmp_path: Path):
+def test_heading_dau_tien_sau_front_matter_khong_bi_mat_chuong(tmp_path: Path):
     text = (
         '---\nso_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"\n---\n\n'
         "## Chương I\n\n#### Điều 1. Tên điều\n\n##### Khoản 1\n\nNội dung.\n"
     )
     tree = parse_markdown(_write(tmp_path, "a.md", text))
-    assert len(tree.khoans) == 1, (
-        "parser.py: '## Chương I' đứng ngay sau front matter bị nuốt vào nội "
-        "dung thay vì được nhận diện là heading cấp Chương."
-    )
+    assert len(tree.khoans) == 1
     assert (
         tree.khoans[0].breadcrumb_prefix
         == "Văn bản mẫu (01/2020/QH) - Chương I - Điều 1. Tên điều"
     )
+
+
+# ==========================================================================
+# Regression: Khoản lồng trong đoạn trích dẫn nguyên văn điều luật khác (vd.
+# Điều 219 `Văn bản hợp nhất bộ luật lao động.md` trích Điều 54/55 Luật BHXH
+# bằng chính heading cấp 5 "##### Khoản N", khiến các Khoản trích dẫn tự đánh
+# số lại từ 1 -> trùng breadcrumb/chunk_id với Khoản thật). Sửa ở commit
+# f4c3d2e bằng `quote_depth` (đếm độ sâu dấu ngoặc kép "“"/"”"): heading cấp 5
+# xuất hiện khi đang trong 1 đoạn trích dẫn (quote_depth > 0) được gộp làm
+# văn bản thường vào Khoản thật đang mở thay vì tạo `KhoanNode` mới.
+# ==========================================================================
+
+
+def _dieu_219_style_doc() -> str:
+    return _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 219. Sửa đổi nhiều luật\n\n"
+        "##### Khoản 1\n\n"
+        "Sửa đổi Điều 54 như sau:\n\n"
+        "a) Sửa đổi Điều 54 như sau:\n\n"
+        "“Điều 54. Điều kiện\n\n"
+        "##### Khoản 1\n\n"
+        "Nội dung khoản 1 trích dẫn.\n\n"
+        "##### Khoản 2\n\n"
+        "Nội dung khoản 2 trích dẫn.”;\n\n"
+        "b) Một điểm khác.\n\n"
+        "##### Khoản 2\n\n"
+        "Nội dung khoản 2 thật.\n",
+    )
+
+
+def test_khoan_long_trong_trich_dan_khong_tao_khoan_moi(tmp_path: Path):
+    tree = parse_markdown(_write(tmp_path, "a.md", _dieu_219_style_doc()))
+    # Chỉ 2 KhoanNode THẬT được tạo ra (Khoản 1, Khoản 2 của chính Điều 219)
+    # -- các "Khoản 1"/"Khoản 2" bên trong đoạn trích dẫn KHÔNG tạo KhoanNode
+    # riêng (tránh chunk_id trùng lặp khi sinh chunk ở splitter.py).
+    assert [khoan.khoan_number for khoan in tree.khoans] == ["1", "2"]
+
+
+def test_khoan_long_trong_trich_dan_duoc_gop_lam_van_ban_thuong(tmp_path: Path):
+    tree = parse_markdown(_write(tmp_path, "a.md", _dieu_219_style_doc()))
+
+    khoan_1 = tree.khoans[0]
+    # Heading "##### Khoản 1"/"##### Khoản 2" bên trong trích dẫn bị gộp làm
+    # văn bản thường (chỉ còn "Khoản 1"/"Khoản 2" trong content, không có "#").
+    assert "##### Khoản" not in khoan_1.content
+    assert "Khoản 1" in khoan_1.content
+    assert "Khoản 2" in khoan_1.content
+    assert "Nội dung khoản 1 trích dẫn." in khoan_1.content
+    assert "b) Một điểm khác." in khoan_1.content
+
+    khoan_2 = tree.khoans[1]
+    assert khoan_2.content == "Nội dung khoản 2 thật."
+
+
+def test_khoan_long_trong_trich_dan_chunk_id_khong_trung_lap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(splitter, "count_tokens", lambda text: len(text.split()))
+    path = _write(tmp_path, "a.md", _dieu_219_style_doc())
+    result = convert_markdown_to_chunks(path)
+    ids = [chunk.chunk_id for chunk in result.chunks]
+    assert len(ids) == len(set(ids))
+
+
+def test_quote_depth_reset_o_ranh_gioi_dieu_moi(tmp_path: Path):
+    # Giới hạn "bán kính nổ" của quote_depth: nếu 1 đoạn trích dẫn trong Điều
+    # trước đó LỠ không đóng ngoặc kép (lỗi soạn thảo/trích xuất), Điều MỚI
+    # (heading cấp 1-4) vẫn reset quote_depth về 0 -- không kéo lỗi sang toàn
+    # bộ phần còn lại của văn bản.
+    text = _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 1. Điều có trích dẫn lỗi\n\n"
+        "##### Khoản 1\n\n"
+        "Trích dẫn: “Điều 54. Điều kiện (thiếu dấu đóng ngoặc kép).\n\n"
+        "#### Điều 2. Điều kế tiếp\n\n"
+        "##### Khoản 1\n\n"
+        "Nội dung khoản 1 của Điều 2, được nhận diện đúng nhờ quote_depth reset.\n",
+    )
+    tree = parse_markdown(_write(tmp_path, "a.md", text))
+    assert [(khoan.breadcrumb_prefix, khoan.khoan_number) for khoan in tree.khoans] == [
+        ("Văn bản mẫu (01/2020/QH) - Điều 1. Điều có trích dẫn lỗi", "1"),
+        ("Văn bản mẫu (01/2020/QH) - Điều 2. Điều kế tiếp", "1"),
+    ]
+    assert tree.khoans[1].content == (
+        "Nội dung khoản 1 của Điều 2, được nhận diện đúng nhờ quote_depth reset."
+    )
+
+
+def test_HAN_CHE_biet_truoc_ngoac_kep_khong_can_trong_cung_1_dieu_nuot_khoan_that(
+    tmp_path: Path,
+):
+    """Hạn chế đã biết của cách sửa `quote_depth` (không phải bug mới, ghi lại
+    để không ai ngạc nhiên nếu gặp lại): nếu 1 đoạn trích dẫn KHÔNG đóng ngoặc
+    kép đúng cách NGAY TRONG CÙNG 1 Điều (không có heading cấp 1-4 nào đứng
+    giữa để reset `quote_depth`), Khoản thật đứng sau trong cùng Điều đó bị
+    nuốt nhầm vào Khoản trước làm văn bản trích dẫn. Rủi ro thấp trên corpus
+    hiện tại (đã xác nhận số lượng "“"/"”" cân bằng ở cả 6 file
+    `data/markdown/*.md`), nhưng là hạn chế thật, đáng theo dõi nếu văn bản
+    mới dùng dấu ngoặc kép không chuẩn ("straight quotes" thay vì "smart
+    quotes") hoặc bị lỗi trích xuất làm mất 1 dấu đóng ngoặc.
+    """
+    text = _doc(
+        'so_hieu: "01/2020/QH"\nten_van_ban: "Văn bản mẫu"',
+        "#### Điều 1. Điều có trích dẫn lỗi\n\n"
+        "##### Khoản 1\n\n"
+        "Trích dẫn: “Điều 54. Điều kiện (thiếu dấu đóng ngoặc kép ở đây).\n\n"
+        "##### Khoản 2\n\n"
+        "Nội dung khoản 2 thật sự nhưng bị nuốt vào Khoản 1 do ngoặc kép không cân.\n",
+    )
+    tree = parse_markdown(_write(tmp_path, "a.md", text))
+    assert len(tree.khoans) == 1
+    assert "Nội dung khoản 2 thật sự" in tree.khoans[0].content
