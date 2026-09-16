@@ -51,10 +51,12 @@ from production_legal_qa_rag.formatting.models import (
 from production_legal_qa_rag.formatting.patterns import (
     RE_DIEM,
     RE_DIEU,
+    RE_FOOTNOTE_MARKER,
     RE_KHOAN,
     is_structural,
     normalize_text,
     sort_key,
+    strip_markers,
 )
 from production_legal_qa_rag.formatting.pipeline import (
     convert_directory,
@@ -230,6 +232,60 @@ def test_is_structural_khong_nhan_dien_khoan():
 
 
 # ==========================================================================
+# patterns.py -- strip_markers()/RE_FOOTNOTE_MARKER, marker chú thích "[n]"
+# dính liền trong vùng nội dung ở giữa (formatting_spec.md mục 1.1, "Lưu ý
+# quan trọng"). Regression cho lỗi footnote marker phá RE_KHOAN/RE_DIEU.
+# ==========================================================================
+
+
+def test_strip_markers_go_marker_dinh_ngay_sau_so_khoan():
+    # "1.[2] Bảo hiểm..." -- không strip trước thì RE_KHOAN (yêu cầu khoảng
+    # trắng ngay sau dấu chấm) sẽ không khớp và mất heading Khoản.
+    assert (
+        strip_markers("1.[2] Bảo hiểm y tế là hình thức bắt buộc.")
+        == "1. Bảo hiểm y tế là hình thức bắt buộc."
+    )
+
+
+def test_strip_markers_go_marker_o_cuoi_dong():
+    assert (
+        strip_markers("Điều 7a. Bảo hiểm Xã hội[16]") == "Điều 7a. Bảo hiểm Xã hội"
+    )
+
+
+def test_strip_markers_khong_nuot_so_hieu_khi_co_dau_cham_o_giua():
+    # "10.[15]" -- chữ số trước "[" không liền kề (có dấu chấm chen giữa) nên
+    # KHÔNG bị coi là chữ số lặp cần nuốt, số hiệu "10." phải giữ nguyên.
+    assert strip_markers("10.[15] Điều khoản") == "10. Điều khoản"
+
+
+def test_strip_markers_bo_chu_so_lap_ngay_truoc_marker():
+    # "3.3[3]" -- chữ số lặp dính liền ngay trước "[" và BẰNG số marker, bị
+    # nuốt cùng marker, chỉ giữ lại "3." gốc.
+    assert strip_markers("3.3[3] Nội dung.") == "3. Nội dung."
+
+
+def test_strip_markers_va_lap_lai_khoang_trang_thieu_sau_marker():
+    # Sau khi gỡ marker dính liền, "a)[3]Thành lập" mất khoảng trắng --
+    # RE_MISSING_SPACE phải vá lại.
+    assert strip_markers("a)[3]Thành lập") == "a) Thành lập"
+
+
+def test_strip_markers_don_dep_khoang_trang_thua_truoc_dau_cau():
+    assert strip_markers("Nội dung[5] , tiếp theo.") == "Nội dung, tiếp theo."
+
+
+def test_strip_markers_khong_co_marker_giu_nguyen():
+    assert strip_markers("Không có marker nào ở đây.") == "Không có marker nào ở đây."
+
+
+def test_re_footnote_marker_khop_va_lay_duoc_so():
+    match = RE_FOOTNOTE_MARKER.search("Bảo hiểm Xã hội[16]")
+    assert match is not None
+    assert match.group(1) == "16"
+
+
+# ==========================================================================
 # docx_reader.py -- đọc DOCX thật, giữ thứ tự paragraph/table xen kẽ
 # ==========================================================================
 
@@ -291,6 +347,13 @@ def test_serialize_blocks_for_llm_bold_duoc_bao_bang_sao_kep():
 def test_serialize_blocks_for_llm_italic_duoc_bao_bang_mot_sao():
     blocks = [Block(kind="paragraph", text="Độc lập - Tự do", is_italic=True)]
     assert serialize_blocks_for_llm(blocks) == "*Độc lập - Tự do*"
+
+
+def test_serialize_blocks_for_llm_dam_va_nghieng_duoc_bao_bang_ba_sao():
+    blocks = [
+        Block(kind="paragraph", text="CHÍNH PHỦ", is_bold=True, is_italic=True)
+    ]
+    assert serialize_blocks_for_llm(blocks) == "***CHÍNH PHỦ***"
 
 
 def test_serialize_blocks_for_llm_khong_dinh_dang_giu_nguyen():
@@ -456,6 +519,37 @@ def test_emit_ra_khoi_phu_luc_khi_gap_chuong_khoan_khong_gop_nua():
     assert parts[-1] == "Nội dung."
 
 
+# --- Regression: marker "[n]" dính liền phá RE_KHOAN/RE_DIEU nếu không --
+# gỡ trước khi khớp heading (formatting_spec.md mục 1.1, "Lưu ý quan
+# trọng"; xem thêm test strip_markers ở patterns.py) --------------------
+
+
+def test_emit_go_marker_truoc_khi_khop_khoan():
+    blocks = [
+        P("Điều 1. Phạm vi điều chỉnh"),
+        P("1.[2] Bảo hiểm y tế là hình thức bắt buộc."),
+    ]
+    parts = emitter.emit(blocks)
+    assert parts[1] == "##### Khoản 1"
+    assert parts[2] == "Bảo hiểm y tế là hình thức bắt buộc."
+
+
+def test_emit_go_marker_truoc_khi_khop_dieu():
+    blocks = [P("Điều 7a.[3] Bảo hiểm xã hội")]
+    parts = emitter.emit(blocks)
+    assert parts[0] == "#### Điều 7a. Bảo hiểm xã hội"
+
+
+def test_emit_khong_go_marker_trong_bang():
+    # Bảng KHÔNG bị strip -- marker còn sót trong bảng là dấu hiệu bất
+    # thường, validator.py cảnh báo riêng (orphan_footnote), emitter không
+    # tự ý sửa nội dung bảng.
+    table_text = "| a | [2] |\n| --- | --- |\n| 1 | 2 |"
+    blocks = [P("Điều 1. A"), T(table_text)]
+    parts = emitter.emit(blocks)
+    assert parts[1] == table_text
+
+
 # ==========================================================================
 # validator.py -- chỉ chạy trên markdown vùng nội dung ở giữa, không còn
 # khối YAML/blockquote chú thích để bóc tách.
@@ -515,6 +609,30 @@ def test_validate_heading_dai_bat_thuong():
     markdown = "#### Điều 1. " + "A" * 200
     warnings = validator.validate(markdown)
     assert any(w.code == "suspicious_heading_length" for w in warnings)
+
+
+def test_validate_marker_con_sot_bi_canh_bao_orphan_footnote():
+    # emitter._strip_block_markers không strip trong bảng (chỉ paragraph) --
+    # nếu marker còn sót ở bất kỳ đâu trong output, đó là bất thường cần rà
+    # lại thủ công (formatting_spec.md mục 1.1).
+    markdown = "#### Điều 1. A\n\nNội dung còn sót [5] marker."
+    warnings = validator.validate(markdown)
+    matching = [w for w in warnings if w.code == "orphan_footnote"]
+    assert len(matching) == 1
+    assert matching[0].detail == "[5]"
+
+
+def test_validate_nhieu_marker_con_sot_moi_marker_mot_canh_bao():
+    markdown = "Nội dung [1] và [2] còn sót."
+    warnings = validator.validate(markdown)
+    matching = [w for w in warnings if w.code == "orphan_footnote"]
+    assert [w.detail for w in matching] == ["[1]", "[2]"]
+
+
+def test_validate_khong_con_marker_khong_bi_canh_bao_orphan_footnote():
+    markdown = "#### Điều 1. A\n\nNội dung sạch không có marker."
+    warnings = validator.validate(markdown)
+    assert not any(w.code == "orphan_footnote" for w in warnings)
 
 
 # ==========================================================================
@@ -643,6 +761,24 @@ def test_convert_backmatter_gemini_loi_phat_canh_bao():
     markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú.")])
     assert markdown == ""
     assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
+
+
+def test_convert_backmatter_prompt_giu_nguyen_marker_khong_bi_strip(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Khác với vùng nội dung ở giữa (strip_markers), marker "[n]" ở back
+    # matter là số thứ tự chú thích thật (vd. "[1] Luật Công nghiệp...") --
+    # PHẢI giữ nguyên khi gửi cho Gemini (formatting_spec.md mục 1.1, "Lưu ý
+    # quan trọng").
+    captured: dict[str, str] = {}
+
+    def fake(prompt: str, *, max_retries: int | None = None) -> str:
+        captured["prompt"] = prompt
+        return "kết quả"
+
+    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
+    backmatter.convert_backmatter([P("[1] Luật Công nghiệp có hiệu lực từ...")])
+    assert "[1] Luật Công nghiệp có hiệu lực từ..." in captured["prompt"]
 
 
 # ==========================================================================
