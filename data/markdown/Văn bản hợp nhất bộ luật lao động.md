@@ -1,11 +1,7 @@
 VĂN PHÒNG QUỐC HỘI  
---------  
-
 CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
 Độc lập - Tự do - Hạnh phúc  
----------------  
-
-Số: 18/VBHN-VPQH  
+Số: 18/VBHN‑VPQH  
 Hà Nội, ngày 12 tháng 02 năm 2026  
 
 **BỘ LUẬT**  
