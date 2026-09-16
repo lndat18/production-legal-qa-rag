@@ -439,6 +439,41 @@ def test_chunk_blocks_for_llm_giu_dung_thu_tu_tong_hop():
     assert len(chunks) > 1
 
 
+@pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
+def test_chunk_blocks_for_llm_tren_bao_hiem_y_te_that_tach_nhieu_chunk():
+    """Mục 7 spec: `Luật bảo hiểm y tế.docx` là ca kiểm thử chính cho việc
+    chunk hoạt động đúng trên corpus thật -- back matter ~11.671 token ước
+    lượng, vượt xa `CHUNK_TOKEN_LIMIT=1500` nếu gửi nguyên khối, nên bắt
+    buộc phải tách thành nhiều chunk, mỗi chunk dưới ngưỡng. Test này KHÔNG
+    gọi Groq -- xác định biên (`frontmatter.find_boundary`,
+    `backmatter.split_backmatter`) và `chunk_blocks_for_llm` đều là hàm
+    thuần, cục bộ, không phụ thuộc mạng/API key."""
+    path = RAW_DIR / "Luật bảo hiểm y tế.docx"
+    if not path.exists():
+        pytest.skip("data/raw/Luật bảo hiểm y tế.docx không tồn tại")
+
+    blocks = read_docx(path)
+    fm_boundary = frontmatter.find_boundary(blocks)
+    rest = blocks[fm_boundary:]
+    _, back_blocks, _ = backmatter.split_backmatter(rest)
+
+    assert back_blocks, "kỳ vọng file này có back matter (mục 1.2 spec)"
+
+    chunk_token_limit = LLMSettings.model_fields["chunk_token_limit"].default
+    chunks = chunk_blocks_for_llm(back_blocks, chunk_token_limit)
+
+    assert len(chunks) > 1
+    # Không có block đơn lẻ nào trên corpus thật đủ lớn để tự vượt ngưỡng
+    # (mục 1.2 "Không bao giờ cắt giữa 1 block" chỉ là ngoại lệ lý thuyết) --
+    # nên mọi chunk thực tế phải nằm dưới `chunk_token_limit`.
+    for chunk in chunks:
+        estimated_tokens = sum(len(block.text) for block in chunk) / 2.5
+        assert estimated_tokens <= chunk_token_limit
+    # Không cắt giữa block, giữ đúng thứ tự gốc.
+    flattened = [block for chunk in chunks for block in chunk]
+    assert flattened == back_blocks
+
+
 # ==========================================================================
 # tables.py
 # ==========================================================================
