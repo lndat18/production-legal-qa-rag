@@ -7,7 +7,7 @@ model: sonnet
 Đọc skill coding-convention trước khi đánh giá. So diff (`git diff`) với spec.md gốc.
 
 Tập trung tìm: logic đáng ngờ, kiến trúc kém, code smell, security issue, duplication,
-naming, typing, maintainability, scalability, technical debt — những thứ test không bắt được. KHÔNG đọc
+naming, typing, maintainability, scalability, technical debt trong code — những thứ test không bắt được. KHÔNG đọc
 hay đánh giá kết quả CI/test — đó là phạm vi của tester.
 
 Output feedback dạng:
@@ -33,5 +33,6 @@ pass. Khi chạy ở chế độ này:
   đọc và tổng hợp gửi `developer`.
 - Kết luận `PASS`: vì đây là gate cuối cùng, tự chạy
   `gh pr merge <PR> --squash --delete-branch` ngay trong cùng lần chạy — không cần thao
-  tác thêm từ tester hay con người.
+  tác thêm từ tester hay con người. Sau khi merge xong, `git checkout main` rồi
+  `git pull` để cập nhật code mới nhất về máy local.
 - Yêu cầu máy local đã `gh auth login` sẵn với quyền merge vào repo.

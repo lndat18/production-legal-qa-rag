@@ -1,6 +1,6 @@
 VĂN PHÒNG QUỐC HỘI  
 -------  
-CỘNG HÒA XÃ HỘI CHỦ NGHĈA VIỆT NAM  
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
 Độc lập - Tự do - Hạnh phúc  
 ---------------  
 
@@ -693,8 +693,8 @@ Trường hợp có quy định khác nhau về ưu đãi thuế giữa Luật n
 
 [3] Điều 5 của Luật số 09/2026/QH16 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực kể từ ngày 24 tháng 4 năm 2026 quy định như sau:
 
-***“Điều 5. Hiệu lực thi hành***  
+***“Điều 5. Hiệu lực thi hành***
 
 *1. Luật này có hiệu lực thi hành từ ngày được thông qua, trừ quy định tại khoản 2 Điều này.*
 
-*2. Quy định tại các điều 1, 2 và 3 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.”*
+*2. Quy định tại các điều 1, 2 và 3 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.”.*
