@@ -1,27 +1,27 @@
-VĂN PHÒNG QUỐC HỘI
---------
-Số: 19/VBHN-VPQH
+VĂN PHÒNG QUỐC HỘI  
+--------  
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
+Độc lập - Tự do - Hạnh phúc  
+---------------  
 
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
----------------
-Hà Nội, ngày 12 tháng 02 năm 2026
+Số: 19/VBHN‑VPQH  
+Hà Nội, ngày 12 tháng 02 năm 2026  
 
-**LUẬT**
+**LUẬT**  
 
-**BẢO HIỂM XÃ HỘI**
+**BẢO HIỂM XÃ HỘI**  
 
 Luật Bảo hiểm xã hội số 41/2024/QH15 ngày 29 tháng 6 năm 2024 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2025, được sửa đổi, bổ sung bởi:
 
-1. Luật Nhà giáo số 73/2025/QH15 ngày 16 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;
+1. Luật Nhà giáo số 73/2025/QH15 ngày 16 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;  
 
-2. Luật Thanh tra số 84/2025/QH15 ngày 25 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2025;
+2. Luật Thanh tra số 84/2025/QH15 ngày 25 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2025;  
 
-3. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;
+3. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;  
 
-4. Luật Phục hồi, phá sản số 142/2025/QH15 ngày 11 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 3 năm 2026.
+4. Luật Phục hồi, phá sản số 142/2025/QH15 ngày 11 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 3 năm 2026.  
 
-*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*  
 
 Quốc hội ban hành Luật Bảo hiểm xã hội[1].
 
@@ -3471,12 +3471,12 @@ Khoản 1 và khoản 3 Điều 30 của Luật Dân số số 113/2025/QH15, c�
 
 *1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*
 
-*3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.*
+*3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”*.
 
 Điều 87 của Luật Phục hồi, phá sản số 142/2025/QH15, có hiệu lực kể từ ngày 01 tháng 3 năm 2026 quy định như sau:
 
 “Điều 87. Hiệu lực thi hành
 
-*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 3 năm 2026, trừ trường hợp quy định tại khoản 3 Điều 38 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.*
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 3 năm 2026, trừ trường hợp quy định tại khoản 3 Điều 38 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.*”.
 
 2. Luật Phá sản số 51/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 85/2025/QH15 hết hiệu lực thi hành kể từ ngày Luật này có hiệu lực thi hành, trừ trường hợp quy định tại điểm a và điểm b khoản 1 Điều 88 của Luật này.”.

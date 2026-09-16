@@ -8,8 +8,8 @@ mọi module khác trong package dùng chung mà không phụ thuộc gì thêm.
 
 Không còn regex trích field front matter (số hiệu, ngày ban hành, loại văn
 bản...) -- đã bị bỏ hoàn toàn theo thiết kế mới (formatting_spec.md mục 1.1):
-front matter/back matter chuyển đổi nguyên khối bằng Gemini, không còn trích
-field/khôi phục inline chú thích về vị trí gốc.
+front matter/back matter chuyển đổi bằng Groq (theo chunk, mục 1.2), không
+còn trích field/khôi phục inline chú thích về vị trí gốc.
 
 Vẫn GIỮ regex + hàm ``strip_markers`` gỡ marker chú thích ``[n]`` dính liền
 trong text -- khác với việc khôi phục *nội dung* chú thích (đã bỏ), đây chỉ

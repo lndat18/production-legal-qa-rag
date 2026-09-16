@@ -7,7 +7,7 @@ vào) — xem ``formatting_spec.md`` mục 1.1, 6.
 
 Không còn ``FrontMatter``/``FrontMatterExtraction``/``BackMatterExtraction``:
 thiết kế mới (mục 1.1) không trích field có cấu trúc, không sinh YAML — front
-matter/back matter là text markdown thuần do Gemini sinh, ghép trực tiếp vào
+matter/back matter là text markdown thuần do Groq sinh, ghép trực tiếp vào
 file `.md`.
 """
 

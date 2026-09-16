@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "google-genai>=2.23.0",
+    "groq>=1.7.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.7.0",
     "python-docx>=1.2.0",
@@ -47,10 +47,10 @@ dev = [
 extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.mypy]
-# `LLMSettings` (`config.py`) có field bắt buộc không default (`gemini_api_key`,
+# `LLMSettings` (`config.py`) có field bắt buộc không default (`groq_api_key`,
 # nạp từ biến môi trường qua `pydantic-settings`) — không có plugin này, mypy
 # báo giả "Missing named argument" ở mọi nơi gọi `LLMSettings()` mà không
-# truyền `gemini_api_key` trực tiếp (formatting/llm_client.py).
+# truyền `groq_api_key` trực tiếp (formatting/llm_client.py).
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]

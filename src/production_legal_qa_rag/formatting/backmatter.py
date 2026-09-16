@@ -1,12 +1,13 @@
-"""Back matter: nội dung sau bảng chữ ký cuối cùng (nếu có), chuyển bằng Gemini.
+"""Back matter: nội dung sau bảng chữ ký cuối cùng (nếu có), chuyển bằng Groq.
 
 Đổi tên từ ``footnotes.py``, thiết kế lại hoàn toàn (mục 1.1 spec): không
 còn khớp marker ``[n]`` hay khôi phục inline vào Khoản/Điều — các hàm cũ
 (``find_region_start``, ``parse_region``, ``strip_markers``, ``strip_all``,
 ``render_blockquote``) đã xoá. Biên back matter vẫn xác định 100%
 deterministic bằng ``tables.is_signature_table`` (không đổi); nội dung được
-gửi nguyên khối cho Gemini, không trích field, không khớp lại marker với
-chú thích tương ứng.
+chia chunk (mục 1.2 spec — back matter một số văn bản vượt xa TPM free tier
+nếu gửi nguyên khối) rồi gửi từng chunk cho Groq, không trích field, không
+khớp lại marker với chú thích tương ứng.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 from production_legal_qa_rag.formatting import llm_client, tables
 from production_legal_qa_rag.formatting.docx_reader import (
     Block,
+    chunk_blocks_for_llm,
     serialize_blocks_for_llm,
 )
 from production_legal_qa_rag.formatting.models import QcWarning
@@ -80,20 +82,34 @@ def split_backmatter(
 def convert_backmatter(blocks: list[Block]) -> tuple[str, list[QcWarning]]:
     """Chuyển vùng back matter sang markdown.
 
+    Chia ``blocks`` thành chunk (``docx_reader.chunk_blocks_for_llm``, mục
+    1.2 spec — bắt buộc vì back matter một số văn bản, vd. Luật bảo hiểm y
+    tế, vượt xa TPM free tier nếu gửi nguyên khối), gọi Groq tuần tự cho
+    từng chunk rồi nối kết quả theo đúng thứ tự, cách nhau 1 dòng trống. Bất
+    kỳ chunk nào lỗi → toàn bộ back matter bị bỏ qua (không ghép phần dở
+    dang).
+
     Args:
         blocks: Block back matter, đã tách bởi ``split_backmatter``.
 
     Returns:
         Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có back
-        matter (``blocks`` rỗng — không gọi Gemini, không phát warning, mục
-        1.1 spec) hoặc khi Gemini lỗi/timeout (phát
+        matter (``blocks`` rỗng — không gọi Groq, không phát warning, mục
+        1.1 spec) hoặc khi một chunk lỗi/timeout (phát
         ``llm_backmatter_conversion_failed``, không fallback).
     """
     if not blocks:
         return "", []
 
-    prompt = _BACKMATTER_PROMPT_TEMPLATE.format(text=serialize_blocks_for_llm(blocks))
-    markdown = llm_client.convert_to_markdown(prompt)
-    if markdown is None:
-        return "", [QcWarning(code="llm_backmatter_conversion_failed", detail="")]
-    return markdown, []
+    chunks = chunk_blocks_for_llm(blocks, llm_client.get_chunk_token_limit())
+    markdown_parts: list[str] = []
+    for chunk in chunks:
+        prompt = _BACKMATTER_PROMPT_TEMPLATE.format(
+            text=serialize_blocks_for_llm(chunk)
+        )
+        markdown = llm_client.convert_to_markdown(prompt)
+        if markdown is None:
+            return "", [QcWarning(code="llm_backmatter_conversion_failed", detail="")]
+        markdown_parts.append(markdown)
+
+    return "\n\n".join(markdown_parts), []

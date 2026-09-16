@@ -5,8 +5,12 @@ Duyệt ``document.element.body`` chứ không duyệt ``doc.paragraphs`` rồi
 Style/bold/nghiêng của đoạn văn được giữ lại như tín hiệu phụ: rule nhận
 diện heading (mục 3 spec) không bao giờ đọc các giá trị này, vì style trong
 corpus thực tế không nhất quán; tín hiệu này chỉ dùng để serialize block cho
-Gemini khi chuyển đổi front matter/back matter (``serialize_blocks_for_llm``,
+Groq khi chuyển đổi front matter/back matter (``serialize_blocks_for_llm``,
 mục 1.1 spec).
+
+Cũng chứa ``chunk_blocks_for_llm`` — dồn Block tuần tự thành từng chunk theo
+ước lượng token (heuristic ký tự, mục 1.2 spec), phục vụ cơ chế chunking +
+rate limiting khi gửi front matter/back matter cho Groq free tier.
 """
 
 from __future__ import annotations
@@ -93,11 +97,67 @@ def read_docx(path: str | Path) -> list[Block]:
     return blocks
 
 
+# Hệ số ước lượng token theo mục 1.2 spec: bảo thủ hơn mức phổ biến 4 ký
+# tự/token của tiếng Anh, vì tiếng Việt có dấu thường tách nhiều subword
+# token hơn. Chỉ dùng để quyết định ranh giới chunk trước khi gửi, KHÔNG
+# dùng để track budget rate-limit thật (xem `llm_client.py`, đọc
+# `usage.total_tokens` từ response sau khi gọi thành công).
+_CHARS_PER_TOKEN = 2.5
+
+
+def _estimate_block_tokens(block: Block) -> float:
+    """Ước lượng token của một Block bằng heuristic ký tự (mục 1.2 spec)."""
+    return len(block.text) / _CHARS_PER_TOKEN
+
+
+def chunk_blocks_for_llm(blocks: list[Block], token_limit: int) -> list[list[Block]]:
+    """Dồn Block tuần tự thành từng chunk, không bao giờ cắt giữa 1 Block.
+
+    Dùng để chia nhỏ front matter/back matter trước khi gửi từng chunk cho
+    Groq (mục 1.2 spec) — free tier có giới hạn TPM thấp hơn nhiều so với
+    kích thước back matter của một số văn bản. Mỗi Block được dồn tuần tự
+    vào chunk hiện tại; khi thêm một Block khiến tổng ước lượng token của
+    chunk vượt ``token_limit``, chunk hiện tại (không kèm Block đó) được
+    chốt lại và Block đó mở đầu chunk kế tiếp. Một Block tự nó đã vượt
+    ``token_limit`` vẫn được giữ nguyên trong 1 chunk riêng (không có cách
+    nào chia nhỏ hơn mà không cắt giữa Block).
+
+    Args:
+        blocks: Danh sách Block theo đúng thứ tự gốc (front matter hoặc
+            back matter, đã cắt biên từ trước).
+        token_limit: Ngưỡng ước lượng token tối đa mỗi chunk.
+
+    Returns:
+        Danh sách các chunk (mỗi chunk là ``list[Block]``), giữ đúng thứ tự
+        gốc. Rỗng nếu ``blocks`` rỗng.
+    """
+    if not blocks:
+        return []
+
+    chunks: list[list[Block]] = []
+    current_chunk: list[Block] = []
+    current_tokens = 0.0
+
+    for block in blocks:
+        block_tokens = _estimate_block_tokens(block)
+        if current_chunk and current_tokens + block_tokens > token_limit:
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_tokens = 0.0
+        current_chunk.append(block)
+        current_tokens += block_tokens
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
+
+
 def serialize_blocks_for_llm(blocks: list[Block]) -> str:
-    """Render Block thành text kèm tín hiệu bold/nghiêng, dùng làm input cho Gemini.
+    """Render Block thành text kèm tín hiệu bold/nghiêng, dùng làm input cho Groq.
 
     Paragraph in đậm/nghiêng toàn dòng được bọc sẵn ``**``/``*`` (cả hai cùng
-    lúc thì bọc ``***``) — Gemini chỉ cần giữ nguyên định dạng khi chuyển đổi
+    lúc thì bọc ``***``) — Groq chỉ cần giữ nguyên định dạng khi chuyển đổi
     (mục 1.1 spec), không phải tự đoán từ văn bản thô. Bảng đã có sẵn
     markdown/HTML từ ``tables.table_to_markdown``, giữ nguyên văn.
 

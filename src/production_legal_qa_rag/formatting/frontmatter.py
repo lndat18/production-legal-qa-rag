@@ -1,10 +1,13 @@
-"""Front matter: nội dung trước heading cấu trúc đầu tiên, chuyển bằng Gemini.
+"""Front matter: nội dung trước heading cấu trúc đầu tiên, chuyển bằng Groq.
 
 Xác định biên là 100% deterministic (``find_boundary``, dùng
 ``patterns.is_structural``, không đổi so với bản cũ). Chuyển đổi NỘI DUNG là
-Gemini (``llm_client.convert_to_markdown``) — không còn trích field
+Groq (``llm_client.convert_to_markdown``) — không còn trích field
 (``so_hieu``/``loai_van_ban``/``ten_van_ban``/...), không sinh YAML (mục 1.1
-spec). Gemini lỗi/timeout thì bỏ qua front matter (không render), phát
+spec). Front matter luôn nhỏ trên corpus thực tế (mục 1.2 spec) nên thường
+chỉ tạo 1 chunk, nhưng vẫn đi qua ``docx_reader.chunk_blocks_for_llm`` để
+nhất quán với back matter và an toàn nếu front matter lớn hơn dự kiến. Bất
+kỳ chunk nào lỗi/timeout → bỏ qua toàn bộ front matter (không render), phát
 ``QcWarning`` — không có fallback regex nào.
 """
 
@@ -13,6 +16,7 @@ from __future__ import annotations
 from production_legal_qa_rag.formatting import llm_client
 from production_legal_qa_rag.formatting.docx_reader import (
     Block,
+    chunk_blocks_for_llm,
     serialize_blocks_for_llm,
 )
 from production_legal_qa_rag.formatting.models import QcWarning
@@ -64,19 +68,31 @@ def find_boundary(blocks: list[Block]) -> int:
 def convert_frontmatter(blocks: list[Block]) -> tuple[str, list[QcWarning]]:
     """Chuyển vùng front matter (block trước heading đầu tiên) sang markdown.
 
+    Chia ``blocks`` thành chunk (``docx_reader.chunk_blocks_for_llm``, mục
+    1.2 spec), gọi Groq tuần tự cho từng chunk rồi nối kết quả theo đúng thứ
+    tự, cách nhau 1 dòng trống. Bất kỳ chunk nào lỗi → toàn bộ front matter
+    bị bỏ qua (không ghép phần dở dang).
+
     Args:
         blocks: Block front matter, đã cắt bởi ``find_boundary``.
 
     Returns:
         Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có front
-        matter (``blocks`` rỗng — không gọi Gemini) hoặc khi Gemini lỗi/
+        matter (``blocks`` rỗng — không gọi Groq) hoặc khi một chunk lỗi/
         timeout (phát ``llm_frontmatter_conversion_failed``, không fallback).
     """
     if not blocks:
         return "", []
 
-    prompt = _FRONTMATTER_PROMPT_TEMPLATE.format(text=serialize_blocks_for_llm(blocks))
-    markdown = llm_client.convert_to_markdown(prompt)
-    if markdown is None:
-        return "", [QcWarning(code="llm_frontmatter_conversion_failed", detail="")]
-    return markdown, []
+    chunks = chunk_blocks_for_llm(blocks, llm_client.get_chunk_token_limit())
+    markdown_parts: list[str] = []
+    for chunk in chunks:
+        prompt = _FRONTMATTER_PROMPT_TEMPLATE.format(
+            text=serialize_blocks_for_llm(chunk)
+        )
+        markdown = llm_client.convert_to_markdown(prompt)
+        if markdown is None:
+            return "", [QcWarning(code="llm_frontmatter_conversion_failed", detail="")]
+        markdown_parts.append(markdown)
+
+    return "\n\n".join(markdown_parts), []
