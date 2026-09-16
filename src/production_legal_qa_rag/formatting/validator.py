@@ -12,7 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from production_legal_qa_rag.formatting.models import QcWarning
-from production_legal_qa_rag.formatting.patterns import RE_DIEU, RE_PHU_LUC, sort_key
+from production_legal_qa_rag.formatting.patterns import (
+    RE_DIEU,
+    RE_FOOTNOTE_MARKER,
+    RE_PHU_LUC,
+    sort_key,
+)
 
 # Dòng heading dài hơn ngưỡng này bị cảnh báo suspicious_heading_length.
 HEADING_MAX_LEN = 200
@@ -195,13 +200,29 @@ def _check_empty_dieu(dieu_has_content: dict[str, bool]) -> list[QcWarning]:
     ]
 
 
+def _check_orphan_footnotes(markdown: str) -> list[QcWarning]:
+    """Rule: marker chú thích "[n]" còn sót lại trong vùng nội dung ở giữa.
+
+    ``emitter._strip_block_markers`` đã gỡ marker khỏi mọi block paragraph
+    trước khi sinh markdown (``patterns.strip_markers``) — nhưng KHÔNG áp
+    dụng cho bảng (marker trong bảng là dấu hiệu bất thường, không phải nội
+    dung cần làm sạch, xem ``emitter.py``). Nếu marker vẫn còn ở đây, đó là
+    dấu hiệu ``strip_markers`` bỏ sót một dạng marker nào đó, hoặc marker nằm
+    trong bảng — cả hai đều đáng rà lại thủ công.
+    """
+    return [
+        QcWarning(code="orphan_footnote", detail=match.group(0))
+        for match in RE_FOOTNOTE_MARKER.finditer(markdown)
+    ]
+
+
 def validate(markdown: str) -> list[QcWarning]:
     """Chạy toàn bộ rule QC trên markdown vùng nội dung ở giữa.
 
     Compose lại từ một lượt quét tuần tự (`_scan_headings`, bắt buộc vì nhiều
     rule phụ thuộc trạng thái vị trí) và các rule độc lập chạy sau đó, đúng
     theo thứ tự đã có trước khi tách hàm (heading-level rule trong lúc quét,
-    rồi no_heading, dieu/khoan monotonic, empty_dieu).
+    rồi no_heading, dieu/khoan monotonic, empty_dieu, orphan_footnote).
     """
     scan = _scan_headings(markdown.splitlines())
 
@@ -210,4 +231,5 @@ def validate(markdown: str) -> list[QcWarning]:
     warnings.extend(_check_dieu_monotonic(scan.dieu_numbers))
     warnings.extend(_check_khoan_monotonic(scan.khoan_by_parent))
     warnings.extend(_check_empty_dieu(scan.dieu_has_content))
+    warnings.extend(_check_orphan_footnotes(markdown))
     return warnings

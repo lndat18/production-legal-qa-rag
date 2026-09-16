@@ -289,7 +289,9 @@ Căn cứ quy định của Luật này, Chính phủ quy định về kỳ tín
 
 #### Điều 7. Thuế thu nhập cá nhân đối với thu nhập từ kinh doanh
 
-1.[2] Cá nhân cư trú có hoạt động sản xuất, kinh doanh có doanh thu năm từ mức quy định của Chính phủ trở xuống không phải nộp thuế thu nhập cá nhân. Căn cứ các chỉ số kinh tế vĩ mô, khả năng cân đối ngân sách, Chính phủ quy định mức doanh thu năm phù hợp với bối cảnh kinh tế - xã hội trong từng thời kỳ.
+##### Khoản 1
+
+Cá nhân cư trú có hoạt động sản xuất, kinh doanh có doanh thu năm từ mức quy định của Chính phủ trở xuống không phải nộp thuế thu nhập cá nhân. Căn cứ các chỉ số kinh tế vĩ mô, khả năng cân đối ngân sách, Chính phủ quy định mức doanh thu năm phù hợp với bối cảnh kinh tế - xã hội trong từng thời kỳ.
 
 ##### Khoản 2
 
@@ -661,7 +663,7 @@ Thời điểm xác định thu nhập tính thuế đối với thu nhập quy 
 
 Chính phủ quy định chi tiết Điều này.
 
-## Chương IV. ĐIỀU KHOẢN THI HÀNH[3]
+## Chương IV. ĐIỀU KHOẢN THI HÀNH
 
 #### Điều 29. Hiệu lực thi hành
 

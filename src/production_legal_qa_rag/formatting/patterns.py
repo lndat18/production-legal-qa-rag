@@ -7,9 +7,16 @@ regex) và ``sort_key`` (so sánh số hiệu có hậu tố chữ), vì hai hà
 mọi module khác trong package dùng chung mà không phụ thuộc gì thêm.
 
 Không còn regex trích field front matter (số hiệu, ngày ban hành, loại văn
-bản...) hay marker chú thích sửa đổi ``[n]`` -- cả hai đã bị bỏ hoàn toàn
-theo thiết kế mới (formatting_spec.md mục 1.1): front matter/back matter
-chuyển đổi nguyên khối bằng Gemini, không còn trích field/khôi phục inline.
+bản...) -- đã bị bỏ hoàn toàn theo thiết kế mới (formatting_spec.md mục 1.1):
+front matter/back matter chuyển đổi nguyên khối bằng Gemini, không còn trích
+field/khôi phục inline chú thích về vị trí gốc.
+
+Vẫn GIỮ regex + hàm ``strip_markers`` gỡ marker chú thích ``[n]`` dính liền
+trong text -- khác với việc khôi phục *nội dung* chú thích (đã bỏ), đây chỉ
+là bước làm sạch text thuộc vùng nội dung ở giữa, chạy trước khi áp regex
+heading (``RE_KHOAN`` yêu cầu khoảng trắng ngay sau dấu chấm, marker dính
+liền như ``"1.[2] Bảo hiểm..."`` sẽ phá regex nếu không strip trước). Xem
+formatting_spec.md mục 1.1, "Lưu ý quan trọng — marker [n]...".
 """
 
 from __future__ import annotations
@@ -63,6 +70,58 @@ RE_KHOAN = re.compile(r"^(\d+[a-zđ]?)\s*\.\s+(.*)$")
 # Điểm KHÔNG bao giờ tạo heading. Chỉ dùng cho QC và nhận biết ngữ cảnh.
 # Hai hình thức: chữ cái + ")" trong thân văn bản, dấu "-" trong Phụ lục.
 RE_DIEM = re.compile(r"^(?:([a-zđư])\)|-)\s+(.*)$")
+
+# --- Marker chú thích [n] (vùng nội dung ở giữa) --------------------------
+
+# Marker chú thích dính liền trong text, vd. "1.[2] Bảo hiểm y tế là...",
+# "Điều 7a. ...Xã hội[16]". Dùng để phát hiện marker còn sót lại (QC) VÀ để
+# gỡ marker trong `strip_markers` bên dưới.
+RE_FOOTNOTE_MARKER = re.compile(r"\[(\d{1,3})\]")
+
+# Marker có thể có chữ số lặp ở một trong hai bên ("3.3[3]", "1.4[4]",
+# "[4]4", "a)2[2]") -- chỉ nuốt chữ số lặp khi nó BẰNG số marker, nếu không
+# "10.[15]" sẽ mất số khoản 10.
+RE_MARKER = re.compile(
+    r"(?:(?P<pre>\d{1,3}))?\[(?P<num>\d{1,3})\](?:(?P<post>\d{1,3}))?"
+)
+
+# Sau khi gỡ marker dính liền, "a)Thành lập" và "1.Cá nhân" mất khoảng trắng.
+RE_MISSING_SPACE = re.compile(r"^([a-zđư]\)|\d{1,3}\.)(?=\S)")
+
+
+def strip_markers(text: str) -> str:
+    """Gỡ mọi marker chú thích ``[n]`` dính liền khỏi một dòng text.
+
+    Áp dụng cho mọi block thuộc vùng nội dung ở giữa, TRƯỚC khi áp regex
+    heading (``emitter.py``) -- nếu không, marker dính ngay sau số Khoản/Điều
+    (vd. ``"1.[2] Bảo hiểm y tế..."``) sẽ phá ``RE_KHOAN``/``RE_DIEU`` (yêu
+    cầu khoảng trắng ngay sau dấu chấm) và làm mất heading thật sự. Đây là
+    bước làm sạch text độc lập với việc khôi phục *nội dung* chú thích (đã
+    bỏ) -- xem formatting_spec.md mục 1.1.
+
+    Args:
+        text: Text thô của một block (paragraph) thuộc vùng nội dung ở giữa.
+
+    Returns:
+        Text đã gỡ sạch marker, khoảng trắng/dấu câu được vá lại quanh vị trí
+        marker vừa gỡ.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        number = match.group("num")
+        pre = match.group("pre")
+        post = match.group("post")
+        keep_pre = pre if pre and pre != number else ""
+        keep_post = post if post and post != number else ""
+        return keep_pre + keep_post
+
+    stripped = RE_MARKER.sub(_replace, text)
+    # "a)Thành lập" -> "a) Thành lập"; "1.Cá nhân" -> "1. Cá nhân"
+    stripped = RE_MISSING_SPACE.sub(r"\1 ", stripped)
+    # Marker giữa câu để lại khoảng trắng thừa trước dấu câu.
+    stripped = stripped.replace(" ,", ",").replace(" ;", ";").replace(" .", ".")
+    return " ".join(stripped.split())
+
 
 # --- Bảng ----------------------------------------------------------------
 

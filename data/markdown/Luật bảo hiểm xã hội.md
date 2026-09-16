@@ -553,7 +553,7 @@ Kiến nghị cơ quan nhà nước có thẩm quyền xử lý hành vi vi ph�
 
 ##### Khoản 1
 
-Cơ quan bảo hiểm xã hội là cơ quan nhà nước có chức năng thực hiện chế độ, chính sách bảo hiểm xã hội; quản lý và sử dụng các quỹ bảo hiểm xã hội, quỹ bảo hiểm thất nghiệp, quỹ bảo hiểm y tế;[2] nhiệm vụ khác theo quy định của Luật này và luật khác có liên quan.
+Cơ quan bảo hiểm xã hội là cơ quan nhà nước có chức năng thực hiện chế độ, chính sách bảo hiểm xã hội; quản lý và sử dụng các quỹ bảo hiểm xã hội, quỹ bảo hiểm thất nghiệp, quỹ bảo hiểm y tế; nhiệm vụ khác theo quy định của Luật này và luật khác có liên quan.
 
 ##### Khoản 2
 
@@ -579,7 +579,7 @@ Từ chối chi trả chế độ bảo hiểm xã hội bắt buộc, bảo hi�
 
 ##### Khoản 5
 
-Kiểm tra việc thực hiện pháp luật về bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; việc đóng, chi trả bảo hiểm thất nghiệp, bảo hiểm y tế.[3]
+Kiểm tra việc thực hiện pháp luật về bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; việc đóng, chi trả bảo hiểm thất nghiệp, bảo hiểm y tế.
 
 ##### Khoản 6
 
@@ -1129,7 +1129,7 @@ Chính phủ quy định chi tiết điểm đ và điểm e khoản 2 Điều n
 
 Tạm dừng đóng vào quỹ hưu trí và tử tuất được quy định như sau:
 
-a)[4] Trong trường hợp người sử dụng lao động gặp khó khăn phải tạm dừng sản xuất, kinh doanh dẫn đến việc người lao động và người sử dụng lao động không có khả năng đóng bảo hiểm xã hội hoặc người sử dụng lao động được áp dụng thủ tục phục hồi theo quy định của pháp luật về phục hồi, phá sản thì được tạm dừng đóng vào quỹ hưu trí và tử tuất trong thời gian tối đa 12 tháng;
+a) Trong trường hợp người sử dụng lao động gặp khó khăn phải tạm dừng sản xuất, kinh doanh dẫn đến việc người lao động và người sử dụng lao động không có khả năng đóng bảo hiểm xã hội hoặc người sử dụng lao động được áp dụng thủ tục phục hồi theo quy định của pháp luật về phục hồi, phá sản thì được tạm dừng đóng vào quỹ hưu trí và tử tuất trong thời gian tối đa 12 tháng;
 
 b) Hết thời hạn tạm dừng đóng quy định tại điểm a khoản này, người sử dụng lao động và người lao động tiếp tục đóng bảo hiểm xã hội bắt buộc và đóng bù cho thời gian tạm dừng đóng.
 
@@ -1497,7 +1497,7 @@ a) 05 ngày làm việc;
 
 b) 07 ngày làm việc khi vợ sinh con phải phẫu thuật hoặc sinh con dưới 32 tuần tuổi;
 
-c)[5] Trường hợp vợ sinh đôi hoặc vợ sinh con thứ hai thì được nghỉ 10 ngày làm việc. Trường hợp sinh ba trở lên thì được nghỉ thêm 03 ngày làm việc cho mỗi con tính từ con thứ ba trở đi;
+c) Trường hợp vợ sinh đôi hoặc vợ sinh con thứ hai thì được nghỉ 10 ngày làm việc. Trường hợp sinh ba trở lên thì được nghỉ thêm 03 ngày làm việc cho mỗi con tính từ con thứ ba trở đi;
 
 d) Trường hợp vợ sinh đôi phải phẫu thuật thì được nghỉ 14 ngày làm việc. Trường hợp sinh ba trở lên phải phẫu thuật thì được nghỉ thêm 03 ngày làm việc cho mỗi con tính từ con thứ ba trở đi.
 
@@ -1845,7 +1845,9 @@ Mức lương hưu hằng tháng của đối tượng đủ điều kiện quy 
 
 Trường hợp thời gian nghỉ hưu trước tuổi dưới 06 tháng thì không giảm tỷ lệ phần trăm hưởng lương hưu, từ đủ 06 tháng đến dưới 12 tháng thì giảm 1%.
 
-3a.[6] Mức lương hưu hằng tháng của đối tượng quy định tại khoản 2 Điều 26 của Luật Nhà giáo được tính như quy định tại khoản 1 Điều này, thời gian nghỉ hưu ở tuổi thấp hơn thì không giảm tỷ lệ phần trăm hưởng lương hưu theo quy định tại khoản 3 Điều này.
+##### Khoản 3a
+
+Mức lương hưu hằng tháng của đối tượng quy định tại khoản 2 Điều 26 của Luật Nhà giáo được tính như quy định tại khoản 1 Điều này, thời gian nghỉ hưu ở tuổi thấp hơn thì không giảm tỷ lệ phần trăm hưởng lương hưu theo quy định tại khoản 3 Điều này.
 
 ##### Khoản 4
 
@@ -3213,7 +3215,7 @@ Chỉ đạo, hướng dẫn tổ chức thực hiện chính sách, pháp luậ
 
 ##### Khoản 5
 
-Kiểm tra,[7] xử lý vi phạm pháp luật, giải quyết khiếu nại, tố cáo về trợ cấp hưu trí xã hội, bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, trừ quy định tại khoản 2 Điều 137 của Luật này.
+Kiểm tra, xử lý vi phạm pháp luật, giải quyết khiếu nại, tố cáo về trợ cấp hưu trí xã hội, bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, trừ quy định tại khoản 2 Điều 137 của Luật này.
 
 ##### Khoản 6
 
@@ -3247,7 +3249,7 @@ Xây dựng, trình cấp có thẩm quyền ban hành hoặc ban hành theo th�
 
 ##### Khoản 2
 
-Kiểm tra,[8] xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về quản lý tài chính bảo hiểm xã hội.
+Kiểm tra, xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về quản lý tài chính bảo hiểm xã hội.
 
 ##### Khoản 3
 
@@ -3263,7 +3265,7 @@ Trình Chính phủ quy định về hoạt động đầu tư quỹ bảo hiể
 
 ##### Khoản 6
 
-Xây dựng, trình cấp có thẩm quyền ban hành hoặc ban hành theo thẩm quyền chính sách, pháp luật về bảo hiểm hưu trí bổ sung; chỉ đạo, hướng dẫn tổ chức triển khai thực hiện chính sách, pháp luật về bảo hiểm hưu trí bổ sung; theo dõi, đánh giá,[9] kiểm tra tình hình thực hiện bảo hiểm hưu trí bổ sung; xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về bảo hiểm hưu trí bổ sung; thực hiện công tác thống kê, thông tin về bảo hiểm hưu trí bổ sung.
+Xây dựng, trình cấp có thẩm quyền ban hành hoặc ban hành theo thẩm quyền chính sách, pháp luật về bảo hiểm hưu trí bổ sung; chỉ đạo, hướng dẫn tổ chức triển khai thực hiện chính sách, pháp luật về bảo hiểm hưu trí bổ sung; theo dõi, đánh giá, kiểm tra tình hình thực hiện bảo hiểm hưu trí bổ sung; xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về bảo hiểm hưu trí bổ sung; thực hiện công tác thống kê, thông tin về bảo hiểm hưu trí bổ sung.
 
 #### Điều 138. Trách nhiệm của Ủy ban nhân dân các cấp
 
@@ -3285,7 +3287,7 @@ d) Kiểm tra, thanh tra, xử phạt vi phạm hành chính và giải quyết 
 
 đ) Kiến nghị với cơ quan nhà nước có thẩm quyền sửa đổi, bổ sung chính sách, pháp luật về bảo hiểm xã hội.
 
-## Chương XI. ĐIỀU KHOẢN THI HÀNH[10]
+## Chương XI. ĐIỀU KHOẢN THI HÀNH
 
 #### Điều 139. Sửa đổi, bổ sung một số luật có liên quan đến bảo hiểm xã hội
 

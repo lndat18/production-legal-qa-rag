@@ -36,21 +36,25 @@ class Block:
     is_italic: bool = False
 
 
-def _paragraph_is_bold(paragraph: Paragraph) -> bool:
-    """Đoạn có in đậm toàn bộ hay không.
+def _paragraph_all_runs_have(paragraph: Paragraph, attribute: str) -> bool:
+    """Mọi run (có chữ) của đoạn có bật thuộc tính ``attribute`` hay không.
 
-    Chỉ là tín hiệu phụ. Rule nhận diện heading không bao giờ được đọc giá trị
-    này: phần lớn paragraph trong corpus có style "Normal" và bold không phủ
-    đủ toàn đoạn.
+    Dùng chung cho bold/italic. Chỉ là tín hiệu phụ. Rule nhận diện heading
+    không bao giờ được đọc giá trị này: phần lớn paragraph trong corpus có
+    style "Normal" và bold/italic không phủ đủ toàn đoạn.
     """
     runs = [run for run in paragraph.runs if run.text.strip()]
-    return bool(runs) and all(run.bold for run in runs)
+    return bool(runs) and all(getattr(run, attribute) for run in runs)
+
+
+def _paragraph_is_bold(paragraph: Paragraph) -> bool:
+    """Đoạn có in đậm toàn bộ hay không."""
+    return _paragraph_all_runs_have(paragraph, "bold")
 
 
 def _paragraph_is_italic(paragraph: Paragraph) -> bool:
-    """Đoạn có in nghiêng toàn bộ hay không (cùng logic với ``_paragraph_is_bold``)."""
-    runs = [run for run in paragraph.runs if run.text.strip()]
-    return bool(runs) and all(run.italic for run in runs)
+    """Đoạn có in nghiêng toàn bộ hay không."""
+    return _paragraph_all_runs_have(paragraph, "italic")
 
 
 def read_docx(path: str | Path) -> list[Block]:
@@ -92,10 +96,10 @@ def read_docx(path: str | Path) -> list[Block]:
 def serialize_blocks_for_llm(blocks: list[Block]) -> str:
     """Render Block thành text kèm tín hiệu bold/nghiêng, dùng làm input cho Gemini.
 
-    Paragraph in đậm/nghiêng toàn dòng được bọc sẵn ``**``/``*`` — Gemini chỉ
-    cần giữ nguyên định dạng khi chuyển đổi (mục 1.1 spec), không phải tự
-    đoán từ văn bản thô. Bảng đã có sẵn markdown/HTML từ
-    ``tables.table_to_markdown``, giữ nguyên văn.
+    Paragraph in đậm/nghiêng toàn dòng được bọc sẵn ``**``/``*`` (cả hai cùng
+    lúc thì bọc ``***``) — Gemini chỉ cần giữ nguyên định dạng khi chuyển đổi
+    (mục 1.1 spec), không phải tự đoán từ văn bản thô. Bảng đã có sẵn
+    markdown/HTML từ ``tables.table_to_markdown``, giữ nguyên văn.
 
     Args:
         blocks: Block front matter hoặc back matter, theo đúng thứ tự gốc.
@@ -109,7 +113,9 @@ def serialize_blocks_for_llm(blocks: list[Block]) -> str:
             lines.append(block.text)
             continue
         text = block.text
-        if block.is_bold:
+        if block.is_bold and block.is_italic:
+            text = f"***{text}***"
+        elif block.is_bold:
             text = f"**{text}**"
         elif block.is_italic:
             text = f"*{text}*"

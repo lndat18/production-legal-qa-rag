@@ -31,6 +31,7 @@ QcWarningCode = Literal[
     "dieu_not_monotonic",
     "khoan_not_monotonic",
     "empty_dieu",
+    "orphan_footnote",
     "llm_frontmatter_conversion_failed",
     "llm_backmatter_conversion_failed",
 ]

@@ -51,7 +51,9 @@ Luật này không áp dụng đối với bảo hiểm y tế mang tính kinh d
 
 Trong Luật này, các từ ngữ dưới đây được hiểu như sau:
 
-1.[2] Bảo hiểm y tế là hình thức bảo hiểm bắt buộc được áp dụng đối với các đối tượng theo quy định của Luật này để chăm sóc sức khỏe, không vì mục đích lợi nhuận do Nhà nước tổ chức thực hiện.
+##### Khoản 1
+
+Bảo hiểm y tế là hình thức bảo hiểm bắt buộc được áp dụng đối với các đối tượng theo quy định của Luật này để chăm sóc sức khỏe, không vì mục đích lợi nhuận do Nhà nước tổ chức thực hiện.
 
 ##### Khoản 2
 
@@ -59,7 +61,7 @@ Bảo hiểm y tế toàn dân là việc các đối tượng quy định trong
 
 ##### Khoản 3
 
-Quỹ bảo hiểm y tế là quỹ tài chính được hình thành từ nguồn đóng bảo hiểm y tế và các nguồn thu hợp pháp khác, được sử dụng để chi trả chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế, chi phí quản lý bộ máy của cơ quan bảo hiểm xã hội[3] và những khoản chi phí hợp pháp khác liên quan đến bảo hiểm y tế.
+Quỹ bảo hiểm y tế là quỹ tài chính được hình thành từ nguồn đóng bảo hiểm y tế và các nguồn thu hợp pháp khác, được sử dụng để chi trả chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế, chi phí quản lý bộ máy của cơ quan bảo hiểm xã hội và những khoản chi phí hợp pháp khác liên quan đến bảo hiểm y tế.
 
 ##### Khoản 4
 
@@ -71,13 +73,19 @@ Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu là cơ sở
 
 ##### Khoản 6
 
-Giám định bảo hiểm y tế là hoạt động chuyên môn do cơ quan bảo hiểm xã hội[4] tiến hành nhằm đánh giá sự hợp lý của việc cung cấp dịch vụ y tế cho người tham gia bảo hiểm y tế, làm cơ sở để thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
+Giám định bảo hiểm y tế là hoạt động chuyên môn do cơ quan bảo hiểm xã hội tiến hành nhằm đánh giá sự hợp lý của việc cung cấp dịch vụ y tế cho người tham gia bảo hiểm y tế, làm cơ sở để thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
-7.[5] Hộ gia đình tham gia bảo hiểm y tế (sau đây gọi chung là hộ gia đình) là những người cùng đăng ký thường trú hoặc cùng đăng ký tạm trú tại một chỗ ở hợp pháp theo quy định của pháp luật về cư trú.
+##### Khoản 7
 
-8.[6] Gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả là những dịch vụ y tế thiết yếu để chăm sóc sức khỏe, phù hợp với khả năng chi trả của quỹ bảo hiểm y tế.
+Hộ gia đình tham gia bảo hiểm y tế (sau đây gọi chung là hộ gia đình) là những người cùng đăng ký thường trú hoặc cùng đăng ký tạm trú tại một chỗ ở hợp pháp theo quy định của pháp luật về cư trú.
 
-9.[7] Mức tham chiếu là mức tiền do Chính phủ quyết định dùng để tính mức đóng, mức hưởng của một số trường hợp tham gia bảo hiểm y tế quy định tại Luật này.
+##### Khoản 8
+
+Gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả là những dịch vụ y tế thiết yếu để chăm sóc sức khỏe, phù hợp với khả năng chi trả của quỹ bảo hiểm y tế.
+
+##### Khoản 9
+
+Mức tham chiếu là mức tiền do Chính phủ quyết định dùng để tính mức đóng, mức hưởng của một số trường hợp tham gia bảo hiểm y tế quy định tại Luật này.
 
 #### Điều 3. Nguyên tắc bảo hiểm y tế
 
@@ -85,9 +93,13 @@ Giám định bảo hiểm y tế là hoạt động chuyên môn do cơ quan b�
 
 Bảo đảm chia sẻ rủi ro giữa những người tham gia bảo hiểm y tế.
 
-2.[8] Mức đóng bảo hiểm y tế được xác định theo tỷ lệ phần trăm của tiền lương làm căn cứ đóng bảo hiểm xã hội bắt buộc theo quy định của Luật Bảo hiểm xã hội (sau đây gọi chung là tiền lương tháng), tiền lương hưu, tiền trợ cấp hoặc mức tham chiếu.
+##### Khoản 2
 
-3.[9] Mức hưởng bảo hiểm y tế theo mức độ bệnh tật, nhóm đối tượng trong phạm vi quyền lợi và thời gian tham gia bảo hiểm y tế.
+Mức đóng bảo hiểm y tế được xác định theo tỷ lệ phần trăm của tiền lương làm căn cứ đóng bảo hiểm xã hội bắt buộc theo quy định của Luật Bảo hiểm xã hội (sau đây gọi chung là tiền lương tháng), tiền lương hưu, tiền trợ cấp hoặc mức tham chiếu.
+
+##### Khoản 3
+
+Mức hưởng bảo hiểm y tế theo mức độ bệnh tật, nhóm đối tượng trong phạm vi quyền lợi và thời gian tham gia bảo hiểm y tế.
 
 ##### Khoản 4
 
@@ -103,7 +115,9 @@ Quỹ bảo hiểm y tế được quản lý tập trung, thống nhất, công
 
 Nhà nước đóng hoặc hỗ trợ tiền đóng bảo hiểm y tế cho người có công với cách mạng và một số nhóm đối tượng xã hội.
 
-2.[10] Nhà nước có chính sách ưu đãi đối với hoạt động đầu tư từ quỹ bảo hiểm y tế để bảo toàn và tăng trưởng quỹ. Nguồn thu của quỹ và số tiền sinh lời từ hoạt động đầu tư từ quỹ bảo hiểm y tế được miễn thuế.
+##### Khoản 2
+
+Nhà nước có chính sách ưu đãi đối với hoạt động đầu tư từ quỹ bảo hiểm y tế để bảo toàn và tăng trưởng quỹ. Nguồn thu của quỹ và số tiền sinh lời từ hoạt động đầu tư từ quỹ bảo hiểm y tế được miễn thuế.
 
 ##### Khoản 3
 
@@ -135,15 +149,21 @@ Bộ, cơ quan ngang bộ trong phạm vi nhiệm vụ, quyền hạn của mìn
 
 Chủ trì, phối hợp với các bộ, cơ quan ngang bộ, cơ quan, tổ chức có liên quan thực hiện nhiệm vụ sau đây:
 
-1.[11] Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành chính sách, pháp luật về bảo hiểm y tế, tổ chức hệ thống y tế, nguồn tài chính phục vụ công tác bảo vệ, chăm sóc và nâng cao sức khỏe nhân dân dựa trên bảo hiểm y tế toàn dân; giải pháp tăng cường năng lực khám bệnh, chữa bệnh bảo hiểm y tế cho y tế cơ sở;
+##### Khoản 1
+
+Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành chính sách, pháp luật về bảo hiểm y tế, tổ chức hệ thống y tế, nguồn tài chính phục vụ công tác bảo vệ, chăm sóc và nâng cao sức khỏe nhân dân dựa trên bảo hiểm y tế toàn dân; giải pháp tăng cường năng lực khám bệnh, chữa bệnh bảo hiểm y tế cho y tế cơ sở;
 
 ##### Khoản 2
 
-Xây dựng chiến lược,[12], kế hoạch tổng thể phát triển bảo hiểm y tế;
+Xây dựng chiến lược,, kế hoạch tổng thể phát triển bảo hiểm y tế;
 
-3.[13] Ban hành quy định, quy trình, hướng dẫn chuyên môn về khám bệnh, chữa bệnh; rà soát và cập nhật thường xuyên hướng dẫn chẩn đoán và điều trị; quy định về đánh giá sự hợp lý của việc cung cấp dịch vụ khám bệnh, chữa bệnh; quy định về ứng dụng công nghệ thông tin, chuyển đổi số, chia sẻ dữ liệu trong lĩnh vực bảo hiểm y tế, việc liên thông và sử dụng kết quả cận lâm sàng liên thông giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế phù hợp yêu cầu chuyên môn;
+##### Khoản 3
 
-4.[14] Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành các giải pháp nhằm bảo đảm cân đối quỹ bảo hiểm y tế;
+Ban hành quy định, quy trình, hướng dẫn chuyên môn về khám bệnh, chữa bệnh; rà soát và cập nhật thường xuyên hướng dẫn chẩn đoán và điều trị; quy định về đánh giá sự hợp lý của việc cung cấp dịch vụ khám bệnh, chữa bệnh; quy định về ứng dụng công nghệ thông tin, chuyển đổi số, chia sẻ dữ liệu trong lĩnh vực bảo hiểm y tế, việc liên thông và sử dụng kết quả cận lâm sàng liên thông giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế phù hợp yêu cầu chuyên môn;
+
+##### Khoản 4
+
+Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành các giải pháp nhằm bảo đảm cân đối quỹ bảo hiểm y tế;
 
 ##### Khoản 5
 
@@ -165,7 +185,9 @@ Theo dõi, đánh giá, tổng kết các hoạt động trong lĩnh vực bảo
 
 Tổ chức nghiên cứu khoa học và hợp tác quốc tế về bảo hiểm y tế;
 
-10.[15] Ban hành gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả.
+##### Khoản 10
+
+Ban hành gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả.
 
 #### Điều 7. Trách nhiệm của Bộ Tài chính về bảo hiểm y tế
 
@@ -177,7 +199,7 @@ Phối hợp với Bộ Y tế, cơ quan, tổ chức có liên quan xây dựng
 
 Thanh tra, kiểm tra việc thực hiện các quy định của pháp luật về chế độ tài chính đối với bảo hiểm y tế, quỹ bảo hiểm y tế.
 
-#### Điều 7a. Trách nhiệm của Bộ Lao động - Thương binh và Xã hội[16]
+#### Điều 7a. Trách nhiệm của Bộ Lao động - Thương binh và Xã hội
 
 ##### Khoản 1
 
@@ -187,9 +209,11 @@ Chỉ đạo, hướng dẫn tổ chức thực hiện việc xác định, qu�
 
 Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về trách nhiệm tham gia bảo hiểm y tế của người sử dụng lao động, người lao động quy định tại khoản 1 Điều 12 của Luật này và đối tượng do Bộ Lao động - Thương binh và Xã hội quản lý quy định tại các điểm e, h, i, k, o, r, s và t khoản 3, các điểm a, b, d và g khoản 4 Điều 12 của Luật này, trừ đối tượng do Bộ Quốc phòng và Bộ Công an quản lý.
 
-3.[17] Quy định tại Điều này thực hiện theo quy định của Chính phủ kể từ ngày 01 tháng 7 năm 2026.
+##### Khoản 3
 
-#### Điều 7b. Trách nhiệm của Bộ Giáo dục và Đào tạo[18]
+Quy định tại Điều này thực hiện theo quy định của Chính phủ kể từ ngày 01 tháng 7 năm 2026.
+
+#### Điều 7b. Trách nhiệm của Bộ Giáo dục và Đào tạo
 
 ##### Khoản 1
 
@@ -203,19 +227,23 @@ Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về t
 
 Chủ trì, phối hợp với Bộ Y tế, các bộ, ngành liên quan hướng dẫn thành lập, kiện toàn hệ thống y tế trường học để chăm sóc sức khỏe ban đầu đối với trẻ em, học sinh, sinh viên.
 
-#### Điều 7c. Trách nhiệm của Bộ Quốc phòng và Bộ Công an[19]
+#### Điều 7c. Trách nhiệm của Bộ Quốc phòng và Bộ Công an
 
-1.[20] Chỉ đạo, quản lý, hướng dẫn, tổ chức thực hiện việc xác định, quản lý, lập danh sách tham gia bảo hiểm y tế đối với đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
+##### Khoản 1
+
+Chỉ đạo, quản lý, hướng dẫn, tổ chức thực hiện việc xác định, quản lý, lập danh sách tham gia bảo hiểm y tế đối với đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
 
 ##### Khoản 2
 
-Lập danh sách và cung cấp danh sách đề nghị cấp thẻ bảo hiểm y tế đối với đối tượng quy định tại điểm l khoản 3 Điều 12 của Luật này cho cơ quan bảo hiểm xã hội[21].
+Lập danh sách và cung cấp danh sách đề nghị cấp thẻ bảo hiểm y tế đối với đối tượng quy định tại điểm l khoản 3 Điều 12 của Luật này cho cơ quan bảo hiểm xã hội.
 
-3.[22] Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về trách nhiệm tham gia bảo hiểm y tế của các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
+##### Khoản 3
+
+Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về trách nhiệm tham gia bảo hiểm y tế của các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
 
 ##### Khoản 4
 
-Phối hợp với Bộ Y tế, các bộ, ngành liên quan hướng dẫn các cơ sở khám bệnh, chữa bệnh của Bộ Quốc phòng và Bộ Công an ký kết hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế với cơ quan bảo hiểm xã hội[23] để khám bệnh, chữa bệnh cho các đối tượng tham gia bảo hiểm y tế.
+Phối hợp với Bộ Y tế, các bộ, ngành liên quan hướng dẫn các cơ sở khám bệnh, chữa bệnh của Bộ Quốc phòng và Bộ Công an ký kết hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế với cơ quan bảo hiểm xã hội để khám bệnh, chữa bệnh cho các đối tượng tham gia bảo hiểm y tế.
 
 #### Điều 8. Trách nhiệm của Ủy ban nhân dân các cấp về bảo hiểm y tế
 
@@ -231,9 +259,13 @@ c) Tuyên truyền, phổ biến chính sách, pháp luật về bảo hiểm y 
 
 d) Thanh tra, kiểm tra, xử lý vi phạm và giải quyết khiếu nại, tố cáo về bảo hiểm y tế.
 
-2.[24] Ủy ban nhân dân tỉnh, thành phố trực thuộc trung ương, ngoài việc thực hiện trách nhiệm quy định tại khoản 1 Điều này, có trách nhiệm chỉ đạo xây dựng bộ máy, nguồn lực để thực hiện quản lý nhà nước về bảo hiểm y tế tại địa phương.
+##### Khoản 2
 
-3.[25] Ủy ban nhân dân xã, phường, thị trấn (sau đây gọi chung là Ủy ban nhân dân cấp xã) có trách nhiệm sau đây:
+Ủy ban nhân dân tỉnh, thành phố trực thuộc trung ương, ngoài việc thực hiện trách nhiệm quy định tại khoản 1 Điều này, có trách nhiệm chỉ đạo xây dựng bộ máy, nguồn lực để thực hiện quản lý nhà nước về bảo hiểm y tế tại địa phương.
+
+##### Khoản 3
+
+Ủy ban nhân dân xã, phường, thị trấn (sau đây gọi chung là Ủy ban nhân dân cấp xã) có trách nhiệm sau đây:
 
 a) Thực hiện trách nhiệm quy định tại khoản 1 Điều này;
 
@@ -241,7 +273,7 @@ b) Lập danh sách tham gia bảo hiểm y tế cho các đối tượng trên 
 
 c) Lập danh sách đề nghị cấp thẻ bảo hiểm y tế cho trẻ em phải thực hiện đồng thời với việc cấp giấy khai sinh.
 
-#### Điều 9. Cơ quan thực hiện bảo hiểm y tế[26]
+#### Điều 9. Cơ quan thực hiện bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -251,7 +283,7 @@ Cơ quan bảo hiểm xã hội có chức năng thực hiện chế độ, chí
 
 Chính phủ quy định cụ thể về chức năng, nhiệm vụ, quyền hạn và cơ cấu tổ chức của cơ quan bảo hiểm xã hội trong tổ chức thực hiện bảo hiểm y tế.
 
-#### Điều 10. Kiểm toán quỹ bảo hiểm y tế[27]
+#### Điều 10. Kiểm toán quỹ bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -263,7 +295,9 @@ Kiểm toán nhà nước, định kỳ ba năm, thực hiện kiểm toán qu�
 
 #### Điều 11. Các hành vi bị nghiêm cấm
 
-1.[28] Chậm đóng, trốn đóng bảo hiểm y tế.
+##### Khoản 1
+
+Chậm đóng, trốn đóng bảo hiểm y tế.
 
 ##### Khoản 2
 
@@ -287,7 +321,7 @@ Lợi dụng chức vụ, quyền hạn, chuyên môn, nghiệp vụ để làm 
 
 ## Chương II. ĐỐI TƯỢNG, MỨC ĐÓNG, TRÁCH NHIỆM VÀ PHƯƠNG THỨC ĐÓNG BẢO HIỂM Y TẾ
 
-#### Điều 12. Đối tượng tham gia bảo hiểm y tế[29]
+#### Điều 12. Đối tượng tham gia bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -353,7 +387,7 @@ m) Người đã hiến bộ phận cơ thể người theo quy định của ph
 
 n) Người nước ngoài đang học tập tại Việt Nam được cấp học bổng từ ngân sách của Nhà nước Việt Nam;
 
-o) Người thuộc hộ gia đình nghèo; người dân tộc thiểu số thuộc hộ gia đình cận nghèo đang cư trú tại xã, thôn thuộc vùng đồng bào dân tộc thiểu số và miền núi; người dân tộc thiểu số đang cư trú tại vùng có điều kiện kinh tế - xã hội khó khăn; người đang cư trú tại vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn; người đang sinh sống tại xã đảo, đặc khu[30];
+o) Người thuộc hộ gia đình nghèo; người dân tộc thiểu số thuộc hộ gia đình cận nghèo đang cư trú tại xã, thôn thuộc vùng đồng bào dân tộc thiểu số và miền núi; người dân tộc thiểu số đang cư trú tại vùng có điều kiện kinh tế - xã hội khó khăn; người đang cư trú tại vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn; người đang sinh sống tại xã đảo, đặc khu;
 
 p) Cán bộ xã, phường, thị trấn đã nghỉ việc đang hưởng trợ cấp hằng tháng từ ngân sách nhà nước;
 
@@ -413,7 +447,7 @@ a) Đối tượng tham gia bảo hiểm y tế được pháp luật quy địn
 
 b) Đối tượng khác ngoài đối tượng quy định tại điểm a khoản này sau khi báo cáo Ủy ban Thường vụ Quốc hội.
 
-#### Điều 13. Mức đóng và trách nhiệm đóng bảo hiểm y tế[31]
+#### Điều 13. Mức đóng và trách nhiệm đóng bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -509,31 +543,47 @@ b) Trách nhiệm đóng, mức đóng, mức hỗ trợ đóng đối với cá
 
 Đối với người hưởng lương hưu, trợ cấp mất sức lao động, trợ cấp thất nghiệp hằng tháng thì căn cứ để đóng bảo hiểm y tế là tiền lương hưu, trợ cấp mất sức lao động, trợ cấp thất nghiệp hằng tháng.
 
-4.[32] Đối với đối tượng không thuộc quy định tại các khoản 1, 2 và 3 Điều này thì căn cứ để đóng bảo hiểm y tế là mức tham chiếu.
+##### Khoản 4
 
-5.[33] Mức tiền lương tháng tối đa để tính số tiền đóng bảo hiểm y tế là 20 lần mức tham chiếu.
+Đối với đối tượng không thuộc quy định tại các khoản 1, 2 và 3 Điều này thì căn cứ để đóng bảo hiểm y tế là mức tham chiếu.
 
-#### Điều 15. Phương thức đóng bảo hiểm y tế[34]
+##### Khoản 5
+
+Mức tiền lương tháng tối đa để tính số tiền đóng bảo hiểm y tế là 20 lần mức tham chiếu.
+
+#### Điều 15. Phương thức đóng bảo hiểm y tế
 
 ##### Khoản 1
 
 Hằng tháng, người sử dụng lao động đóng bảo hiểm y tế cho người lao động và trích tiền đóng bảo hiểm y tế từ tiền lương của người lao động để nộp cùng một lúc vào quỹ bảo hiểm y tế.
 
-2.[35] Đối với các doanh nghiệp, tổ hợp tác, hợp tác xã, liên hiệp hợp tác xã, hộ kinh doanh hoạt động trong lĩnh vực nông nghiệp, lâm nghiệp, ngư nghiệp, diêm nghiệp trả tiền lương theo sản phẩm, theo khoán thì đóng theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
+##### Khoản 2
 
-3.[36] Hằng tháng, cơ quan bảo hiểm xã hội đóng bảo hiểm y tế theo quy định tại khoản 2 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
+Đối với các doanh nghiệp, tổ hợp tác, hợp tác xã, liên hiệp hợp tác xã, hộ kinh doanh hoạt động trong lĩnh vực nông nghiệp, lâm nghiệp, ngư nghiệp, diêm nghiệp trả tiền lương theo sản phẩm, theo khoán thì đóng theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
 
-4.[37] Hằng quý, cơ quan, tổ chức, đơn vị cấp học bổng đóng bảo hiểm y tế theo quy định tại điểm c khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
+##### Khoản 3
 
-5.[38] Hằng quý, ngân sách nhà nước chuyển số tiền đóng, hỗ trợ đóng bảo hiểm y tế theo quy định tại các điểm a, b và d khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
+Hằng tháng, cơ quan bảo hiểm xã hội đóng bảo hiểm y tế theo quy định tại khoản 2 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
+
+##### Khoản 4
+
+Hằng quý, cơ quan, tổ chức, đơn vị cấp học bổng đóng bảo hiểm y tế theo quy định tại điểm c khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
+
+##### Khoản 5
+
+Hằng quý, ngân sách nhà nước chuyển số tiền đóng, hỗ trợ đóng bảo hiểm y tế theo quy định tại các điểm a, b và d khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
 
 ##### Khoản 6
 
 Định kỳ 3 tháng, 6 tháng hoặc 12 tháng, đại diện hộ gia đình, tổ chức, cá nhân đóng đủ số tiền thuộc trách nhiệm phải đóng vào quỹ bảo hiểm y tế.
 
-7.[39] Đối tượng quy định tại điểm b và điểm đ khoản 1 Điều 12 của Luật này đóng đủ số tiền thuộc trách nhiệm phải đóng trực tiếp cho cơ quan bảo hiểm xã hội hoặc đóng qua hộ kinh doanh, doanh nghiệp, hợp tác xã, liên hiệp hợp tác xã tham gia quản lý theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
+##### Khoản 7
 
-8.[40] Thời hạn đóng bảo hiểm y tế chậm nhất đối với người sử dụng lao động được quy định như sau:
+Đối tượng quy định tại điểm b và điểm đ khoản 1 Điều 12 của Luật này đóng đủ số tiền thuộc trách nhiệm phải đóng trực tiếp cho cơ quan bảo hiểm xã hội hoặc đóng qua hộ kinh doanh, doanh nghiệp, hợp tác xã, liên hiệp hợp tác xã tham gia quản lý theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
+
+##### Khoản 8
+
+Thời hạn đóng bảo hiểm y tế chậm nhất đối với người sử dụng lao động được quy định như sau:
 
 a) Ngày cuối cùng của tháng tiếp theo đối với phương thức đóng hằng tháng;
 
@@ -543,17 +593,23 @@ b) Ngày cuối cùng của tháng tiếp theo ngay sau chu kỳ đóng đối v
 
 #### Điều 16. Thẻ bảo hiểm y tế
 
-1.[41] Thẻ bảo hiểm y tế có mã số bảo hiểm y tế được cấp cho người tham gia bảo hiểm y tế và làm căn cứ để được hưởng các quyền lợi về bảo hiểm y tế theo quy định của Luật này. Thẻ bảo hiểm y tế được cấp bằng bản điện tử, bản giấy và có giá trị pháp lý như nhau.
+##### Khoản 1
 
-2.[42] Mỗi người chỉ được cấp một mã số bảo hiểm y tế.
+Thẻ bảo hiểm y tế có mã số bảo hiểm y tế được cấp cho người tham gia bảo hiểm y tế và làm căn cứ để được hưởng các quyền lợi về bảo hiểm y tế theo quy định của Luật này. Thẻ bảo hiểm y tế được cấp bằng bản điện tử, bản giấy và có giá trị pháp lý như nhau.
 
-3.[43] Thời điểm thẻ bảo hiểm y tế có giá trị sử dụng được quy định như sau:
+##### Khoản 2
+
+Mỗi người chỉ được cấp một mã số bảo hiểm y tế.
+
+##### Khoản 3
+
+Thời điểm thẻ bảo hiểm y tế có giá trị sử dụng được quy định như sau:
 
 a) Đối tượng quy định tại các khoản 1, 2 và 3 Điều 12 của Luật này tham gia bảo hiểm y tế lần đầu, thẻ bảo hiểm y tế có giá trị sử dụng kể từ ngày đóng bảo hiểm y tế;
 
 b) Người tham gia bảo hiểm y tế liên tục kể từ lần thứ hai trở đi thì thẻ bảo hiểm y tế có giá trị sử dụng nối tiếp với ngày hết hạn sử dụng của thẻ lần trước;
 
-c)[44] Người tham gia bảo hiểm y tế theo quy định tại khoản 4 và khoản 5 Điều 12 của Luật này mà lần đầu tiên tham gia bảo hiểm y tế hoặc đã tham gia bảo hiểm y tế theo một trong các đối tượng quy định tại Điều 12 của Luật này nhưng không liên tục từ 90 ngày trở lên thì thẻ bảo hiểm y tế có giá trị sử dụng sau 30 ngày kể từ ngày đóng đủ bảo hiểm y tế;
+c) Người tham gia bảo hiểm y tế theo quy định tại khoản 4 và khoản 5 Điều 12 của Luật này mà lần đầu tiên tham gia bảo hiểm y tế hoặc đã tham gia bảo hiểm y tế theo một trong các đối tượng quy định tại Điều 12 của Luật này nhưng không liên tục từ 90 ngày trở lên thì thẻ bảo hiểm y tế có giá trị sử dụng sau 30 ngày kể từ ngày đóng đủ bảo hiểm y tế;
 
 d) Đối với trẻ em dưới 6 tuổi thì thẻ bảo hiểm y tế có giá trị sử dụng đến ngày trẻ đủ 72 tháng tuổi. Trường hợp trẻ đủ 72 tháng tuổi mà chưa đến kỳ nhập học thì thẻ bảo hiểm y tế có giá trị sử dụng đến ngày 30 tháng 9 của năm đó.
 
@@ -567,9 +623,11 @@ b) Thẻ bị sửa chữa, tẩy xóa;
 
 c) Người có tên trong thẻ không tiếp tục tham gia bảo hiểm y tế.
 
-5.[45] Bảo hiểm xã hội Việt Nam ban hành mẫu thẻ bảo hiểm y tế sau khi có ý kiến thống nhất của Bộ Y tế.
+##### Khoản 5
 
-#### Điều 17. Cấp thẻ bảo hiểm y tế[46]
+Bảo hiểm xã hội Việt Nam ban hành mẫu thẻ bảo hiểm y tế sau khi có ý kiến thống nhất của Bộ Y tế.
+
+#### Điều 17. Cấp thẻ bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -603,9 +661,13 @@ Thẻ bảo hiểm y tế được cấp lại trong trường hợp bị mất.
 
 Người bị mất thẻ bảo hiểm y tế phải có đơn đề nghị cấp lại thẻ.
 
-3.[47] Trong thời hạn 7 ngày làm việc, kể từ ngày nhận được đơn đề nghị cấp lại thẻ, cơ quan bảo hiểm xã hội[48] phải cấp lại thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ cấp lại thẻ, người tham gia bảo hiểm y tế vẫn được hưởng quyền lợi bảo hiểm y tế.
+##### Khoản 3
 
-4.[49] (được bãi bỏ)
+Trong thời hạn 7 ngày làm việc, kể từ ngày nhận được đơn đề nghị cấp lại thẻ, cơ quan bảo hiểm xã hội phải cấp lại thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ cấp lại thẻ, người tham gia bảo hiểm y tế vẫn được hưởng quyền lợi bảo hiểm y tế.
+
+##### Khoản 4
+
+(được bãi bỏ)
 
 #### Điều 19. Đổi thẻ bảo hiểm y tế
 
@@ -629,7 +691,7 @@ b) Thẻ bảo hiểm y tế.
 
 ##### Khoản 3
 
-Trong thời hạn 7 ngày làm việc, kể từ ngày nhận đủ hồ sơ quy định tại khoản 2 Điều này, cơ quan bảo hiểm xã hội[50] phải đổi thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ đổi thẻ, người có thẻ vẫn được hưởng quyền lợi của người tham gia bảo hiểm y tế.
+Trong thời hạn 7 ngày làm việc, kể từ ngày nhận đủ hồ sơ quy định tại khoản 2 Điều này, cơ quan bảo hiểm xã hội phải đổi thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ đổi thẻ, người có thẻ vẫn được hưởng quyền lợi của người tham gia bảo hiểm y tế.
 
 ##### Khoản 4
 
@@ -645,7 +707,7 @@ a) Gian lận trong việc cấp thẻ bảo hiểm y tế;
 
 b) Người có tên trong thẻ bảo hiểm y tế không tiếp tục tham gia bảo hiểm y tế;
 
-c)[51] Cấp trùng thẻ bảo hiểm y tế.
+c) Cấp trùng thẻ bảo hiểm y tế.
 
 ##### Khoản 2
 
@@ -653,13 +715,13 @@ Thẻ bảo hiểm y tế bị tạm giữ trong trường hợp người đi kh
 
 ## Chương IV. PHẠM VI ĐƯỢC HƯỞNG BẢO HIỂM Y TẾ
 
-#### Điều 21. Phạm vi được hưởng của người tham gia bảo hiểm y tế[52]
+#### Điều 21. Phạm vi được hưởng của người tham gia bảo hiểm y tế
 
 ##### Khoản 1
 
 Người tham gia bảo hiểm y tế được quỹ bảo hiểm y tế thanh toán các chi phí sau đây:
 
-a)[53] Khám bệnh, chữa bệnh, bao gồm cả khám bệnh, chữa bệnh từ xa, hỗ trợ khám bệnh, chữa bệnh từ xa, khám bệnh, chữa bệnh y học gia đình, khám bệnh, chữa bệnh tại nhà, phục hồi chức năng, khám thai định kỳ, sinh con; một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc theo yêu cầu chuyên môn theo lộ trình phù hợp, đối tượng ưu tiên và khả năng cân đối của Quỹ bảo hiểm y tế;
+a) Khám bệnh, chữa bệnh, bao gồm cả khám bệnh, chữa bệnh từ xa, hỗ trợ khám bệnh, chữa bệnh từ xa, khám bệnh, chữa bệnh y học gia đình, khám bệnh, chữa bệnh tại nhà, phục hồi chức năng, khám thai định kỳ, sinh con; một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc theo yêu cầu chuyên môn theo lộ trình phù hợp, đối tượng ưu tiên và khả năng cân đối của Quỹ bảo hiểm y tế;
 
 b) Vận chuyển người bệnh đối với đối tượng quy định tại các điểm a, b, c, d, đ, e, h, i, o và r khoản 3 Điều 12 của Luật này trong trường hợp đang điều trị nội trú hoặc cấp cứu phải chuyển cơ sở khám bệnh, chữa bệnh quy định tại Điều 27 của Luật này;
 
@@ -689,9 +751,9 @@ b) Phạm vi được hưởng của các đối tượng quy định tại các
 
 c) Đối tượng không áp dụng tỷ lệ thanh toán quy định tại điểm c khoản 2 Điều này;
 
-d)[54] Đối tượng ưu tiên, lộ trình thực hiện một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc phù hợp với khả năng cân đối của Quỹ Bảo hiểm y tế.
+d) Đối tượng ưu tiên, lộ trình thực hiện một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc phù hợp với khả năng cân đối của Quỹ Bảo hiểm y tế.
 
-#### Điều 22. Mức hưởng bảo hiểm y tế của người tham gia bảo hiểm y tế[55]
+#### Điều 22. Mức hưởng bảo hiểm y tế của người tham gia bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -723,7 +785,7 @@ Người tham gia bảo hiểm y tế tự đi khám bệnh, chữa bệnh khôn
 
 a) 100% mức hưởng khi khám bệnh, chữa bệnh tại cơ sở khám bệnh, chữa bệnh cấp cơ bản hoặc cấp chuyên sâu trong trường hợp chẩn đoán xác định, điều trị một số bệnh hiếm, bệnh hiểm nghèo, bệnh cần phẫu thuật hoặc sử dụng kỹ thuật cao do Bộ trưởng Bộ Y tế quy định;
 
-b) 100% mức hưởng đối với người dân tộc thiểu số và người thuộc hộ nghèo đang sinh sống tại vùng có điều kiện kinh tế - xã hội khó khăn, vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn, người đang sinh sống tại xã đảo, đặc khu[56] khi khám bệnh, chữa bệnh nội trú tại cơ sở khám bệnh, chữa bệnh cấp chuyên sâu;
+b) 100% mức hưởng đối với người dân tộc thiểu số và người thuộc hộ nghèo đang sinh sống tại vùng có điều kiện kinh tế - xã hội khó khăn, vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn, người đang sinh sống tại xã đảo, đặc khu khi khám bệnh, chữa bệnh nội trú tại cơ sở khám bệnh, chữa bệnh cấp chuyên sâu;
 
 c) 100% mức hưởng khi khám bệnh, chữa bệnh tại cơ sở khám bệnh, chữa bệnh cấp ban đầu;
 
@@ -741,7 +803,9 @@ h) 50% mức hưởng khi khám bệnh, chữa bệnh ngoại trú theo lộ tr�
 
 Người tham gia bảo hiểm y tế được hưởng 100% mức hưởng quy định tại khoản 1 Điều này khi khám bệnh, chữa bệnh tại bất kỳ cơ sở khám bệnh, chữa bệnh nào trong trường hợp cấp cứu.
 
-5a.[57] Người đi khám sức khỏe định kỳ hoặc khám sàng lọc miễn phí theo quy định của Luật Phòng bệnh được hưởng 100% chi phí cho lượt khám sức khỏe định kỳ hoặc cho lượt khám sàng lọc miễn phí theo đối tượng và lộ trình ưu tiên phù hợp với khả năng cân đối của Quỹ.
+##### Khoản 5a
+
+Người đi khám sức khỏe định kỳ hoặc khám sàng lọc miễn phí theo quy định của Luật Phòng bệnh được hưởng 100% chi phí cho lượt khám sức khỏe định kỳ hoặc cho lượt khám sàng lọc miễn phí theo đối tượng và lộ trình ưu tiên phù hợp với khả năng cân đối của Quỹ.
 
 ##### Khoản 6
 
@@ -757,7 +821,9 @@ Chi phí trong trường hợp quy định tại khoản 1 Điều 21 đã đư�
 
 Điều dưỡng, an dưỡng tại cơ sở điều dưỡng, an dưỡng.
 
-3.[58] Khám sức khỏe, trừ khám sức khỏe định kỳ và khám sàng lọc.
+##### Khoản 3
+
+Khám sức khỏe, trừ khám sức khỏe định kỳ và khám sàng lọc.
 
 ##### Khoản 4
 
@@ -771,19 +837,29 @@ Sử dụng kỹ thuật hỗ trợ sinh sản, dịch vụ kế hoạch hóa gi
 
 Sử dụng dịch vụ thẩm mỹ.
 
-7.[59] Điều trị lác và tật khúc xạ của mắt đối với người từ đủ 18 tuổi trở lên.
+##### Khoản 7
 
-8.[60] Sử dụng thiết bị y tế thay thế bao gồm chân giả, tay giả, mắt giả, răng giả, kính mắt, máy trợ thính, phương tiện trợ giúp vận động trong khám bệnh, chữa bệnh và phục hồi chức năng.
+Điều trị lác và tật khúc xạ của mắt đối với người từ đủ 18 tuổi trở lên.
 
-9.[61] Khám bệnh, chữa bệnh, phục hồi chức năng trong trường hợp thảm họa.
+##### Khoản 8
 
-10.[62] (được bãi bỏ)
+Sử dụng thiết bị y tế thay thế bao gồm chân giả, tay giả, mắt giả, răng giả, kính mắt, máy trợ thính, phương tiện trợ giúp vận động trong khám bệnh, chữa bệnh và phục hồi chức năng.
+
+##### Khoản 9
+
+Khám bệnh, chữa bệnh, phục hồi chức năng trong trường hợp thảm họa.
+
+##### Khoản 10
+
+(được bãi bỏ)
 
 ##### Khoản 11
 
 Khám bệnh, chữa bệnh nghiện ma túy, nghiện rượu hoặc chất gây nghiện khác.
 
-12.[63] (được bãi bỏ)
+##### Khoản 12
+
+(được bãi bỏ)
 
 ##### Khoản 13
 
@@ -795,7 +871,7 @@ Tham gia thử nghiệm lâm sàng, nghiên cứu khoa học.
 
 ## Chương V. TỔ CHỨC KHÁM BỆNH, CHỮA BỆNH CHO NGƯỜI THAM GIA BẢO HIỂM Y TẾ
 
-#### Điều 24. Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế[64]
+#### Điều 24. Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế
 
 Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế là cơ sở khám bệnh, chữa bệnh theo quy định của Luật Khám bệnh, chữa bệnh có ký kết hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế với cơ quan bảo hiểm xã hội theo quy định của Chính phủ.
 
@@ -803,13 +879,13 @@ Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế là cơ sở khám bệ
 
 ##### Khoản 1
 
-Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế là văn bản thỏa thuận giữa cơ quan bảo hiểm xã hội[65] với cơ sở khám bệnh, chữa bệnh về việc cung ứng dịch vụ và thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
+Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế là văn bản thỏa thuận giữa cơ quan bảo hiểm xã hội với cơ sở khám bệnh, chữa bệnh về việc cung ứng dịch vụ và thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
 ##### Khoản 2
 
 Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế gồm các nội dung chủ yếu sau đây:
 
-a)[66] Đối tượng phục vụ và yêu cầu về phạm vi cung ứng dịch vụ; dự kiến số lượng thẻ và cơ cấu nhóm đối tượng tham gia bảo hiểm y tế đối với cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu;
+a) Đối tượng phục vụ và yêu cầu về phạm vi cung ứng dịch vụ; dự kiến số lượng thẻ và cơ cấu nhóm đối tượng tham gia bảo hiểm y tế đối với cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu;
 
 b) Phương thức thanh toán chi phí khám bệnh, chữa bệnh;
 
@@ -819,13 +895,17 @@ d) Thời hạn hợp đồng;
 
 đ) Trách nhiệm do vi phạm hợp đồng;
 
-e)[67] Điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng.
+e) Điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng.
 
-3.[68] Việc thỏa thuận về điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng quy định tại điểm e khoản 2 Điều này phải bảo đảm không làm gián đoạn việc khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
+##### Khoản 3
 
-4.[69] Chính phủ quy định chi tiết Điều này và quy định mẫu hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
+Việc thỏa thuận về điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng quy định tại điểm e khoản 2 Điều này phải bảo đảm không làm gián đoạn việc khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
 
-#### Điều 26. Đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu[70]
+##### Khoản 4
+
+Chính phủ quy định chi tiết Điều này và quy định mẫu hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
+
+#### Điều 26. Đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu
 
 ##### Khoản 1
 
@@ -843,7 +923,7 @@ Bộ trưởng Bộ Y tế quy định chi tiết khoản 1 và khoản 2 Điề
 
 Bộ trưởng Bộ Công an, Bộ trưởng Bộ Quốc phòng quy định việc đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu đối với cơ sở khám bệnh, chữa bệnh cấp ban đầu, cấp cơ bản, cấp chuyên sâu và người tham gia bảo hiểm y tế thuộc thẩm quyền quản lý.
 
-#### Điều 27. Chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế[71]
+#### Điều 27. Chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -857,7 +937,7 @@ Bộ trưởng Bộ Y tế quy định việc chuyển người bệnh về cơ 
 
 Bộ trưởng Bộ Công an, Bộ trưởng Bộ Quốc phòng quy định việc chuyển người bệnh thuộc thẩm quyền quản lý giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế thuộc thẩm quyền quản lý.
 
-#### Điều 28. Thủ tục khám bệnh, chữa bệnh bảo hiểm y tế[72]
+#### Điều 28. Thủ tục khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -891,11 +971,11 @@ Việc giám định bảo hiểm y tế phải bảo đảm chính xác, công 
 
 ##### Khoản 3
 
-Cơ quan bảo hiểm xã hội[73] thực hiện việc giám định bảo hiểm y tế và chịu trách nhiệm trước pháp luật về kết quả giám định.
+Cơ quan bảo hiểm xã hội thực hiện việc giám định bảo hiểm y tế và chịu trách nhiệm trước pháp luật về kết quả giám định.
 
 ## Chương VI. THANH TOÁN CHI PHÍ KHÁM BỆNH, CHỮA BỆNH BẢO HIỂM Y TẾ
 
-#### Điều 30. Phương thức thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế[74]
+#### Điều 30. Phương thức thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -911,7 +991,7 @@ c) Thanh toán theo nhóm chẩn đoán.
 
 Chính phủ quy định chi tiết khoản 1 Điều này và quy định việc áp dụng phương thức thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
-#### Điều 31. Thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế[75]
+#### Điều 31. Thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -947,7 +1027,7 @@ c) Việc thanh toán, quyết toán chi phí khám bệnh, chữa bệnh bảo 
 
 Chính phủ quy định chi tiết điểm a và điểm b khoản 2, khoản 3 Điều này, trừ trường hợp quy định tại khoản 4 Điều này.
 
-#### Điều 32. Tạm ứng, thanh toán, quyết toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế[76]
+#### Điều 32. Tạm ứng, thanh toán, quyết toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -997,17 +1077,21 @@ Các nguồn thu hợp pháp khác.
 
 #### Điều 34. Quản lý quỹ bảo hiểm y tế
 
-1.[77] Quỹ bảo hiểm y tế được quản lý tập trung, thống nhất, công khai, minh bạch và có sự phân cấp quản lý trong hệ thống cơ quan bảo hiểm xã hội[78].
+##### Khoản 1
 
-Hội đồng quản lý bảo hiểm xã hội[79] theo quy định của Luật Bảo hiểm xã hội chịu trách nhiệm quản lý quỹ bảo hiểm y tế và tư vấn chính sách bảo hiểm y tế.
+Quỹ bảo hiểm y tế được quản lý tập trung, thống nhất, công khai, minh bạch và có sự phân cấp quản lý trong hệ thống cơ quan bảo hiểm xã hội.
+
+Hội đồng quản lý bảo hiểm xã hội theo quy định của Luật Bảo hiểm xã hội chịu trách nhiệm quản lý quỹ bảo hiểm y tế và tư vấn chính sách bảo hiểm y tế.
 
 ##### Khoản 2
 
 Chính phủ quy định cụ thể việc quản lý quỹ bảo hiểm y tế; quyết định nguồn tài chính để bảo đảm việc khám bệnh, chữa bệnh bảo hiểm y tế trong trường hợp mất cân đối thu, chi quỹ bảo hiểm y tế.
 
-3.[80] Hằng năm, Chính phủ báo cáo trước Quốc hội về quản lý và sử dụng quỹ bảo hiểm y tế.
+##### Khoản 3
 
-#### Điều 35. Phân bổ và sử dụng quỹ bảo hiểm y tế[81]
+Hằng năm, Chính phủ báo cáo trước Quốc hội về quản lý và sử dụng quỹ bảo hiểm y tế.
+
+#### Điều 35. Phân bổ và sử dụng quỹ bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -1043,7 +1127,9 @@ LIÊN QUAN ĐẾN BẢO HIỂM Y TẾ
 
 Được cấp thẻ bảo hiểm y tế khi đóng bảo hiểm y tế.
 
-2.[82] Được đăng ký cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu theo quy định tại Điều 26 của Luật này.
+##### Khoản 2
+
+Được đăng ký cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu theo quy định tại Điều 26 của Luật này.
 
 ##### Khoản 3
 
@@ -1051,11 +1137,11 @@ LIÊN QUAN ĐẾN BẢO HIỂM Y TẾ
 
 ##### Khoản 4
 
-Được cơ quan bảo hiểm xã hội[83] thanh toán chi phí khám bệnh, chữa bệnh theo chế độ bảo hiểm y tế.
+Được cơ quan bảo hiểm xã hội thanh toán chi phí khám bệnh, chữa bệnh theo chế độ bảo hiểm y tế.
 
 ##### Khoản 5
 
-Yêu cầu cơ quan bảo hiểm xã hội[84], cơ sở khám bệnh, chữa bệnh bảo hiểm y tế và cơ quan liên quan giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
+Yêu cầu cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh bảo hiểm y tế và cơ quan liên quan giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
 
 ##### Khoản 6
 
@@ -1077,7 +1163,7 @@ Thực hiện các quy định tại Điều 28 của Luật này khi đến kh�
 
 ##### Khoản 4
 
-Chấp hành các quy định và hướng dẫn của cơ quan bảo hiểm xã hội[85], cơ sở khám bệnh, chữa bệnh khi đến khám bệnh, chữa bệnh.
+Chấp hành các quy định và hướng dẫn của cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh khi đến khám bệnh, chữa bệnh.
 
 ##### Khoản 5
 
@@ -1087,7 +1173,7 @@ Thanh toán chi phí khám bệnh, chữa bệnh cho cơ sở khám bệnh, ch�
 
 ##### Khoản 1
 
-Yêu cầu cơ quan bảo hiểm xã hội[86], cơ quan nhà nước có thẩm quyền giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
+Yêu cầu cơ quan bảo hiểm xã hội, cơ quan nhà nước có thẩm quyền giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
 
 ##### Khoản 2
 
@@ -1103,23 +1189,27 @@ Lập hồ sơ đề nghị cấp thẻ bảo hiểm y tế.
 
 Đóng bảo hiểm y tế đầy đủ, đúng thời hạn.
 
-3.[87] Giao thẻ hoặc thông báo về kết quả cấp thẻ bảo hiểm y tế cho người tham gia bảo hiểm y tế trong thời hạn 03 ngày làm việc kể từ ngày nhận được thẻ hoặc nhận được thông báo về kết quả cấp thẻ bảo hiểm y tế từ cơ quan bảo hiểm xã hội.
+##### Khoản 3
+
+Giao thẻ hoặc thông báo về kết quả cấp thẻ bảo hiểm y tế cho người tham gia bảo hiểm y tế trong thời hạn 03 ngày làm việc kể từ ngày nhận được thẻ hoặc nhận được thông báo về kết quả cấp thẻ bảo hiểm y tế từ cơ quan bảo hiểm xã hội.
 
 ##### Khoản 4
 
-Cung cấp đầy đủ, chính xác thông tin, tài liệu có liên quan đến trách nhiệm thực hiện bảo hiểm y tế của người sử dụng lao động, của đại diện cho người tham gia bảo hiểm y tế khi có yêu cầu của cơ quan bảo hiểm xã hội[88], người lao động hoặc đại diện của người lao động.
+Cung cấp đầy đủ, chính xác thông tin, tài liệu có liên quan đến trách nhiệm thực hiện bảo hiểm y tế của người sử dụng lao động, của đại diện cho người tham gia bảo hiểm y tế khi có yêu cầu của cơ quan bảo hiểm xã hội, người lao động hoặc đại diện của người lao động.
 
 ##### Khoản 5
 
 Chấp hành việc thanh tra, kiểm tra về việc thực hiện các quy định của pháp luật về bảo hiểm y tế.
 
-#### Điều 40. Quyền của cơ quan bảo hiểm xã hội[89]
+#### Điều 40. Quyền của cơ quan bảo hiểm xã hội
 
 ##### Khoản 1
 
 Yêu cầu người sử dụng lao động, đại diện của người tham gia bảo hiểm y tế và người tham gia bảo hiểm y tế cung cấp đầy đủ, chính xác thông tin, tài liệu có liên quan đến trách nhiệm của họ về việc thực hiện bảo hiểm y tế.
 
-2.[90] Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế; thu hồi, tạm giữ thẻ bảo hiểm y tế đối với trường hợp quy định tại Điều 20 của Luật này.
+##### Khoản 2
+
+Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế; thu hồi, tạm giữ thẻ bảo hiểm y tế đối với trường hợp quy định tại Điều 20 của Luật này.
 
 ##### Khoản 3
 
@@ -1131,19 +1221,21 @@ Từ chối thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
 
 ##### Khoản 5
 
-Yêu cầu người có trách nhiệm bồi thường thiệt hại cho người tham gia bảo hiểm y tế hoàn trả chi phí khám bệnh, chữa bệnh mà cơ quan bảo hiểm xã hội[91] đã chi trả.
+Yêu cầu người có trách nhiệm bồi thường thiệt hại cho người tham gia bảo hiểm y tế hoàn trả chi phí khám bệnh, chữa bệnh mà cơ quan bảo hiểm xã hội đã chi trả.
 
 ##### Khoản 6
 
 Kiến nghị với cơ quan nhà nước có thẩm quyền sửa đổi, bổ sung chính sách, pháp luật về bảo hiểm y tế và xử lý tổ chức, cá nhân vi phạm pháp luật về bảo hiểm y tế.
 
-#### Điều 41. Trách nhiệm của cơ quan bảo hiểm xã hội[92]
+#### Điều 41. Trách nhiệm của cơ quan bảo hiểm xã hội
 
 ##### Khoản 1
 
 Tuyên truyền, phổ biến chính sách, pháp luật về bảo hiểm y tế.
 
-2.[93] Tổ chức để đối tượng quy định tại khoản 5 Điều 12 của Luật này đóng bảo hiểm y tế theo hộ gia đình thuận lợi tại đại lý bảo hiểm y tế. Hướng dẫn hồ sơ, thủ tục, nơi đăng ký tham gia bảo hiểm y tế và tổ chức thực hiện chế độ bảo hiểm y tế, bảo đảm nhanh chóng, đơn giản và thuận tiện cho người tham gia bảo hiểm y tế. Rà soát, tổng hợp, xác nhận danh sách tham gia bảo hiểm y tế để tránh cấp trùng thẻ bảo hiểm y tế của các đối tượng quy định tại Điều 12 của Luật này, trừ các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý.
+##### Khoản 2
+
+Tổ chức để đối tượng quy định tại khoản 5 Điều 12 của Luật này đóng bảo hiểm y tế theo hộ gia đình thuận lợi tại đại lý bảo hiểm y tế. Hướng dẫn hồ sơ, thủ tục, nơi đăng ký tham gia bảo hiểm y tế và tổ chức thực hiện chế độ bảo hiểm y tế, bảo đảm nhanh chóng, đơn giản và thuận tiện cho người tham gia bảo hiểm y tế. Rà soát, tổng hợp, xác nhận danh sách tham gia bảo hiểm y tế để tránh cấp trùng thẻ bảo hiểm y tế của các đối tượng quy định tại Điều 12 của Luật này, trừ các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý.
 
 ##### Khoản 3
 
@@ -1165,13 +1257,17 @@ Thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
 Cung cấp thông tin về các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế và hướng dẫn người tham gia bảo hiểm y tế lựa chọn cơ sở khám bệnh, chữa bệnh ban đầu.
 
-8.[94] Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế.
+##### Khoản 8
+
+Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế.
 
 ##### Khoản 9
 
 Bảo vệ quyền lợi của người tham gia bảo hiểm y tế; giải quyết theo thẩm quyền các kiến nghị, khiếu nại, tố cáo về chế độ bảo hiểm y tế.
 
-10.[95] Lưu trữ hồ sơ, số liệu về bảo hiểm y tế theo quy định của pháp luật; xác định thời gian tham gia bảo hiểm y tế để đảm bảo quyền lợi cho người tham gia bảo hiểm y tế; ứng dụng công nghệ thông tin trong quản lý bảo hiểm y tế, xây dựng cơ sở dữ liệu quốc gia về bảo hiểm y tế.
+##### Khoản 10
+
+Lưu trữ hồ sơ, số liệu về bảo hiểm y tế theo quy định của pháp luật; xác định thời gian tham gia bảo hiểm y tế để đảm bảo quyền lợi cho người tham gia bảo hiểm y tế; ứng dụng công nghệ thông tin trong quản lý bảo hiểm y tế, xây dựng cơ sở dữ liệu quốc gia về bảo hiểm y tế.
 
 ##### Khoản 11
 
@@ -1185,11 +1281,11 @@ Tổ chức đào tạo, bồi dưỡng nghiệp vụ, nghiên cứu khoa học 
 
 ##### Khoản 1
 
-Yêu cầu cơ quan bảo hiểm xã hội[96] cung cấp đầy đủ, chính xác các thông tin có liên quan đến người tham gia bảo hiểm y tế, kinh phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế tại cơ sở khám bệnh, chữa bệnh.
+Yêu cầu cơ quan bảo hiểm xã hội cung cấp đầy đủ, chính xác các thông tin có liên quan đến người tham gia bảo hiểm y tế, kinh phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế tại cơ sở khám bệnh, chữa bệnh.
 
 ##### Khoản 2
 
-Được cơ quan bảo hiểm xã hội[97] tạm ứng kinh phí và thanh toán chi phí khám bệnh, chữa bệnh theo hợp đồng khám bệnh, chữa bệnh đã ký.
+Được cơ quan bảo hiểm xã hội tạm ứng kinh phí và thanh toán chi phí khám bệnh, chữa bệnh theo hợp đồng khám bệnh, chữa bệnh đã ký.
 
 ##### Khoản 3
 
@@ -1201,15 +1297,17 @@ Kiến nghị với cơ quan nhà nước có thẩm quyền xử lý tổ chứ
 
 Tổ chức khám bệnh, chữa bệnh bảo đảm chất lượng với thủ tục đơn giản, thuận tiện cho người tham gia bảo hiểm y tế.
 
-2.[98] Cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh và thanh toán chi phí khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế theo yêu cầu của cơ quan bảo hiểm xã hội[99] và cơ quan nhà nước có thẩm quyền; đối với hồ sơ đề nghị thanh toán trực tiếp, trong thời hạn 5 ngày làm việc, kể từ ngày nhận được yêu cầu của cơ quan bảo hiểm xã hội[100], cơ sở khám bệnh, chữa bệnh bảo hiểm y tế có trách nhiệm cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
+##### Khoản 2
+
+Cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh và thanh toán chi phí khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế theo yêu cầu của cơ quan bảo hiểm xã hội và cơ quan nhà nước có thẩm quyền; đối với hồ sơ đề nghị thanh toán trực tiếp, trong thời hạn 5 ngày làm việc, kể từ ngày nhận được yêu cầu của cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh bảo hiểm y tế có trách nhiệm cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
 
 ##### Khoản 3
 
-Bảo đảm điều kiện cần thiết cho cơ quan bảo hiểm xã hội[101] thực hiện công tác giám định; phối hợp với cơ quan bảo hiểm xã hội[102] trong việc tuyên truyền, giải thích về chế độ bảo hiểm y tế cho người tham gia bảo hiểm y tế.
+Bảo đảm điều kiện cần thiết cho cơ quan bảo hiểm xã hội thực hiện công tác giám định; phối hợp với cơ quan bảo hiểm xã hội trong việc tuyên truyền, giải thích về chế độ bảo hiểm y tế cho người tham gia bảo hiểm y tế.
 
 ##### Khoản 4
 
-Kiểm tra, phát hiện và thông báo cho cơ quan bảo hiểm xã hội[103] những trường hợp vi phạm về sử dụng thẻ bảo hiểm y tế; phối hợp với cơ quan bảo hiểm xã hội[104] thu hồi, tạm giữ thẻ bảo hiểm y tế đối với các trường hợp quy định tại Điều 20 của Luật này.
+Kiểm tra, phát hiện và thông báo cho cơ quan bảo hiểm xã hội những trường hợp vi phạm về sử dụng thẻ bảo hiểm y tế; phối hợp với cơ quan bảo hiểm xã hội thu hồi, tạm giữ thẻ bảo hiểm y tế đối với các trường hợp quy định tại Điều 20 của Luật này.
 
 ##### Khoản 5
 
@@ -1219,17 +1317,23 @@ Quản lý và sử dụng kinh phí từ quỹ bảo hiểm y tế theo đúng 
 
 Tổ chức thực hiện công tác thống kê, báo cáo về bảo hiểm y tế theo quy định của pháp luật.
 
-7.[105] Lập bảng kê chi phí khám bệnh, chữa bệnh bảo hiểm y tế và chịu trách nhiệm trước pháp luật về tính hợp pháp, chính xác của bảng kê này.
+##### Khoản 7
 
-8.[106] Cung cấp bảng kê chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế khi có yêu cầu.
+Lập bảng kê chi phí khám bệnh, chữa bệnh bảo hiểm y tế và chịu trách nhiệm trước pháp luật về tính hợp pháp, chính xác của bảng kê này.
 
-9.[107] Bảo đảm đủ điều kiện cho hoạt động khám bệnh, chữa bệnh bảo hiểm y tế theo quy định của pháp luật về bảo hiểm y tế, pháp luật về khám bệnh, chữa bệnh và theo hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
+##### Khoản 8
+
+Cung cấp bảng kê chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế khi có yêu cầu.
+
+##### Khoản 9
+
+Bảo đảm đủ điều kiện cho hoạt động khám bệnh, chữa bệnh bảo hiểm y tế theo quy định của pháp luật về bảo hiểm y tế, pháp luật về khám bệnh, chữa bệnh và theo hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
 
 #### Điều 44. Quyền của tổ chức đại diện người lao động và tổ chức đại diện người sử dụng lao động
 
 ##### Khoản 1
 
-Yêu cầu cơ quan bảo hiểm xã hội[108], cơ sở khám bệnh, chữa bệnh và người sử dụng lao động cung cấp đầy đủ, chính xác thông tin liên quan đến chế độ bảo hiểm y tế của người lao động.
+Yêu cầu cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh và người sử dụng lao động cung cấp đầy đủ, chính xác thông tin liên quan đến chế độ bảo hiểm y tế của người lao động.
 
 ##### Khoản 2
 
@@ -1245,7 +1349,9 @@ Tuyên truyền, phổ biến chính sách, pháp luật về bảo hiểm y t�
 
 Tham gia xây dựng, kiến nghị sửa đổi, bổ sung chính sách, pháp luật về bảo hiểm y tế.
 
-3.[109] Tham gia giám sát việc thi hành pháp luật về bảo hiểm y tế, đôn đốc người sử dụng lao động đóng bảo hiểm y tế cho người lao động và tham gia giải quyết các trường hợp trốn đóng, nợ đóng bảo hiểm y tế.
+##### Khoản 3
+
+Tham gia giám sát việc thi hành pháp luật về bảo hiểm y tế, đôn đốc người sử dụng lao động đóng bảo hiểm y tế cho người lao động và tham gia giải quyết các trường hợp trốn đóng, nợ đóng bảo hiểm y tế.
 
 ## Chương IX. THANH TRA, KHIẾU NẠI, TỐ CÁO, GIẢI QUYẾT TRANH CHẤP VÀ XỬ LÝ VI PHẠM VỀ BẢO HIỂM Y TẾ
 
@@ -1267,7 +1373,7 @@ a) Người tham gia bảo hiểm y tế theo quy định tại Điều 12 của
 
 b) Tổ chức, cá nhân đóng bảo hiểm y tế theo quy định tại khoản 1 Điều 13 của Luật này;
 
-c) Cơ quan bảo hiểm xã hội[110];
+c) Cơ quan bảo hiểm xã hội;
 
 d) Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế.
 
@@ -1279,7 +1385,7 @@ a) Các bên tranh chấp có trách nhiệm tự hòa giải về nội dung tr
 
 b) Trường hợp hòa giải không thành thì các bên tranh chấp có quyền khởi kiện tại Tòa án theo quy định của pháp luật.
 
-#### Điều 48a. Chậm đóng bảo hiểm y tế[111]
+#### Điều 48a. Chậm đóng bảo hiểm y tế
 
 Chậm đóng bảo hiểm y tế là hành vi của người sử dụng lao động thuộc một trong các trường hợp sau đây:
 
@@ -1295,7 +1401,7 @@ Không lập danh sách hoặc lập danh sách không đầy đủ số ngườ
 
 Thuộc trường hợp không bị coi là trốn đóng bảo hiểm y tế theo quy định tại khoản 2 Điều 48b của Luật này.
 
-#### Điều 48b. Trốn đóng bảo hiểm y tế[112]
+#### Điều 48b. Trốn đóng bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -1313,7 +1419,7 @@ d) Các trường hợp khác bị coi là trốn đóng bảo hiểm y tế the
 
 Chính phủ quy định chi tiết Điều này; quy định các trường hợp thuộc khoản 1 Điều này nhưng có lý do chính đáng thì không bị coi là trốn đóng bảo hiểm y tế.
 
-#### Điều 49. Xử lý vi phạm pháp luật về bảo hiểm y tế[113]
+#### Điều 49. Xử lý vi phạm pháp luật về bảo hiểm y tế
 
 ##### Khoản 1
 
@@ -1347,7 +1453,7 @@ Cơ quan, tổ chức, người sử dụng lao động chậm đóng, trốn đ
 
 Chính phủ quy định chi tiết điểm a khoản 2, điểm a khoản 3 và khoản 4 Điều này.
 
-## Chương X. ĐIỀU KHOẢN THI HÀNH[114]
+## Chương X. ĐIỀU KHOẢN THI HÀNH
 
 #### Điều 50. Điều khoản chuyển tiếp
 

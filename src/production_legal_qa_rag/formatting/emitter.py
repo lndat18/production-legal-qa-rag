@@ -8,9 +8,19 @@ dung ngắn), còn Điểm thì xuất nguyên văn như đoạn văn thường.
 Block thuộc vùng nội dung ở giữa — front matter/back matter đã được cắt và
 xử lý riêng bởi ``frontmatter.py``/``backmatter.py`` (mục 1.1 spec), không
 còn bước chèn inline chú thích vào giữa thân văn bản.
+
+Trước khi áp regex heading, mọi block paragraph được gỡ marker chú thích
+``[n]`` dính liền (``patterns.strip_markers``) — bắt buộc chạy trước, không
+phải sau: marker dính ngay sau số Khoản/Điều (vd. ``"1.[2] Bảo hiểm y
+tế..."``) sẽ phá ``RE_KHOAN``/``RE_DIEU`` (yêu cầu khoảng trắng ngay sau dấu
+chấm) nếu còn nguyên khi match. Bảng KHÔNG bị strip (marker trong bảng là dấu
+hiệu bất thường, không phải nội dung cần làm sạch) — ``validator.py`` cảnh
+báo nếu còn sót marker ở bất kỳ đâu trong output.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 from production_legal_qa_rag.formatting.docx_reader import Block
 from production_legal_qa_rag.formatting.patterns import (
@@ -22,6 +32,7 @@ from production_legal_qa_rag.formatting.patterns import (
     RE_PHAN,
     RE_PHU_LUC,
     is_structural,
+    strip_markers,
 )
 
 # Trong Phụ lục ghi "##### 28. Thành phố Hồ Chí Minh" thay cho "##### Khoản 28",
@@ -130,6 +141,22 @@ def _emit_khoan(number: str, content: str, parts: list[str], in_phu_luc: bool) -
         parts.append(content)
 
 
+def _strip_block_markers(block: Block) -> Block:
+    """Gỡ marker ``[n]`` khỏi text của một block paragraph (bảng giữ nguyên).
+
+    Trả về block gốc không đổi khi không có ``[`` nào trong text (phần lớn
+    block trong corpus không có marker) -- tránh cả cấp phát thừa lẫn tác
+    dụng phụ ngoài ý muốn (``strip_markers`` cũng chuẩn hoá khoảng trắng, chỉ
+    nên áp dụng khi thật sự có marker cần gỡ).
+    """
+    if block.kind != "paragraph" or "[" not in block.text:
+        return block
+    cleaned = strip_markers(block.text)
+    if cleaned == block.text:
+        return block
+    return replace(block, text=cleaned)
+
+
 def emit(blocks: list[Block]) -> list[str]:
     """Sinh các đoạn markdown thân văn bản theo bảng ánh xạ heading mục 3 spec.
 
@@ -141,6 +168,8 @@ def emit(blocks: list[Block]) -> list[str]:
     Returns:
         Danh sách các đoạn markdown, theo đúng thứ tự xuất hiện.
     """
+    blocks = [_strip_block_markers(block) for block in blocks]
+
     parts: list[str] = []
     in_phu_luc = False
 
