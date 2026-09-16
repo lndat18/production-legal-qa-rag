@@ -32,7 +32,8 @@ jobs:
             exit 0
           fi
 
-          CHANGED_CODE=$(git diff --name-only "$BASE" "$HEAD" \
+          MERGE_BASE=$(git merge-base "$BASE" "$HEAD")
+          CHANGED_CODE=$(git diff --name-only "$MERGE_BASE" "$HEAD" \
             | grep -E '^(src/|tests/|tools/|pyproject\.toml|uv\.lock|\.github/workflows/)' || true)
 
           if [ -n "$CHANGED_CODE" ]; then
