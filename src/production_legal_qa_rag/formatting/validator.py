@@ -3,7 +3,7 @@
 Toàn bộ rule ở đây chỉ cảnh báo, không bao giờ làm fail file — kết quả trả
 về là danh sách ``QcWarning`` để ``pipeline.py`` gom vào summary cuối cùng.
 ``validate()`` chỉ chạy trên markdown do ``emitter.emit`` sinh ra (vùng nội
-dung ở giữa) — front matter/back matter do Gemini sinh không đi qua đây (mục
+dung ở giữa) — front matter/back matter do Groq sinh không đi qua đây (mục
 1.1, 3 spec), không còn khối YAML nào để bóc tách ở đầu file.
 """
 

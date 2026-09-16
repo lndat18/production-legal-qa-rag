@@ -1,10 +1,11 @@
 """Bộ test cho bước formatting (DOCX -> Markdown), theo `formatting_spec.md`.
 
 Thiết kế mới (mục 1.1): front matter/back matter không còn trích field/YAML,
-chỉ xác định biên deterministic rồi gọi Gemini (`llm_client.convert_to_markdown`)
-convert nguyên khối sang markdown thuần. Test suite này KHÔNG BAO GIỜ gọi
-Gemini API thật (fixture `_default_llm_stub` mock `llm_client.convert_to_markdown`
-cho toàn bộ session, mặc định trả `None`) -- free tier chỉ 20 request/ngày.
+chỉ xác định biên deterministic rồi chia chunk (mục 1.2) và gọi Groq
+(`llm_client.convert_to_markdown`) convert từng chunk sang markdown thuần.
+Test suite này KHÔNG BAO GIỜ gọi Groq API thật (fixture `_default_llm_stub`
+mock `llm_client.convert_to_markdown` cho toàn bộ session, mặc định trả
+`None`) -- không nên phụ thuộc mạng/API key khi chạy CI.
 
 Cấu trúc theo từng module: models, patterns, docx_reader, tables, emitter,
 validator, frontmatter, backmatter, llm_client, pipeline (integration trên
@@ -40,6 +41,7 @@ from production_legal_qa_rag.formatting import (
 )
 from production_legal_qa_rag.formatting.docx_reader import (
     Block,
+    chunk_blocks_for_llm,
     read_docx,
     serialize_blocks_for_llm,
 )
@@ -89,8 +91,8 @@ def T(text: str) -> Block:
 
 
 # ==========================================================================
-# Không bao giờ gọi Gemini API thật trong test suite (CI không có
-# GEMINI_API_KEY; máy dev có thể có key thật -- không nên phụ thuộc vào việc
+# Không bao giờ gọi Groq API thật trong test suite (CI không có
+# GROQ_API_KEY; máy dev có thể có key thật -- không nên phụ thuộc vào việc
 # thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
 # ==========================================================================
 
@@ -100,13 +102,37 @@ def T(text: str) -> Block:
 # chính nó) để kiểm tra logic try/except/retry thật của nó.
 _REAL_CONVERT_TO_MARKDOWN = llm_client.convert_to_markdown
 
+# Giữ tham chiếu tới object `lru_cache` THẬT của `_client`/`_rate_limiter` --
+# một số test monkeypatch trực tiếp `llm_client._client` bằng 1 lambda trần
+# (không có `.cache_clear`), nên fixture dọn dẹp dưới đây phải luôn thao tác
+# trên object gốc này, không đọc lại qua `llm_client._client` (có thể đang bị
+# monkeypatch tại thời điểm teardown chạy, thứ tự teardown giữa các fixture
+# không đảm bảo monkeypatch đã revert trước).
+_REAL_CLIENT_FACTORY = llm_client._client
+_REAL_RATE_LIMITER_FACTORY = llm_client._rate_limiter
+
 
 @pytest.fixture(autouse=True)
 def _default_llm_stub(monkeypatch: pytest.MonkeyPatch):
-    """Mặc định `llm_client.convert_to_markdown` trả `None` (Gemini "lỗi")
+    """Mặc định `llm_client.convert_to_markdown` trả `None` (Groq "lỗi")
     cho MỌI test, trừ khi test tự monkeypatch lại giá trị khác bên trong.
     """
     monkeypatch.setattr(llm_client, "convert_to_markdown", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_client_singletons():
+    """Dọn state của `_client`/`_rate_limiter` (2 `lru_cache` singleton
+    module-level trong `llm_client.py`) trước/sau mỗi test -- không dọn thì
+    entry của sliding-window rate limiter ghi nhận ở 1 test có thể rò rỉ
+    sang test kế tiếp trong cùng phiên pytest, gây `time.sleep` thật ngoài ý
+    muốn khi test không tự mock `time` (mục 1.2 spec).
+    """
+    _REAL_CLIENT_FACTORY.cache_clear()
+    _REAL_RATE_LIMITER_FACTORY.cache_clear()
+    yield
+    _REAL_CLIENT_FACTORY.cache_clear()
+    _REAL_RATE_LIMITER_FACTORY.cache_clear()
 
 
 def _forbid_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -159,7 +185,7 @@ def test_formatting_result_thieu_markdown_bao_loi():
         FormattingResult()  # type: ignore[call-arg]
 
 
-def test_qc_warning_code_gom_du_hai_ma_gemini_moi():
+def test_qc_warning_code_gom_du_hai_ma_llm_moi():
     assert "llm_frontmatter_conversion_failed" in KNOWN_WARNING_CODES
     assert "llm_backmatter_conversion_failed" in KNOWN_WARNING_CODES
 
@@ -366,6 +392,86 @@ def test_serialize_blocks_for_llm_giu_nguyen_bang():
     table_text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
     blocks = [T(table_text)]
     assert serialize_blocks_for_llm(blocks) == table_text
+
+
+# ==========================================================================
+# docx_reader.py -- chunk_blocks_for_llm (formatting_spec.md mục 1.2)
+# ==========================================================================
+
+
+def test_chunk_blocks_for_llm_rong_tra_ve_danh_sach_rong():
+    assert chunk_blocks_for_llm([], token_limit=1500) == []
+
+
+def test_chunk_blocks_for_llm_duoi_gioi_han_mot_chunk_duy_nhat():
+    blocks = [P("Đoạn ngắn 1."), P("Đoạn ngắn 2."), P("Đoạn ngắn 3.")]
+    chunks = chunk_blocks_for_llm(blocks, token_limit=1500)
+    assert chunks == [blocks]
+
+
+def test_chunk_blocks_for_llm_vuot_gioi_han_tach_chunk_moi():
+    # Mỗi block ~40 ký tự => ~16 token (heuristic len // 2.5). token_limit=20
+    # chỉ đủ cho 1 block mỗi chunk.
+    blocks = [P("A" * 40), P("B" * 40), P("C" * 40)]
+    chunks = chunk_blocks_for_llm(blocks, token_limit=20)
+    assert chunks == [[blocks[0]], [blocks[1]], [blocks[2]]]
+
+
+def test_chunk_blocks_for_llm_khong_cat_giua_mot_block():
+    # 1 block tự nó đã vượt token_limit vẫn phải nằm trọn trong 1 chunk
+    # riêng -- không có cách nào chia nhỏ hơn mà không cắt giữa block.
+    huge_block = P("X" * 10_000)
+    blocks = [P("nhỏ"), huge_block, P("nhỏ 2")]
+    chunks = chunk_blocks_for_llm(blocks, token_limit=100)
+    matching_chunks = [chunk for chunk in chunks if huge_block in chunk]
+    assert len(matching_chunks) == 1
+    assert matching_chunks[0] == [huge_block]
+    # Mọi block gốc phải xuất hiện đúng 1 lần, đúng thứ tự, không bị cắt.
+    flattened = [block for chunk in chunks for block in chunk]
+    assert flattened == blocks
+
+
+def test_chunk_blocks_for_llm_giu_dung_thu_tu_tong_hop():
+    blocks = [P(f"block {i} " + "x" * 30) for i in range(5)]
+    chunks = chunk_blocks_for_llm(blocks, token_limit=30)
+    flattened = [block for chunk in chunks for block in chunk]
+    assert flattened == blocks
+    assert len(chunks) > 1
+
+
+@pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
+def test_chunk_blocks_for_llm_tren_bao_hiem_y_te_that_tach_nhieu_chunk():
+    """Mục 7 spec: `Luật bảo hiểm y tế.docx` là ca kiểm thử chính cho việc
+    chunk hoạt động đúng trên corpus thật -- back matter ~11.671 token ước
+    lượng, vượt xa `CHUNK_TOKEN_LIMIT=1500` nếu gửi nguyên khối, nên bắt
+    buộc phải tách thành nhiều chunk, mỗi chunk dưới ngưỡng. Test này KHÔNG
+    gọi Groq -- xác định biên (`frontmatter.find_boundary`,
+    `backmatter.split_backmatter`) và `chunk_blocks_for_llm` đều là hàm
+    thuần, cục bộ, không phụ thuộc mạng/API key."""
+    path = RAW_DIR / "Luật bảo hiểm y tế.docx"
+    if not path.exists():
+        pytest.skip("data/raw/Luật bảo hiểm y tế.docx không tồn tại")
+
+    blocks = read_docx(path)
+    fm_boundary = frontmatter.find_boundary(blocks)
+    rest = blocks[fm_boundary:]
+    _, back_blocks, _ = backmatter.split_backmatter(rest)
+
+    assert back_blocks, "kỳ vọng file này có back matter (mục 1.2 spec)"
+
+    chunk_token_limit = LLMSettings.model_fields["chunk_token_limit"].default
+    chunks = chunk_blocks_for_llm(back_blocks, chunk_token_limit)
+
+    assert len(chunks) > 1
+    # Không có block đơn lẻ nào trên corpus thật đủ lớn để tự vượt ngưỡng
+    # (mục 1.2 "Không bao giờ cắt giữa 1 block" chỉ là ngoại lệ lý thuyết) --
+    # nên mọi chunk thực tế phải nằm dưới `chunk_token_limit`.
+    for chunk in chunks:
+        estimated_tokens = sum(len(block.text) for block in chunk) / 2.5
+        assert estimated_tokens <= chunk_token_limit
+    # Không cắt giữa block, giữ đúng thứ tự gốc.
+    flattened = [block for chunk in chunks for block in chunk]
+    assert flattened == back_blocks
 
 
 # ==========================================================================
@@ -677,7 +783,7 @@ def test_convert_frontmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
     assert warnings == []
 
 
-def test_convert_frontmatter_gemini_loi_phat_canh_bao():
+def test_convert_frontmatter_llm_loi_phat_canh_bao():
     # Fixture `_default_llm_stub` đã trả None mặc định.
     markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ")])
     assert markdown == ""
@@ -696,6 +802,36 @@ def test_convert_frontmatter_prompt_chua_noi_dung_block(
     monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
     frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
     assert "**CHÍNH PHỦ**" in captured["prompt"]
+
+
+def test_convert_frontmatter_nhieu_chunk_goi_llm_tung_chunk_va_noi_ket_qua(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # `chunk_token_limit` nhỏ để ép front matter (dù chỉ 2 block nhỏ) tách
+    # thành 2 chunk -- kiểm tra hành vi ghép nhiều chunk (mục 1.2 spec), độc
+    # lập với kích thước thật của front matter trên corpus.
+    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
+    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "Số: 1/2025/NĐ-CP"])
+    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert len(calls) == 2
+    assert markdown == "**CHÍNH PHỦ**\n\nSố: 1/2025/NĐ-CP"
+    assert warnings == []
+
+
+def test_convert_frontmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
+    _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", None])
+    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert markdown == ""
+    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
 
 
 # ==========================================================================
@@ -753,7 +889,7 @@ def test_convert_backmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
     assert warnings == []
 
 
-def test_convert_backmatter_gemini_loi_phat_canh_bao():
+def test_convert_backmatter_llm_loi_phat_canh_bao():
     markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú.")])
     assert markdown == ""
     assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
@@ -764,7 +900,7 @@ def test_convert_backmatter_prompt_giu_nguyen_marker_khong_bi_strip(
 ):
     # Khác với vùng nội dung ở giữa (strip_markers), marker "[n]" ở back
     # matter là số thứ tự chú thích thật (vd. "[1] Luật Công nghiệp...") --
-    # PHẢI giữ nguyên khi gửi cho Gemini (formatting_spec.md mục 1.1, "Lưu ý
+    # PHẢI giữ nguyên khi gửi cho Groq (formatting_spec.md mục 1.1, "Lưu ý
     # quan trọng").
     captured: dict[str, str] = {}
 
@@ -777,26 +913,67 @@ def test_convert_backmatter_prompt_giu_nguyen_marker_khong_bi_strip(
     assert "[1] Luật Công nghiệp có hiệu lực từ..." in captured["prompt"]
 
 
+def test_convert_backmatter_nhieu_chunk_goi_llm_tung_chunk_va_noi_ket_qua(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Mô phỏng ca thật (Luật bảo hiểm y tế, back matter ~11.671 token ước
+    # lượng, mục 1.2 spec) bằng `chunk_token_limit` nhỏ -- kiểm tra hành vi
+    # tách nhiều chunk và ghép kết quả theo đúng thứ tự, không phụ thuộc
+    # kích thước thật của back matter trên corpus.
+    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
+    calls = _sequential_llm(monkeypatch, ["[1] Ghi chú một.", "[2] Ghi chú hai."])
+    blocks = [P("[1] Ghi chú một."), P("[2] Ghi chú hai.")]
+
+    markdown, warnings = backmatter.convert_backmatter(blocks)
+
+    assert len(calls) == 2
+    assert markdown == "[1] Ghi chú một.\n\n[2] Ghi chú hai."
+    assert warnings == []
+
+
+def test_convert_backmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
+    _sequential_llm(monkeypatch, ["[1] Ghi chú một.", None])
+    blocks = [P("[1] Ghi chú một."), P("[2] Ghi chú hai.")]
+
+    markdown, warnings = backmatter.convert_backmatter(blocks)
+
+    assert markdown == ""
+    assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
+
+
 # ==========================================================================
-# llm_client.py -- Gemini (google-genai), mock hoàn toàn (không gọi API thật)
+# llm_client.py -- Groq (SDK `groq`), mock hoàn toàn (không gọi API thật)
 # ==========================================================================
 
 
-def test_client_gemini_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+def _fake_groq_response(content: str | None, *, total_tokens: int | None = 100):
+    """Dựng response giả có hình dạng giống `groq.types.chat.ChatCompletion`."""
+    message = Mock(content=content)
+    choice = Mock(message=message)
+    usage = Mock(total_tokens=total_tokens) if total_tokens is not None else None
+    return Mock(choices=[choice], usage=usage)
+
+
+def test_client_groq_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     captured: dict[str, object] = {}
 
-    class FakeClient:
-        def __init__(self, *, api_key: str, http_options) -> None:
+    class FakeGroq:
+        def __init__(self, *, api_key: str, timeout: float, max_retries: int) -> None:
             captured["api_key"] = api_key
-            captured["timeout"] = http_options.timeout
+            captured["timeout"] = timeout
+            captured["max_retries"] = max_retries
 
-    monkeypatch.setattr(llm_client.genai, "Client", FakeClient)
+    monkeypatch.setattr(llm_client, "Groq", FakeGroq)
     llm_client._client.cache_clear()
     try:
         llm_client._client()
         assert captured["api_key"] == "fake-key-khong-goi-thuc-te"
-        assert captured["timeout"] == 30 * 1000
+        assert captured["timeout"] == 30.0
+        assert captured["max_retries"] == 0
     finally:
         llm_client._client.cache_clear()
 
@@ -804,95 +981,231 @@ def test_client_gemini_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch)
 def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
-    fake_client.models.generate_content.return_value = Mock(text="  Kết quả markdown  ")
+    fake_client.chat.completions.create.return_value = _fake_groq_response(
+        "  Kết quả markdown  "
+    )
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt nội dung")
 
     assert result == "Kết quả markdown"
-    kwargs = fake_client.models.generate_content.call_args.kwargs
-    assert kwargs["model"] == "gemini-3.6-flash"
-    assert kwargs["contents"] == "prompt nội dung"
+    kwargs = fake_client.chat.completions.create.call_args.kwargs
+    assert kwargs["model"] == "openai/gpt-oss-120b"
+    assert kwargs["messages"] == [{"role": "user", "content": "prompt nội dung"}]
 
 
 def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
-    fake_client.models.generate_content.side_effect = [
+    fake_client.chat.completions.create.side_effect = [
         RuntimeError("lỗi mạng giả lập"),
-        Mock(text="Kết quả sau khi thử lại"),
+        _fake_groq_response("Kết quả sau khi thử lại"),
     ]
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt")
 
     assert result == "Kết quả sau khi thử lại"
-    assert fake_client.models.generate_content.call_count == 2
+    assert fake_client.chat.completions.create.call_count == 2
 
 
 def test_convert_to_markdown_het_so_lan_thu_tra_ve_none(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
-    fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
+    fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt")
 
     assert result is None
-    assert fake_client.models.generate_content.call_count == 2  # max_retries mặc định
+    assert fake_client.chat.completions.create.call_count == 2  # max_retries mặc định
 
 
 def test_convert_to_markdown_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
-    fake_client.models.generate_content.side_effect = [
-        Mock(text=""),
-        Mock(text="Nội dung thật"),
+    fake_client.chat.completions.create.side_effect = [
+        _fake_groq_response(""),
+        _fake_groq_response("Nội dung thật"),
     ]
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt")
 
     assert result == "Nội dung thật"
-    assert fake_client.models.generate_content.call_count == 2
+    assert fake_client.chat.completions.create.call_count == 2
 
 
 def test_convert_to_markdown_max_retries_ghi_de_settings(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
-    fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
+    fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt", max_retries=1)
 
     assert result is None
-    assert fake_client.models.generate_content.call_count == 1
+    assert fake_client.chat.completions.create.call_count == 1
 
 
-def test_convert_to_markdown_thieu_gemini_api_key_tra_ve_none_khong_raise(
+def test_convert_to_markdown_thieu_groq_api_key_tra_ve_none_khong_raise(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Không có `GEMINI_API_KEY` (đúng thực trạng CI) -- `LLMSettings()`
+    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()`
     raise `ValidationError`, `convert_to_markdown` phải bắt và trả `None`,
-    không để lộ exception (mục 5, 7 spec: lỗi Gemini không bao giờ chặn
+    không để lộ exception (mục 5, 7 spec: lỗi Groq không bao giờ chặn
     pipeline)."""
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
 
     result = _REAL_CONVERT_TO_MARKDOWN("prompt")
     assert result is None
+
+
+def test_convert_to_markdown_cap_nhat_rate_limiter_bang_usage_that(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Sau khi gọi thành công, rate limiter phải được cập nhật bằng
+    `usage.total_tokens` THẬT từ response, không phải số ước lượng heuristic
+    (mục 1.2 spec)."""
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.chat.completions.create.return_value = _fake_groq_response(
+        "kết quả", total_tokens=4242
+    )
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    _REAL_CONVERT_TO_MARKDOWN("prompt")
+
+    limiter = llm_client._rate_limiter(8000, 30)
+    assert [tokens for _, tokens in limiter._entries] == [4242]
+
+
+def test_convert_to_markdown_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.chat.completions.create.return_value = _fake_groq_response(
+        "kết quả", total_tokens=None
+    )
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    _REAL_CONVERT_TO_MARKDOWN("prompt")
+
+    limiter = llm_client._rate_limiter(8000, 30)
+    assert len(limiter._entries) == 1
+
+
+# ==========================================================================
+# llm_client.py -- get_chunk_token_limit (formatting_spec.md mục 1.2, 4)
+# ==========================================================================
+
+
+def test_get_chunk_token_limit_doc_tu_settings(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("CHUNK_TOKEN_LIMIT", "999")
+    assert llm_client.get_chunk_token_limit() == 999
+
+
+def test_get_chunk_token_limit_fallback_khi_thieu_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+    assert llm_client.get_chunk_token_limit() == 1500
+
+
+# ==========================================================================
+# llm_client.py -- _SlidingWindowRateLimiter (formatting_spec.md mục 1.2, 6)
+# ==========================================================================
+
+
+def test_rate_limiter_khong_cho_khi_cua_so_dang_rong():
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
+    # Không có gì để chờ hết hạn -- kể cả khi ước lượng vượt ngưỡng an toàn.
+    limiter.wait_if_needed(1_000_000)  # không raise, không treo
+
+
+def test_rate_limiter_cho_toi_khi_entry_cu_nhat_het_han_do_vuot_tpm(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=100, rpm_limit=30)
+    now = [0.0]
+    monkeypatch.setattr(llm_client.time, "monotonic", lambda: now[0])
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(llm_client.time, "sleep", fake_sleep)
+
+    limiter.record(now[0], 50)  # 50 token, an toàn TPM = 90
+    limiter.wait_if_needed(50)  # 50 + 50 = 100 > 90 -- phải chờ
+
+    assert sleep_calls == [60.0]
+
+
+def test_rate_limiter_cho_toi_khi_vuot_rpm(monkeypatch: pytest.MonkeyPatch):
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=1)
+    now = [0.0]
+    monkeypatch.setattr(llm_client.time, "monotonic", lambda: now[0])
+    sleep_calls: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(llm_client.time, "sleep", fake_sleep)
+
+    limiter.record(now[0], 10)  # 1 request đã ghi nhận, an toàn RPM = 0.9
+    limiter.wait_if_needed(10)  # 1 + 1 = 2 > 0.9 -- phải chờ, bất kể token
+
+    assert sleep_calls == [60.0]
+
+
+def test_rate_limiter_khong_cho_khi_du_du_du_cho_trong_cua_so(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
+    now = [0.0]
+    monkeypatch.setattr(llm_client.time, "monotonic", lambda: now[0])
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        llm_client.time, "sleep", lambda seconds: sleep_calls.append(seconds)
+    )
+
+    limiter.record(now[0], 100)
+    limiter.wait_if_needed(100)  # 100 + 100 << TPM an toàn 7200
+
+    assert sleep_calls == []
+
+
+def test_rate_limiter_don_entry_het_han_khoi_cua_so(monkeypatch: pytest.MonkeyPatch):
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
+    now = [0.0]
+    monkeypatch.setattr(llm_client.time, "monotonic", lambda: now[0])
+
+    limiter.record(0.0, 100)
+    now[0] = 61.0  # entry cũ hơn 60s -- phải bị dọn khỏi cửa sổ
+    limiter._evict_expired(now[0])
+
+    assert list(limiter._entries) == []
 
 
 # ==========================================================================
@@ -994,16 +1307,16 @@ def test_convert_docx_to_markdown_khong_co_back_matter_khong_goi_llm_hai_lan(
     assert result.markdown == (
         "FRONT_MD\n\n#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung khoản một.\n"
     )
-    assert len(calls) == 1  # chỉ front matter gọi Gemini
+    assert len(calls) == 1  # chỉ front matter gọi Groq
     codes = {w.code for w in result.warnings}
     assert "llm_backmatter_conversion_failed" not in codes
     assert "dropped_noi_nhan_table" not in codes
 
 
-def test_convert_docx_to_markdown_gemini_loi_bo_qua_front_matter_khong_fail(
+def test_convert_docx_to_markdown_llm_loi_bo_qua_front_matter_khong_fail(
     tmp_path: Path,
 ):
-    # Fixture `_default_llm_stub` đã trả None mặc định (Gemini "lỗi").
+    # Fixture `_default_llm_stub` đã trả None mặc định (Groq "lỗi").
     docx_path = tmp_path / "front_fail.docx"
     _build_docx(
         docx_path,
@@ -1023,7 +1336,7 @@ def test_convert_docx_to_markdown_gemini_loi_bo_qua_front_matter_khong_fail(
     assert any(w.code == "llm_frontmatter_conversion_failed" for w in result.warnings)
 
 
-def test_convert_docx_to_markdown_gemini_loi_bo_qua_back_matter_khong_fail(
+def test_convert_docx_to_markdown_llm_loi_bo_qua_back_matter_khong_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     _sequential_llm(monkeypatch, ["FRONT_MD", None])
@@ -1114,7 +1427,7 @@ def _heading_lines(markdown: str) -> list[str]:
 def test_convert_heading_khop_voi_tham_chieu_data_markdown(path: Path):
     """Mục 7 spec: heading mapping cho phần nội dung ở giữa phải khớp với
     `data/markdown/*.md` (tham chiếu, không phải golden-file chính thức).
-    Front/back matter do Gemini sinh không so khớp -- ở đây LLM bị mock trả
+    Front/back matter do Groq sinh không so khớp -- ở đây LLM bị mock trả
     `None`, nên chỉ heading của vùng nội dung ở giữa được so sánh (front/back
     matter không chứa heading nào, mục 1.1 spec, nên không ảnh hưởng danh
     sách heading)."""

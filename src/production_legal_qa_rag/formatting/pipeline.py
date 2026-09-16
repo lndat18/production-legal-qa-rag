@@ -7,8 +7,11 @@ nhanh và đơn giản hơn hẳn so với phối hợp ProcessPoolExecutor. L�
 file không chặn các file còn lại trong batch.
 
 ``convert_docx_to_markdown`` ghép 3 phần theo mục 1.1, 2 spec: front matter
-(Gemini) + nội dung ở giữa (pipeline hiện có, không đổi) + back matter
-(Gemini, nếu có, ngăn cách bằng dòng ``---``).
+(Groq, theo chunk) + nội dung ở giữa (pipeline hiện có, không đổi) + back
+matter (Groq, theo chunk, nếu có, ngăn cách bằng dòng ``---``). Rate limiter
+dùng chung xuyên suốt cả lần chạy (mục 1.2, 5 spec) là singleton module-level
+trong ``llm_client.py`` — tự động dùng chung cho mọi lệnh gọi trong tiến
+trình, không cần khởi tạo/truyền tham chiếu tường minh qua ``pipeline.py``.
 """
 
 from __future__ import annotations
@@ -77,8 +80,8 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
     middle_blocks, table_warnings = tables.filter_middle_tables(middle_raw)
     warnings.extend(table_warnings)
 
-    # S3 — chuyển front matter/back matter bằng Gemini (song song về mặt logic,
-    # tuần tự về mặt gọi API — không có fallback khi lỗi).
+    # S3 — chuyển front matter/back matter bằng Groq, theo chunk (mục 1.2),
+    # tuần tự về mặt gọi API — không có fallback khi lỗi.
     front_markdown, fm_warnings = frontmatter.convert_frontmatter(front_blocks)
     warnings.extend(fm_warnings)
 

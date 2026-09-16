@@ -43,14 +43,25 @@ class LLMSettings(BaseSettings):
 
     `model_name`/`max_retries`/`timeout_seconds` đã chốt cho nhu cầu của
     `formatting/` (chuyển đổi front matter/back matter sang markdown bằng
-    Gemini API free tier, `gemini-3.6-flash`, xem `formatting_spec.md` mục
+    Groq API free tier, `openai/gpt-oss-120b`, xem `formatting_spec.md` mục
     1.1, 4). Bước retrieval/generation sau này có thể cần model khác — chưa
     đoán trước ở đây, để ngỏ cho quyết định sau (tránh over-engineering).
+
+    `chunk_token_limit`/`tpm_limit`/`rpm_limit` phục vụ riêng cơ chế chunking
+    + sliding-window rate limiter của `formatting/llm_client.py` (mục 1.2
+    spec) — Groq free tier cho `openai/gpt-oss-120b` giới hạn RPM 30, RPD
+    1.000, TPM 8.000, TPD 200.000; `tpm_limit`/`rpm_limit` ở đây là giới hạn
+    gốc (chưa nhân hệ số an toàn — hệ số 0.9 áp dụng ngay trong
+    `llm_client.py`, không lưu ở đây để tránh hai nơi cùng giữ một hằng số
+    dẫn xuất).
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    gemini_api_key: str = Field(validation_alias="GEMINI_API_KEY")
-    model_name: str = "gemini-3.6-flash"
+    groq_api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
     timeout_seconds: int = 30
+    chunk_token_limit: int = 1500
+    tpm_limit: int = 8000
+    rpm_limit: int = 30

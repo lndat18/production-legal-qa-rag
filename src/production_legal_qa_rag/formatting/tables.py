@@ -6,8 +6,8 @@ Module này render bảng DOCX sang Markdown/HTML (``table_to_markdown``), nhậ
 diện bảng chữ ký (``is_signature_table`` — dùng để xác định biên back matter,
 ``backmatter.py`` mục 1.1 spec) và loại bảng đính kèm khỏi vùng nội dung ở
 giữa (``filter_middle_tables``). Không còn phân loại bảng "quốc hiệu" — bảng
-đó giờ nằm trong vùng front matter, Gemini xử lý nguyên khối cùng các block
-khác (mục 1.1, 6 spec).
+đó giờ nằm trong vùng front matter, Groq xử lý cùng các block khác (theo
+chunk, mục 1.1, 1.2, 6 spec).
 """
 
 from __future__ import annotations

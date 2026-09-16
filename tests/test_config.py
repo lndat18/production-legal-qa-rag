@@ -85,20 +85,31 @@ def test_vector_db_settings_bao_loi_khi_thieu_index_name(
 
 
 # ==========================================================================
-# LLMSettings -- bắt buộc GEMINI_API_KEY
+# LLMSettings -- bắt buộc GROQ_API_KEY
 # ==========================================================================
 
 
 def test_llm_settings_doc_dung_bien_moi_truong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
     settings = LLMSettings()  # type: ignore[call-arg]
-    assert settings.gemini_api_key == "test-gemini-key"
+    assert settings.groq_api_key == "test-groq-key"
 
 
-def test_llm_settings_bao_loi_khi_thieu_gemini_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+def test_llm_settings_bao_loi_khi_thieu_groq_api_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
     with pytest.raises(ValidationError):
         LLMSettings()  # type: ignore[call-arg]
+
+
+def test_llm_settings_gia_tri_mac_dinh_theo_spec(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    settings = LLMSettings()  # type: ignore[call-arg]
+    assert settings.model_name == "openai/gpt-oss-120b"
+    assert settings.max_retries == 2
+    assert settings.timeout_seconds == 30
+    assert settings.chunk_token_limit == 1500
+    assert settings.tpm_limit == 8000
+    assert settings.rpm_limit == 30
