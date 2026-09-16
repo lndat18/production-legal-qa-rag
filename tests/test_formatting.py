@@ -114,7 +114,9 @@ def _forbid_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm_client, "convert_to_markdown", _fail)
 
 
-def _sequential_llm(monkeypatch: pytest.MonkeyPatch, values: list[str | None]) -> list[str]:
+def _sequential_llm(
+    monkeypatch: pytest.MonkeyPatch, values: list[str | None]
+) -> list[str]:
     """Trả lần lượt từng giá trị trong `values` cho mỗi lần gọi, đúng thứ tự
     (front rồi back, theo `pipeline.convert_docx_to_markdown`). Trả về danh
     sách các prompt đã nhận được, để test kiểm tra số lần gọi.
@@ -339,11 +341,15 @@ def test_table_to_markdown_mot_hang_ra_html():
 
 def test_is_signature_table_nhan_dien_theo_noi_dung():
     assert tables.is_signature_table(T("| TM. THỦ TƯỚNG | |\n| --- | --- |\n| A | B |"))
-    assert tables.is_signature_table(T("| Nơi nhận: | |\n| --- | --- |\n| - Như trên | |"))
+    assert tables.is_signature_table(
+        T("| Nơi nhận: | |\n| --- | --- |\n| - Như trên | |")
+    )
 
 
 def test_is_signature_table_khong_nhan_dien_bang_thuong():
-    assert not tables.is_signature_table(T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000 |"))
+    assert not tables.is_signature_table(
+        T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000 |")
+    )
 
 
 def test_is_signature_table_bo_qua_paragraph():
@@ -564,7 +570,9 @@ def test_convert_frontmatter_gemini_loi_phat_canh_bao():
     assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
 
 
-def test_convert_frontmatter_prompt_chua_noi_dung_block(monkeypatch: pytest.MonkeyPatch):
+def test_convert_frontmatter_prompt_chua_noi_dung_block(
+    monkeypatch: pytest.MonkeyPatch,
+):
     captured: dict[str, str] = {}
 
     def fake(prompt: str, *, max_retries: int | None = None) -> str:
@@ -661,7 +669,9 @@ def test_client_gemini_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch)
         llm_client._client.cache_clear()
 
 
-def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(monkeypatch: pytest.MonkeyPatch):
+def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.models.generate_content.return_value = Mock(text="  Kết quả markdown  ")
@@ -675,7 +685,9 @@ def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(monkeypatch: pytest.Mon
     assert kwargs["contents"] == "prompt nội dung"
 
 
-def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(monkeypatch: pytest.MonkeyPatch):
+def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.models.generate_content.side_effect = [
@@ -690,7 +702,9 @@ def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(monkeypatch: pytest.Monk
     assert fake_client.models.generate_content.call_count == 2
 
 
-def test_convert_to_markdown_het_so_lan_thu_tra_ve_none(monkeypatch: pytest.MonkeyPatch):
+def test_convert_to_markdown_het_so_lan_thu_tra_ve_none(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
@@ -719,7 +733,9 @@ def test_convert_to_markdown_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
     assert fake_client.models.generate_content.call_count == 2
 
 
-def test_convert_to_markdown_max_retries_ghi_de_settings(monkeypatch: pytest.MonkeyPatch):
+def test_convert_to_markdown_max_retries_ghi_de_settings(
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
@@ -868,7 +884,10 @@ def test_convert_docx_to_markdown_gemini_loi_bo_qua_front_matter_khong_fail(
 
     result = convert_docx_to_markdown(docx_path)
 
-    assert result.markdown == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    assert (
+        result.markdown
+        == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    )
     assert any(w.code == "llm_frontmatter_conversion_failed" for w in result.warnings)
 
 
@@ -914,7 +933,10 @@ def test_convert_docx_to_markdown_khong_co_front_matter_khong_goi_llm(
 
     result = convert_docx_to_markdown(docx_path)
 
-    assert result.markdown == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    assert (
+        result.markdown
+        == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    )
     assert result.warnings == []
 
 
