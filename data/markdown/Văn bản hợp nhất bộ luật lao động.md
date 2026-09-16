@@ -1,49 +1,27 @@
----
-so_hieu: "18/VBHN-VPQH"
-loai_van_ban: "Văn bản hợp nhất"
-ten_van_ban: "Bộ luật Lao động"
-co_quan_ban_hanh: "VĂN PHÒNG QUỐC HỘI"
-ngay_ban_hanh: "2026-02-12"
-ngay_hieu_luc: "2021-01-01"
-is_van_ban_hop_nhat: true
-is_phu_luc: false
-source_path: "data/raw/Văn bản hợp nhất bộ luật lao động.docx"
-parser_version: "1.0.0"
----
+VĂN PHÒNG QUỐC HỘI
+--------
+Số: 18/VBHN-VPQH
 
-BỘ LUẬT
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+---------------
+Hà Nội, ngày 12 tháng 02 năm 2026
 
-LAO ĐỘNG
+**BỘ LUẬT**
+
+**LAO ĐỘNG**
 
 Bộ luật Lao động số 45/2019/QH14 ngày 20 tháng 11 năm 2019 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2021, được sửa đổi, bổ sung bởi:
 
 1. Luật Công nghiệp công nghệ số số 71/2025/QH15 ngày 14 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;
 
-2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;
+2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 07 năm 2026;
 
 3. Luật Giáo dục nghề nghiệp số 124/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
 
-Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*
 
-Quốc hội ban hành Bộ luật Lao động.
-
-> **Sửa đổi:** Luật Công nghiệp công nghệ số số 71/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
->
-> Quốc hội ban hành Luật Công nghiệp công nghệ số.”.
->
-> Luật Dân số số 113/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hoà xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Dân số.”.
->
-> Luật Giáo dục nghề nghiệp số 124/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hoà xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Giáo dục nghề nghiệp.”.
+Quốc hội ban hành Bộ luật Lao động[1].
 
 ## Chương I. NHỮNG QUY ĐỊNH CHUNG
 
@@ -1157,9 +1135,7 @@ Người lao động được tự do lựa chọn đào tạo nghề nghiệp, 
 
 Nhà nước có chính sách khuyến khích người sử dụng lao động có đủ điều kiện đào tạo nghề nghiệp và phát triển kỹ năng nghề cho người lao động đang làm việc cho mình và người lao động khác trong xã hội thông qua hoạt động sau đây:
 
-a) Thành lập cơ sở giáo dục nghề nghiệp hoặc mở lớp đào tạo nghề tại nơi làm việc để đào tạo, đào tạo lại, bồi dưỡng, nâng cao trình độ, kỹ năng nghề cho người lao động; phối hợp với cơ sở giáo dục nghề nghiệp đào tạo chương trình giáo dục trung học nghề và các chương trình đào tạo trình độ sơ cấp, trung cấp, cao đẳng theo quy định;
-
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại điểm a khoản 1 Điều 43 của Luật Giáo dục nghề nghiệp số 124/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
+a)2[2]Thành lập cơ sở giáo dục nghề nghiệp hoặc mở lớp đào tạo nghề tại nơi làm việc để đào tạo, đào tạo lại, bồi dưỡng, nâng cao trình độ, kỹ năng nghề cho người lao động; phối hợp với cơ sở giáo dục nghề nghiệp đào tạo chương trình giáo dục trung học nghề và các chương trình đào tạo trình độ sơ cấp, trung cấp, cao đẳng theo quy định;
 
 b) Tổ chức thi kỹ năng nghề cho người lao động; tham gia hội đồng kỹ năng nghề; dự báo nhu cầu và xây dựng tiêu chuẩn kỹ năng nghề; tổ chức đánh giá và công nhận kỹ năng nghề; phát triển năng lực nghề nghiệp cho người lao động.
 
@@ -1183,11 +1159,7 @@ Học nghề để làm việc cho người sử dụng lao động là việc n
 
 Tập nghề để làm việc cho người sử dụng lao động là việc người sử dụng lao động tuyển người vào để hướng dẫn thực hành công việc, tập làm nghề theo vị trí việc làm tại nơi làm việc. Thời hạn tập nghề không quá 03 tháng.
 
-##### Khoản 3
-
-Người sử dụng lao động tuyển người vào học nghề, tập nghề để làm việc cho mình thì không được thu học phí.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 1 Điều 43 của Luật Giáo dục nghề nghiệp số 124/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
+3.3[3] Người sử dụng lao động tuyển người vào học nghề, tập nghề để làm việc cho mình thì không được thu học phí.
 
 ##### Khoản 4
 
@@ -2443,11 +2415,7 @@ Trường hợp tạm hoãn thực hiện hợp đồng lao động, thời gian
 
 #### Điều 139. Nghỉ thai sản
 
-##### Khoản 1
-
-Lao động nữ được nghỉ thai sản trước và sau khi sinh con là 06 tháng; trường hợp sinh con thứ hai, lao động nữ được nghỉ thai sản trước và sau khi sinh con là 07 tháng; thời gian nghỉ trước khi sinh không quá 02 tháng.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 1 Điều 29 của Luật Dân số số 113/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2026.
+1.4[4] Lao động nữ được nghỉ thai sản trước và sau khi sinh con là 06 tháng; trường hợp sinh con thứ hai, lao động nữ được nghỉ thai sản trước và sau khi sinh con là 07 tháng; thời gian nghỉ trước khi sinh không quá 02 tháng.
 
 Trường hợp lao động nữ sinh đôi trở lên thì tính từ con thứ hai trở đi, cứ mỗi con, người mẹ được nghỉ thêm 01 tháng.
 
@@ -2737,11 +2705,7 @@ Trường hợp theo quy định của điều ước quốc tế mà nước C�
 
 Người nước ngoài kết hôn với người Việt Nam và sinh sống trên lãnh thổ Việt Nam.
 
-##### Khoản 8a
-
-Nhân lực công nghiệp công nghệ số chất lượng cao theo quy định của pháp luật về công nghiệp công nghệ số.
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 4 Điều 49 của Luật Công nghiệp công nghệ số số 71/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
+8a.5[5] Nhân lực công nghiệp công nghệ số chất lượng cao theo quy định của pháp luật về công nghiệp công nghệ số.
 
 ##### Khoản 9
 
@@ -3853,11 +3817,7 @@ Trong trường hợp cuộc đình công là bất hợp pháp mà gây thiệt
 
 Người lợi dụng đình công gây mất trật tự, an toàn công cộng, làm tổn hại máy, thiết bị, tài sản của người sử dụng lao động; người có hành vi cản trở thực hiện quyền đình công, kích động, lôi kéo, ép buộc người lao động đình công; người có hành vi trù dập, trả thù người tham gia đình công, người lãnh đạo cuộc đình công thì tùy theo mức độ vi phạm mà bị xử phạt vi phạm hành chính hoặc truy cứu trách nhiệm hình sự, nếu gây thiệt hại thì phải bồi thường theo quy định của pháp luật.
 
-## Chương XVII. ĐIỀU KHOẢN THI HÀNH
-
-> **Sửa đổi:** Điều 50 của Luật Công nghiệp công nghệ số số 71/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
->
-> _(Trích dẫn đầy đủ: xem chú thích [6] ở cuối văn bản.)_
+## Chương XVII. ĐIỀU KHOẢN THI HÀNH6[6]
 
 #### Điều 218. Miễn, giảm thủ tục đối với trường hợp sử dụng dưới 10 lao động
 
@@ -3986,29 +3946,3 @@ Kể từ ngày Bộ luật này có hiệu lực thi hành, hợp đồng lao �
 ##### Khoản 3
 
 Chế độ lao động đối với cán bộ, công chức, viên chức, người thuộc lực lượng Quân đội nhân dân, Công an nhân dân, tổ chức xã hội, xã viên hợp tác xã, người làm việc không có quan hệ lao động do các văn bản pháp luật khác quy định nhưng tùy từng đối tượng mà được áp dụng một số quy định trong Bộ luật này.
-
-**[6]**
-
-Điều 50 của Luật Công nghiệp công nghệ số số 71/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
-
-“Điều 50. Hiệu lực thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.
-
-2. Các điều 11, 28 và 29 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025.
-
-3. Trường hợp có quy định khác nhau về cùng một vấn đề giữa Luật này với luật, nghị quyết khác của Quốc hội thì áp dụng quy định của Luật này. Trừ trường hợp văn bản quy phạm pháp luật khác có quy định cơ chế, chính sách ưu đãi hoặc thuận lợi hơn Luật này thì đối tượng được ưu đãi được áp dụng mức ưu đãi có lợi nhất.”.
-
-Khoản 1 Điều 30 của Luật Dân số số 113/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2026 quy định như sau:
-
-“Điều 30. Hiệu lực thi hành
-
-1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.
-
-3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.
-
-Khoản 1 Điều 44 của Luật Giáo dục nghề nghiệp số 124/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
-
-“Điều 44. Hiệu lực thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026. Luật Giáo dục nghề nghiệp số 74/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 97/2015/QH13, Luật số 21/2017/QH14, Luật số 43/2019/QH14 và Luật số 84/2025/QH15 (sau đây gọi là Luật Giáo dục nghề nghiệp số 74/2014/QH13) hết hiệu lực từ ngày Luật này có hiệu lực thi hành, trừ trường hợp quy định tại khoản 2 Điều này và các nội dung liên quan trong Điều 45 Luật này.”.

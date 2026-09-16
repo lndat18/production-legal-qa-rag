@@ -2,9 +2,11 @@
 
 Duyệt ``document.element.body`` chứ không duyệt ``doc.paragraphs`` rồi
 ``doc.tables`` riêng — cách sau làm mất thứ tự xen kẽ giữa đoạn văn và bảng.
-Style/bold của đoạn văn chỉ được giữ lại như tín hiệu phụ: rule nhận diện
-heading không bao giờ đọc các giá trị này, vì style trong corpus thực tế
-không nhất quán.
+Style/bold/nghiêng của đoạn văn được giữ lại như tín hiệu phụ: rule nhận
+diện heading (mục 3 spec) không bao giờ đọc các giá trị này, vì style trong
+corpus thực tế không nhất quán; tín hiệu này chỉ dùng để serialize block cho
+Gemini khi chuyển đổi front matter/back matter (``serialize_blocks_for_llm``,
+mục 1.1 spec).
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ class Block:
     text: str  # với table: markdown (hoặc HTML) đã render sẵn
     style: str | None = None  # tên style gốc, chỉ là tín hiệu phụ
     is_bold: bool = False
+    is_italic: bool = False
 
 
 def _paragraph_is_bold(paragraph: Paragraph) -> bool:
@@ -42,6 +45,12 @@ def _paragraph_is_bold(paragraph: Paragraph) -> bool:
     """
     runs = [run for run in paragraph.runs if run.text.strip()]
     return bool(runs) and all(run.bold for run in runs)
+
+
+def _paragraph_is_italic(paragraph: Paragraph) -> bool:
+    """Đoạn có in nghiêng toàn bộ hay không (cùng logic với ``_paragraph_is_bold``)."""
+    runs = [run for run in paragraph.runs if run.text.strip()]
+    return bool(runs) and all(run.italic for run in runs)
 
 
 def read_docx(path: str | Path) -> list[Block]:
@@ -69,6 +78,7 @@ def read_docx(path: str | Path) -> list[Block]:
                     text=text,
                     style=style,
                     is_bold=_paragraph_is_bold(paragraph),
+                    is_italic=_paragraph_is_italic(paragraph),
                 )
             )
         elif isinstance(element, CT_Tbl):
@@ -77,3 +87,31 @@ def read_docx(path: str | Path) -> list[Block]:
                 blocks.append(Block(kind="table", text=markdown_table))
 
     return blocks
+
+
+def serialize_blocks_for_llm(blocks: list[Block]) -> str:
+    """Render Block thành text kèm tín hiệu bold/nghiêng, dùng làm input cho Gemini.
+
+    Paragraph in đậm/nghiêng toàn dòng được bọc sẵn ``**``/``*`` — Gemini chỉ
+    cần giữ nguyên định dạng khi chuyển đổi (mục 1.1 spec), không phải tự
+    đoán từ văn bản thô. Bảng đã có sẵn markdown/HTML từ
+    ``tables.table_to_markdown``, giữ nguyên văn.
+
+    Args:
+        blocks: Block front matter hoặc back matter, theo đúng thứ tự gốc.
+
+    Returns:
+        Text đã ghép, mỗi block cách nhau một dòng trống.
+    """
+    lines: list[str] = []
+    for block in blocks:
+        if block.kind == "table":
+            lines.append(block.text)
+            continue
+        text = block.text
+        if block.is_bold:
+            text = f"**{text}**"
+        elif block.is_italic:
+            text = f"*{text}*"
+        lines.append(text)
+    return "\n\n".join(lines)

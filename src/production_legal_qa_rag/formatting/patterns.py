@@ -1,25 +1,21 @@
 """Regex nhận diện cấu trúc văn bản pháp luật và tiện ích liên quan.
 
-Toàn bộ regex dùng để nhận diện Phần/Phụ Lục/Chương/Mục/Điều/Khoản/Điểm, chú
-thích sửa đổi, bảng theo nội dung và front matter được gom về một chỗ để dễ
-tra cứu/khớp thứ tự ưu tiên. Cũng chứa ``normalize_text`` (chuẩn hóa văn bản
-trước khi áp regex) và ``sort_key`` (so sánh số hiệu có hậu tố chữ), vì hai
-hàm này được mọi module khác trong package dùng chung mà không phụ thuộc gì
-thêm.
+Toàn bộ regex dùng để nhận diện Phần/Phụ Lục/Chương/Mục/Điều/Khoản/Điểm và
+bảng theo nội dung (chữ ký, đính kèm) được gom về một chỗ để dễ tra cứu/khớp
+thứ tự ưu tiên. Cũng chứa ``normalize_text`` (chuẩn hóa văn bản trước khi áp
+regex) và ``sort_key`` (so sánh số hiệu có hậu tố chữ), vì hai hàm này được
+mọi module khác trong package dùng chung mà không phụ thuộc gì thêm.
+
+Không còn regex trích field front matter (số hiệu, ngày ban hành, loại văn
+bản...) hay marker chú thích sửa đổi ``[n]`` -- cả hai đã bị bỏ hoàn toàn
+theo thiết kế mới (formatting_spec.md mục 1.1): front matter/back matter
+chuyển đổi nguyên khối bằng Gemini, không còn trích field/khôi phục inline.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-
-# ==========================================================================
-# CẤU HÌNH
-# ==========================================================================
-
-# Tăng thủ công mỗi khi rule nhận diện heading thay đổi. Bump trong cùng commit
-# với thay đổi golden/tham chiếu: hai việc đó là một sự kiện.
-PARSER_VERSION = "1.0.0"
 
 NON_BREAKING_SPACE = " "
 
@@ -57,69 +53,16 @@ RE_MUC = re.compile(r"^Mục\s+(\d+[a-zđ]?)\b", re.IGNORECASE)
 
 # Hỗ trợ số hiệu chữ: Điều 41a, Điều 7a, Điều 48b — phổ biến ở văn bản hợp nhất
 # khi bổ sung điều mới vào giữa. Bắt buộc có dấu chấm sau số hiệu, nhờ vậy các
-# dòng "Điều 2 của Luật số 46/2014/QH13 ... quy định như sau:" trong vùng chú
-# thích không bị nhận nhầm thành heading.
+# dòng "Điều 2 của Luật số 46/2014/QH13 ... quy định như sau:" trong nội dung
+# trích dẫn không bị nhận nhầm thành heading.
 RE_DIEU = re.compile(r"^Điều\s+(\d+[a-zđ]?)\s*\.\s*(.*)$")
 
-# Khoản = bắt đầu bằng số. Không kèm điều kiện ngữ cảnh.
-# Nhánh (?:\[\d+\])? giữ lại làm lớp phòng vệ thứ hai; lớp phòng vệ thật là
-# bước gỡ marker ở strip_all, vì corpus có dạng "3.3[3]" mà nhánh này
-# không cứu được.
-RE_KHOAN = re.compile(r"^(\d+[a-zđ]?)\s*\.\s*(?:\[\d+\])?\s+(.*)$")
+# Khoản = bắt đầu bằng số + dấu chấm. Không kèm điều kiện ngữ cảnh.
+RE_KHOAN = re.compile(r"^(\d+[a-zđ]?)\s*\.\s+(.*)$")
 
 # Điểm KHÔNG bao giờ tạo heading. Chỉ dùng cho QC và nhận biết ngữ cảnh.
 # Hai hình thức: chữ cái + ")" trong thân văn bản, dấu "-" trong Phụ lục.
 RE_DIEM = re.compile(r"^(?:([a-zđư])\)|-)\s+(.*)$")
-
-# Bảng chữ cái tiếng Việt dùng cho điểm (không có f, j, w, z).
-VIETNAMESE_POINT_LETTERS = [
-    "a",
-    "b",
-    "c",
-    "d",
-    "đ",
-    "e",
-    "g",
-    "h",
-    "i",
-    "k",
-    "l",
-    "m",
-    "n",
-    "o",
-    "p",
-    "q",
-    "r",
-    "s",
-    "t",
-    "u",
-    "ư",
-    "v",
-    "x",
-    "y",
-]
-
-# --- Chú thích sửa đổi ---------------------------------------------------
-
-# Marker trong thân văn bản. Chữ số lặp có thể nằm hai bên: "3.3[3]", "[4]4".
-# Chỉ nuốt pre/post khi nó BẰNG num, nếu không "10.[15]" sẽ mất số khoản 10.
-RE_MARKER = re.compile(
-    r"(?:(?P<pre>\d{1,3}))?\[(?P<num>\d{1,3})\](?:(?P<post>\d{1,3}))?"
-)
-
-# Dòng định nghĩa chú thích có 4 dạng trong corpus:
-#   "[1] ..."   "3[3] ..."   "[4]4 ..."   và dạng trần "2 Điểm này được sửa..."
-RE_FN_DEF_BRACKET = re.compile(r"^(?:(\d{1,3}))?\[(\d{1,3})\](?:(\d{1,3}))?\s*(.*)$")
-
-# Dạng trần: KHÔNG có dấu chấm sau số. Đó là điều phân biệt nó với RE_KHOAN,
-# nên dòng "1. Luật này có hiệu lực..." được trích dẫn bên trong chú thích
-# không thể bị nhận nhầm thành một định nghĩa chú thích mới.
-RE_FN_DEF_BARE = re.compile(r"^(\d{1,3})\s+(\S.*)$")
-
-RE_FOOTNOTE_MARKER = re.compile(r"\[(\d+)\]")
-
-# Sau khi gỡ marker dính liền, "a)Thành lập" và "1.Cá nhân" mất khoảng trắng.
-RE_MISSING_SPACE = re.compile(r"^([a-zđư]\)|\d{1,3}\.)(?=\S)")
 
 # --- Bảng ----------------------------------------------------------------
 
@@ -137,37 +80,8 @@ RE_SIGNATURE_CELL = re.compile(
     r"|THỦ\s+TƯỚNG",
     re.IGNORECASE,
 )
-RE_QUOC_HIEU_CELL = re.compile(
-    r"CỘNG\s+HÒA\s+XÃ\s+HỘI\s+CHỦ\s+NGHĨA\s+VIỆT\s+NAM", re.IGNORECASE
-)
 RE_ATTACHMENT_TABLE = re.compile(
     r"FILE\s+ĐƯỢC\s+ĐÍNH\s+KÈM\s+THEO\s+VĂN\s+BẢN", re.IGNORECASE
-)
-
-# --- Front matter --------------------------------------------------------
-
-RE_SO_HIEU = re.compile(r"Số:\s*([^\s|<]+)")
-
-# "Hà Nội, ngày 20 tháng 5 năm 2026" và "Hà Nội ngày 10 tháng 11 năm 2025"
-# (Nghị định 293 thiếu dấu phẩy).
-RE_NGAY = re.compile(
-    r"ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})", re.IGNORECASE
-)
-
-RE_HIEU_LUC = re.compile(
-    r"có\s+hiệu\s+lực(?:\s+thi\s+hành)?(?:\s+kể)?\s+từ\s+ngày\s+"
-    r"(\d{1,2})\s+tháng\s+(\d{1,2})\s+năm\s+(\d{4})",
-    re.IGNORECASE,
-)
-
-DOC_TYPE_ALT = r"Bộ luật|Luật|Nghị định|Nghị quyết|Thông tư|Quyết định"
-
-RE_BAN_HANH = re.compile(
-    rf"\bban\s+hành\s+((?:{DOC_TYPE_ALT})\s+.+?)\s*\.?\s*$", re.IGNORECASE
-)
-RE_TEN_SO = re.compile(rf"^((?:{DOC_TYPE_ALT})\s+.+?)\s+số\s+\d+/", re.IGNORECASE)
-RE_DOC_TYPE = re.compile(
-    r"^(BỘ\s+LUẬT|LUẬT|NGHỊ\s+ĐỊNH|NGHỊ\s+QUYẾT|QUYẾT\s+ĐỊNH|THÔNG\s+TƯ)$"
 )
 
 # Tiêu đề Phụ lục của Nghị định 293 dính cả phần "(Kèm theo ...)" dài ~90 ký tự.
@@ -175,7 +89,11 @@ RE_KEM_THEO = re.compile(r"\s*(\(\s*Kèm\s+theo\b.*)$", re.IGNORECASE | re.DOTAL
 
 
 def is_structural(text: str) -> bool:
-    """Dòng có phải nhãn cấu trúc (Phụ lục/Phần/Chương/Mục/Điều) hay không."""
+    """Dòng có phải nhãn cấu trúc (Phụ lục/Phần/Chương/Mục/Điều) hay không.
+
+    Dùng để xác định biên front matter (formatting_spec.md mục 1.1): block
+    đầu tiên khớp hàm này là block đầu tiên KHÔNG thuộc front matter.
+    """
     return any(
         pattern.match(text)
         for pattern in (RE_PHU_LUC, RE_PHAN, RE_CHUONG, RE_MUC, RE_DIEU)

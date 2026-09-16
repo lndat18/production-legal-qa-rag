@@ -1,7 +1,10 @@
-"""QC trên markdown đã sinh: heading-level-skip và các bất thường khác.
+"""QC trên markdown vùng nội dung ở giữa: heading-level-skip và bất thường khác.
 
 Toàn bộ rule ở đây chỉ cảnh báo, không bao giờ làm fail file — kết quả trả
 về là danh sách ``QcWarning`` để ``pipeline.py`` gom vào summary cuối cùng.
+``validate()`` chỉ chạy trên markdown do ``emitter.emit`` sinh ra (vùng nội
+dung ở giữa) — front matter/back matter do Gemini sinh không đi qua đây (mục
+1.1, 3 spec), không còn khối YAML nào để bóc tách ở đầu file.
 """
 
 from __future__ import annotations
@@ -9,26 +12,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from production_legal_qa_rag.formatting.models import QcWarning
-from production_legal_qa_rag.formatting.patterns import (
-    RE_DIEU,
-    RE_FOOTNOTE_MARKER,
-    RE_PHU_LUC,
-    sort_key,
-)
+from production_legal_qa_rag.formatting.patterns import RE_DIEU, RE_PHU_LUC, sort_key
 
 # Dòng heading dài hơn ngưỡng này bị cảnh báo suspicious_heading_length.
 HEADING_MAX_LEN = 200
-
-
-def _strip_front_matter(markdown: str) -> list[str]:
-    """Bỏ khối YAML đầu file, trả về các dòng còn lại."""
-    lines = markdown.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return lines
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            return lines[index + 1 :]
-    return lines
 
 
 def _monotonic_breaks(numbers: list[str]) -> list[str]:
@@ -208,37 +195,19 @@ def _check_empty_dieu(dieu_has_content: dict[str, bool]) -> list[QcWarning]:
     ]
 
 
-def _check_orphan_footnotes(markdown: str) -> list[QcWarning]:
-    """Rule: marker "[n]" còn sót ngoài blockquote/vùng dời cuối văn bản.
-
-    Trong hai vùng đó (blockquote "Sửa đổi:" hoặc dòng in đậm dời xuống cuối)
-    thì "[n]" là nhãn cố ý, không phải marker sót lại.
-    """
-    warnings: list[QcWarning] = []
-    for match in RE_FOOTNOTE_MARKER.finditer(markdown):
-        line_start = markdown.rfind("\n", 0, match.start()) + 1
-        prefix = markdown[line_start : match.start()].lstrip()
-        if prefix.startswith((">", "**")):
-            continue
-        warnings.append(QcWarning(code="orphan_footnote", detail=match.group(0)))
-    return warnings
-
-
 def validate(markdown: str) -> list[QcWarning]:
-    """Chạy toàn bộ rule QC trên markdown.
+    """Chạy toàn bộ rule QC trên markdown vùng nội dung ở giữa.
 
     Compose lại từ một lượt quét tuần tự (`_scan_headings`, bắt buộc vì nhiều
     rule phụ thuộc trạng thái vị trí) và các rule độc lập chạy sau đó, đúng
     theo thứ tự đã có trước khi tách hàm (heading-level rule trong lúc quét,
-    rồi no_heading, dieu/khoan monotonic, empty_dieu, orphan_footnote).
+    rồi no_heading, dieu/khoan monotonic, empty_dieu).
     """
-    lines = _strip_front_matter(markdown)
-    scan = _scan_headings(lines)
+    scan = _scan_headings(markdown.splitlines())
 
     warnings = list(scan.warnings)
     warnings.extend(_check_no_heading(scan.heading_lines))
     warnings.extend(_check_dieu_monotonic(scan.dieu_numbers))
     warnings.extend(_check_khoan_monotonic(scan.khoan_by_parent))
     warnings.extend(_check_empty_dieu(scan.dieu_has_content))
-    warnings.extend(_check_orphan_footnotes(markdown))
     return warnings
