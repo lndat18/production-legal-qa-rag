@@ -1,19 +1,13 @@
----
-so_hieu: "40/VBHN-VPQH"
-loai_van_ban: "Văn bản hợp nhất"
-ten_van_ban: "Luật Bảo hiểm y tế"
-co_quan_ban_hanh: "VĂN PHÒNG QUỐC HỘI"
-ngay_ban_hanh: "2026-03-16"
-ngay_hieu_luc: "2009-07-01"
-is_van_ban_hop_nhat: true
-is_phu_luc: false
-source_path: "data/raw/Luật bảo hiểm y tế.docx"
-parser_version: "1.0.0"
----
+VĂN PHÒNG QUỐC HỘI
+Số: 40/VBHN-VPQH
 
-LUẬT
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+Hà Nội, ngày 16 tháng 3 năm 2026
 
-BẢO HIỂM Y TẾ
+**LUẬT**
+
+**BẢO HIỂM Y TẾ**
 
 Luật Bảo hiểm y tế số 25/2008/QH12 ngày 14 tháng 11 năm 2008 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2009, được sửa đổi, bổ sung bởi:
 
@@ -33,13 +27,9 @@ Luật Bảo hiểm y tế số 25/2008/QH12 ngày 14 tháng 11 năm 2008 của 
 
 8. Luật Phòng bệnh số 114/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
 
-Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam năm 1992 đã được sửa đổi, bổ sung theo Nghị quyết số 51/2001/QH10;
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam năm 1992 đã được sửa đổi, bổ sung theo Nghị quyết số 51/2001/QH10;*
 
-Quốc hội ban hành Luật Bảo hiểm y tế.
-
-> **Sửa đổi:** Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp có căn cứ ban hành như sau:
->
-> _(Trích dẫn đầy đủ: xem chú thích [1] ở cuối văn bản.)_
+Quốc hội ban hành Luật Bảo hiểm y tế[1].
 
 ## Chương I. NHỮNG QUY ĐỊNH CHUNG
 
@@ -65,8 +55,6 @@ Trong Luật này, các từ ngữ dưới đây được hiểu như sau:
 
 Bảo hiểm y tế là hình thức bảo hiểm bắt buộc được áp dụng đối với các đối tượng theo quy định của Luật này để chăm sóc sức khỏe, không vì mục đích lợi nhuận do Nhà nước tổ chức thực hiện.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 1 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 2
 
 Bảo hiểm y tế toàn dân là việc các đối tượng quy định trong Luật này đều tham gia bảo hiểm y tế.
@@ -74,8 +62,6 @@ Bảo hiểm y tế toàn dân là việc các đối tượng quy định trong
 ##### Khoản 3
 
 Quỹ bảo hiểm y tế là quỹ tài chính được hình thành từ nguồn đóng bảo hiểm y tế và các nguồn thu hợp pháp khác, được sử dụng để chi trả chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế, chi phí quản lý bộ máy của cơ quan bảo hiểm xã hội và những khoản chi phí hợp pháp khác liên quan đến bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 4
 
@@ -89,27 +75,17 @@ Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu là cơ sở
 
 Giám định bảo hiểm y tế là hoạt động chuyên môn do cơ quan bảo hiểm xã hội tiến hành nhằm đánh giá sự hợp lý của việc cung cấp dịch vụ y tế cho người tham gia bảo hiểm y tế, làm cơ sở để thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 7
 
 Hộ gia đình tham gia bảo hiểm y tế (sau đây gọi chung là hộ gia đình) là những người cùng đăng ký thường trú hoặc cùng đăng ký tạm trú tại một chỗ ở hợp pháp theo quy định của pháp luật về cư trú.
-
-> **Sửa đổi:** Khoản này được bổ sung lần thứ nhất theo quy định tại khoản 1 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 2 Điều 37 của Luật Cư trú số 68/2020/QH14, có hiệu lực kể từ ngày 01 tháng 7 năm 2021.
 
 ##### Khoản 8
 
 Gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả là những dịch vụ y tế thiết yếu để chăm sóc sức khỏe, phù hợp với khả năng chi trả của quỹ bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 1 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 9
 
 Mức tham chiếu là mức tiền do Chính phủ quyết định dùng để tính mức đóng, mức hưởng của một số trường hợp tham gia bảo hiểm y tế quy định tại Luật này.
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 1 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 #### Điều 3. Nguyên tắc bảo hiểm y tế
 
@@ -121,15 +97,9 @@ Bảo đảm chia sẻ rủi ro giữa những người tham gia bảo hiểm y 
 
 Mức đóng bảo hiểm y tế được xác định theo tỷ lệ phần trăm của tiền lương làm căn cứ đóng bảo hiểm xã hội bắt buộc theo quy định của Luật Bảo hiểm xã hội (sau đây gọi chung là tiền lương tháng), tiền lương hưu, tiền trợ cấp hoặc mức tham chiếu.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 2 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 2 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Mức hưởng bảo hiểm y tế theo mức độ bệnh tật, nhóm đối tượng trong phạm vi quyền lợi và thời gian tham gia bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 2 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 4
 
@@ -148,8 +118,6 @@ Nhà nước đóng hoặc hỗ trợ tiền đóng bảo hiểm y tế cho ngư
 ##### Khoản 2
 
 Nhà nước có chính sách ưu đãi đối với hoạt động đầu tư từ quỹ bảo hiểm y tế để bảo toàn và tăng trưởng quỹ. Nguồn thu của quỹ và số tiền sinh lời từ hoạt động đầu tư từ quỹ bảo hiểm y tế được miễn thuế.
-
-> **Sửa đổi:** Nội dung quy định về thuế thu nhập doanh nghiệp tại Khoản này được bãi bỏ theo quy định tại điểm b khoản 4 Điều 2 của Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014.
 
 ##### Khoản 3
 
@@ -185,27 +153,17 @@ Chủ trì, phối hợp với các bộ, cơ quan ngang bộ, cơ quan, tổ ch
 
 Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành chính sách, pháp luật về bảo hiểm y tế, tổ chức hệ thống y tế, nguồn tài chính phục vụ công tác bảo vệ, chăm sóc và nâng cao sức khỏe nhân dân dựa trên bảo hiểm y tế toàn dân; giải pháp tăng cường năng lực khám bệnh, chữa bệnh bảo hiểm y tế cho y tế cơ sở;
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
-
 ##### Khoản 2
 
 Xây dựng chiến lược,, kế hoạch tổng thể phát triển bảo hiểm y tế;
-
-> **Sửa đổi:** Từ “quy hoạch,” được bãi bỏ theo quy định tại điểm đ khoản 1 Điều 30 của Luật số 35/2018/QH14 sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch, có hiệu lực kể từ ngày 01 tháng 01 năm 2019.
 
 ##### Khoản 3
 
 Ban hành quy định, quy trình, hướng dẫn chuyên môn về khám bệnh, chữa bệnh; rà soát và cập nhật thường xuyên hướng dẫn chẩn đoán và điều trị; quy định về đánh giá sự hợp lý của việc cung cấp dịch vụ khám bệnh, chữa bệnh; quy định về ứng dụng công nghệ thông tin, chuyển đổi số, chia sẻ dữ liệu trong lĩnh vực bảo hiểm y tế, việc liên thông và sử dụng kết quả cận lâm sàng liên thông giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế phù hợp yêu cầu chuyên môn;
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
-
 ##### Khoản 4
 
 Ban hành theo thẩm quyền hoặc trình cấp có thẩm quyền ban hành các giải pháp nhằm bảo đảm cân đối quỹ bảo hiểm y tế;
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
 ##### Khoản 5
 
@@ -231,8 +189,6 @@ Tổ chức nghiên cứu khoa học và hợp tác quốc tế về bảo hiể
 
 Ban hành gói dịch vụ y tế cơ bản do quỹ bảo hiểm y tế chi trả.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 #### Điều 7. Trách nhiệm của Bộ Tài chính về bảo hiểm y tế
 
 ##### Khoản 1
@@ -244,10 +200,6 @@ Phối hợp với Bộ Y tế, cơ quan, tổ chức có liên quan xây dựng
 Thanh tra, kiểm tra việc thực hiện các quy định của pháp luật về chế độ tài chính đối với bảo hiểm y tế, quỹ bảo hiểm y tế.
 
 #### Điều 7a. Trách nhiệm của Bộ Lao động - Thương binh và Xã hội
-
-> **Sửa đổi:** Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -261,11 +213,7 @@ Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về t
 
 Quy định tại Điều này thực hiện theo quy định của Chính phủ kể từ ngày 01 tháng 7 năm 2026.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại điểm e khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 #### Điều 7b. Trách nhiệm của Bộ Giáo dục và Đào tạo
-
-> **Sửa đổi:** Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 1
 
@@ -281,31 +229,21 @@ Chủ trì, phối hợp với Bộ Y tế, các bộ, ngành liên quan hướn
 
 #### Điều 7c. Trách nhiệm của Bộ Quốc phòng và Bộ Công an
 
-> **Sửa đổi:** Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 1
 
 Chỉ đạo, quản lý, hướng dẫn, tổ chức thực hiện việc xác định, quản lý, lập danh sách tham gia bảo hiểm y tế đối với đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 2
 
 Lập danh sách và cung cấp danh sách đề nghị cấp thẻ bảo hiểm y tế đối với đối tượng quy định tại điểm l khoản 3 Điều 12 của Luật này cho cơ quan bảo hiểm xã hội.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Thanh tra, kiểm tra việc thực hiện quy định của pháp luật về trách nhiệm tham gia bảo hiểm y tế của các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý quy định tại các điểm a, c, e, h và i khoản 1, các điểm a, b, c, d, l và n khoản 3, điểm b khoản 4 Điều 12 của Luật này.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 4
 
 Phối hợp với Bộ Y tế, các bộ, ngành liên quan hướng dẫn các cơ sở khám bệnh, chữa bệnh của Bộ Quốc phòng và Bộ Công an ký kết hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế với cơ quan bảo hiểm xã hội để khám bệnh, chữa bệnh cho các đối tượng tham gia bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 #### Điều 8. Trách nhiệm của Ủy ban nhân dân các cấp về bảo hiểm y tế
 
@@ -325,17 +263,9 @@ d) Thanh tra, kiểm tra, xử lý vi phạm và giải quyết khiếu nại, t
 
 Ủy ban nhân dân tỉnh, thành phố trực thuộc trung ương, ngoài việc thực hiện trách nhiệm quy định tại khoản 1 Điều này, có trách nhiệm chỉ đạo xây dựng bộ máy, nguồn lực để thực hiện quản lý nhà nước về bảo hiểm y tế tại địa phương.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 5 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 6 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Ủy ban nhân dân xã, phường, thị trấn (sau đây gọi chung là Ủy ban nhân dân cấp xã) có trách nhiệm sau đây:
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 5 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung theo quy định tại khoản 6 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 a) Thực hiện trách nhiệm quy định tại khoản 1 Điều này;
 
@@ -344,8 +274,6 @@ b) Lập danh sách tham gia bảo hiểm y tế cho các đối tượng trên 
 c) Lập danh sách đề nghị cấp thẻ bảo hiểm y tế cho trẻ em phải thực hiện đồng thời với việc cấp giấy khai sinh.
 
 #### Điều 9. Cơ quan thực hiện bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 7 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -356,8 +284,6 @@ Cơ quan bảo hiểm xã hội có chức năng thực hiện chế độ, chí
 Chính phủ quy định cụ thể về chức năng, nhiệm vụ, quyền hạn và cơ cấu tổ chức của cơ quan bảo hiểm xã hội trong tổ chức thực hiện bảo hiểm y tế.
 
 #### Điều 10. Kiểm toán quỹ bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 8 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -372,8 +298,6 @@ Kiểm toán nhà nước, định kỳ ba năm, thực hiện kiểm toán qu�
 ##### Khoản 1
 
 Chậm đóng, trốn đóng bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 9 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 2
 
@@ -398,10 +322,6 @@ Lợi dụng chức vụ, quyền hạn, chuyên môn, nghiệp vụ để làm 
 ## Chương II. ĐỐI TƯỢNG, MỨC ĐÓNG, TRÁCH NHIỆM VÀ PHƯƠNG THỨC ĐÓNG BẢO HIỂM Y TẾ
 
 #### Điều 12. Đối tượng tham gia bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 6 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 10 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -469,8 +389,6 @@ n) Người nước ngoài đang học tập tại Việt Nam được cấp h�
 
 o) Người thuộc hộ gia đình nghèo; người dân tộc thiểu số thuộc hộ gia đình cận nghèo đang cư trú tại xã, thôn thuộc vùng đồng bào dân tộc thiểu số và miền núi; người dân tộc thiểu số đang cư trú tại vùng có điều kiện kinh tế - xã hội khó khăn; người đang cư trú tại vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn; người đang sinh sống tại xã đảo, đặc khu;
 
-> **Sửa đổi:** Cụm từ “huyện đảo” được thay thế bằng cụm từ “đặc khu” theo quy định tại điểm đ khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 p) Cán bộ xã, phường, thị trấn đã nghỉ việc đang hưởng trợ cấp hằng tháng từ ngân sách nhà nước;
 
 q) Người đã thôi hưởng trợ cấp mất sức lao động đang hưởng trợ cấp hằng tháng từ ngân sách nhà nước;
@@ -530,10 +448,6 @@ a) Đối tượng tham gia bảo hiểm y tế được pháp luật quy địn
 b) Đối tượng khác ngoài đối tượng quy định tại điểm a khoản này sau khi báo cáo Ủy ban Thường vụ Quốc hội.
 
 #### Điều 13. Mức đóng và trách nhiệm đóng bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 7 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 11 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -633,21 +547,11 @@ b) Trách nhiệm đóng, mức đóng, mức hỗ trợ đóng đối với cá
 
 Đối với đối tượng không thuộc quy định tại các khoản 1, 2 và 3 Điều này thì căn cứ để đóng bảo hiểm y tế là mức tham chiếu.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 8 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 12 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 5
 
 Mức tiền lương tháng tối đa để tính số tiền đóng bảo hiểm y tế là 20 lần mức tham chiếu.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 8 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 12 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 #### Điều 15. Phương thức đóng bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 9 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 1
 
@@ -657,25 +561,17 @@ Hằng tháng, người sử dụng lao động đóng bảo hiểm y tế cho n
 
 Đối với các doanh nghiệp, tổ hợp tác, hợp tác xã, liên hiệp hợp tác xã, hộ kinh doanh hoạt động trong lĩnh vực nông nghiệp, lâm nghiệp, ngư nghiệp, diêm nghiệp trả tiền lương theo sản phẩm, theo khoán thì đóng theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Hằng tháng, cơ quan bảo hiểm xã hội đóng bảo hiểm y tế theo quy định tại khoản 2 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 4
 
 Hằng quý, cơ quan, tổ chức, đơn vị cấp học bổng đóng bảo hiểm y tế theo quy định tại điểm c khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 5
 
 Hằng quý, ngân sách nhà nước chuyển số tiền đóng, hỗ trợ đóng bảo hiểm y tế theo quy định tại các điểm a, b và d khoản 3 Điều 13 của Luật này vào quỹ bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 6
 
@@ -685,13 +581,9 @@ Hằng quý, ngân sách nhà nước chuyển số tiền đóng, hỗ trợ đ
 
 Đối tượng quy định tại điểm b và điểm đ khoản 1 Điều 12 của Luật này đóng đủ số tiền thuộc trách nhiệm phải đóng trực tiếp cho cơ quan bảo hiểm xã hội hoặc đóng qua hộ kinh doanh, doanh nghiệp, hợp tác xã, liên hiệp hợp tác xã tham gia quản lý theo phương thức đóng hằng tháng, 03 tháng hoặc 06 tháng một lần.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 8
 
 Thời hạn đóng bảo hiểm y tế chậm nhất đối với người sử dụng lao động được quy định như sau:
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 a) Ngày cuối cùng của tháng tiếp theo đối với phương thức đóng hằng tháng;
 
@@ -705,27 +597,19 @@ b) Ngày cuối cùng của tháng tiếp theo ngay sau chu kỳ đóng đối v
 
 Thẻ bảo hiểm y tế có mã số bảo hiểm y tế được cấp cho người tham gia bảo hiểm y tế và làm căn cứ để được hưởng các quyền lợi về bảo hiểm y tế theo quy định của Luật này. Thẻ bảo hiểm y tế được cấp bằng bản điện tử, bản giấy và có giá trị pháp lý như nhau.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 2
 
 Mỗi người chỉ được cấp một mã số bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Thời điểm thẻ bảo hiểm y tế có giá trị sử dụng được quy định như sau:
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 a) Đối tượng quy định tại các khoản 1, 2 và 3 Điều 12 của Luật này tham gia bảo hiểm y tế lần đầu, thẻ bảo hiểm y tế có giá trị sử dụng kể từ ngày đóng bảo hiểm y tế;
 
 b) Người tham gia bảo hiểm y tế liên tục kể từ lần thứ hai trở đi thì thẻ bảo hiểm y tế có giá trị sử dụng nối tiếp với ngày hết hạn sử dụng của thẻ lần trước;
 
 c) Người tham gia bảo hiểm y tế theo quy định tại khoản 4 và khoản 5 Điều 12 của Luật này mà lần đầu tiên tham gia bảo hiểm y tế hoặc đã tham gia bảo hiểm y tế theo một trong các đối tượng quy định tại Điều 12 của Luật này nhưng không liên tục từ 90 ngày trở lên thì thẻ bảo hiểm y tế có giá trị sử dụng sau 30 ngày kể từ ngày đóng đủ bảo hiểm y tế;
-
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại điểm b khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 d) Đối với trẻ em dưới 6 tuổi thì thẻ bảo hiểm y tế có giá trị sử dụng đến ngày trẻ đủ 72 tháng tuổi. Trường hợp trẻ đủ 72 tháng tuổi mà chưa đến kỳ nhập học thì thẻ bảo hiểm y tế có giá trị sử dụng đến ngày 30 tháng 9 của năm đó.
 
@@ -743,15 +627,7 @@ c) Người có tên trong thẻ không tiếp tục tham gia bảo hiểm y t�
 
 Bảo hiểm xã hội Việt Nam ban hành mẫu thẻ bảo hiểm y tế sau khi có ý kiến thống nhất của Bộ Y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm c khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 #### Điều 17. Cấp thẻ bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 11 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 15 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -789,17 +665,9 @@ Người bị mất thẻ bảo hiểm y tế phải có đơn đề nghị cấ
 
 Trong thời hạn 7 ngày làm việc, kể từ ngày nhận được đơn đề nghị cấp lại thẻ, cơ quan bảo hiểm xã hội phải cấp lại thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ cấp lại thẻ, người tham gia bảo hiểm y tế vẫn được hưởng quyền lợi bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 4
 
 (được bãi bỏ)
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được bãi bỏ theo quy định tại điểm d khoản 2 Điều 23 của Luật Phí và lệ phí số 97/2015/QH13, có hiệu lực kể từ ngày 01 tháng 01 năm 2017.
 
 #### Điều 19. Đổi thẻ bảo hiểm y tế
 
@@ -825,8 +693,6 @@ b) Thẻ bảo hiểm y tế.
 
 Trong thời hạn 7 ngày làm việc, kể từ ngày nhận đủ hồ sơ quy định tại khoản 2 Điều này, cơ quan bảo hiểm xã hội phải đổi thẻ cho người tham gia bảo hiểm y tế. Trong thời gian chờ đổi thẻ, người có thẻ vẫn được hưởng quyền lợi của người tham gia bảo hiểm y tế.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 4
 
 Người được đổi thẻ bảo hiểm y tế do thẻ bị rách, nát hoặc hỏng phải nộp phí. Bộ trưởng Bộ Tài chính quy định mức phí đổi thẻ bảo hiểm y tế.
@@ -843,8 +709,6 @@ b) Người có tên trong thẻ bảo hiểm y tế không tiếp tục tham gi
 
 c) Cấp trùng thẻ bảo hiểm y tế.
 
-> **Sửa đổi:** Điểm này được bổ sung theo quy định tại khoản 13 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 2
 
 Thẻ bảo hiểm y tế bị tạm giữ trong trường hợp người đi khám bệnh, chữa bệnh sử dụng thẻ bảo hiểm y tế của người khác. Người có thẻ bảo hiểm y tế bị tạm giữ có trách nhiệm đến nhận lại thẻ và nộp phạt theo quy định của pháp luật.
@@ -853,15 +717,11 @@ Thẻ bảo hiểm y tế bị tạm giữ trong trường hợp người đi kh
 
 #### Điều 21. Phạm vi được hưởng của người tham gia bảo hiểm y tế
 
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 16 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
-
 ##### Khoản 1
 
 Người tham gia bảo hiểm y tế được quỹ bảo hiểm y tế thanh toán các chi phí sau đây:
 
 a) Khám bệnh, chữa bệnh, bao gồm cả khám bệnh, chữa bệnh từ xa, hỗ trợ khám bệnh, chữa bệnh từ xa, khám bệnh, chữa bệnh y học gia đình, khám bệnh, chữa bệnh tại nhà, phục hồi chức năng, khám thai định kỳ, sinh con; một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc theo yêu cầu chuyên môn theo lộ trình phù hợp, đối tượng ưu tiên và khả năng cân đối của Quỹ bảo hiểm y tế;
-
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại điểm a khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
 
 b) Vận chuyển người bệnh đối với đối tượng quy định tại các điểm a, b, c, d, đ, e, h, i, o và r khoản 3 Điều 12 của Luật này trong trường hợp đang điều trị nội trú hoặc cấp cứu phải chuyển cơ sở khám bệnh, chữa bệnh quy định tại Điều 27 của Luật này;
 
@@ -893,13 +753,7 @@ c) Đối tượng không áp dụng tỷ lệ thanh toán quy định tại đi
 
 d) Đối tượng ưu tiên, lộ trình thực hiện một số dịch vụ phòng bệnh, quản lý bệnh mạn tính, khám sức khỏe định kỳ và khám sàng lọc phù hợp với khả năng cân đối của Quỹ Bảo hiểm y tế.
 
-> **Sửa đổi:** Điểm này được bổ sung theo quy định tại điểm b khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 #### Điều 22. Mức hưởng bảo hiểm y tế của người tham gia bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 15 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 17 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
 ##### Khoản 1
 
@@ -933,8 +787,6 @@ a) 100% mức hưởng khi khám bệnh, chữa bệnh tại cơ sở khám bệ
 
 b) 100% mức hưởng đối với người dân tộc thiểu số và người thuộc hộ nghèo đang sinh sống tại vùng có điều kiện kinh tế - xã hội khó khăn, vùng có điều kiện kinh tế - xã hội đặc biệt khó khăn, người đang sinh sống tại xã đảo, đặc khu khi khám bệnh, chữa bệnh nội trú tại cơ sở khám bệnh, chữa bệnh cấp chuyên sâu;
 
-> **Sửa đổi:** Cụm từ “huyện đảo” thay thế bởi cụm từ “đặc khu” theo quy định tại điểm đ khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 c) 100% mức hưởng khi khám bệnh, chữa bệnh tại cơ sở khám bệnh, chữa bệnh cấp ban đầu;
 
 d) 100% mức hưởng khi khám bệnh, chữa bệnh nội trú tại cơ sở khám bệnh, chữa bệnh cấp cơ bản;
@@ -955,8 +807,6 @@ Người tham gia bảo hiểm y tế được hưởng 100% mức hưởng quy 
 
 Người đi khám sức khỏe định kỳ hoặc khám sàng lọc miễn phí theo quy định của Luật Phòng bệnh được hưởng 100% chi phí cho lượt khám sức khỏe định kỳ hoặc cho lượt khám sàng lọc miễn phí theo đối tượng và lộ trình ưu tiên phù hợp với khả năng cân đối của Quỹ.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại điểm c khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 ##### Khoản 6
 
 Chính phủ quy định chi tiết mức hưởng đối với đối tượng quy định tại các điểm a, b, c, d và đ khoản 3 Điều 12 của Luật này; quy định mức hưởng đối với trường hợp người tham gia bảo hiểm y tế sử dụng dịch vụ khám bệnh, chữa bệnh theo yêu cầu và các trường hợp khác không thuộc quy định tại khoản 1 Điều này.
@@ -975,8 +825,6 @@ Chi phí trong trường hợp quy định tại khoản 1 Điều 21 đã đư�
 
 Khám sức khỏe, trừ khám sức khỏe định kỳ và khám sàng lọc.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm d khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
 ##### Khoản 4
 
 Xét nghiệm, chẩn đoán thai không nhằm mục đích điều trị.
@@ -993,27 +841,17 @@ Sử dụng dịch vụ thẩm mỹ.
 
 Điều trị lác và tật khúc xạ của mắt đối với người từ đủ 18 tuổi trở lên.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 16 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 18 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 8
 
 Sử dụng thiết bị y tế thay thế bao gồm chân giả, tay giả, mắt giả, răng giả, kính mắt, máy trợ thính, phương tiện trợ giúp vận động trong khám bệnh, chữa bệnh và phục hồi chức năng.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 18 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 9
 
 Khám bệnh, chữa bệnh, phục hồi chức năng trong trường hợp thảm họa.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 16 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 10
 
 (được bãi bỏ)
-
-> **Sửa đổi:** Khoản này được bãi bỏ theo quy định tại khoản 16 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 11
 
@@ -1022,8 +860,6 @@ Khám bệnh, chữa bệnh nghiện ma túy, nghiện rượu hoặc chất gâ
 ##### Khoản 12
 
 (được bãi bỏ)
-
-> **Sửa đổi:** Khoản này được bãi bỏ theo quy định tại khoản 16 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 13
 
@@ -1037,10 +873,6 @@ Tham gia thử nghiệm lâm sàng, nghiên cứu khoa học.
 
 #### Điều 24. Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế
 
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 17 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 19 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế là cơ sở khám bệnh, chữa bệnh theo quy định của Luật Khám bệnh, chữa bệnh có ký kết hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế với cơ quan bảo hiểm xã hội theo quy định của Chính phủ.
 
 #### Điều 25. Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế
@@ -1049,15 +881,11 @@ Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế là cơ sở khám bệ
 
 Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế là văn bản thỏa thuận giữa cơ quan bảo hiểm xã hội với cơ sở khám bệnh, chữa bệnh về việc cung ứng dịch vụ và thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 2
 
 Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế gồm các nội dung chủ yếu sau đây:
 
 a) Đối tượng phục vụ và yêu cầu về phạm vi cung ứng dịch vụ; dự kiến số lượng thẻ và cơ cấu nhóm đối tượng tham gia bảo hiểm y tế đối với cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu;
-
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 b) Phương thức thanh toán chi phí khám bệnh, chữa bệnh;
 
@@ -1069,25 +897,15 @@ d) Thời hạn hợp đồng;
 
 e) Điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng.
 
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại điểm a khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Việc thỏa thuận về điều kiện thay đổi, thanh lý, tạm dừng, chấm dứt hợp đồng quy định tại điểm e khoản 2 Điều này phải bảo đảm không làm gián đoạn việc khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 4
 
 Chính phủ quy định chi tiết Điều này và quy định mẫu hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 #### Điều 26. Đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 21 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
 ##### Khoản 1
 
@@ -1107,8 +925,6 @@ Bộ trưởng Bộ Công an, Bộ trưởng Bộ Quốc phòng quy định vi�
 
 #### Điều 27. Chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế
 
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 22 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
-
 ##### Khoản 1
 
 Việc chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh được thực hiện theo yêu cầu chuyên môn và khả năng đáp ứng của cơ sở khám bệnh, chữa bệnh.
@@ -1122,8 +938,6 @@ Bộ trưởng Bộ Y tế quy định việc chuyển người bệnh về cơ 
 Bộ trưởng Bộ Công an, Bộ trưởng Bộ Quốc phòng quy định việc chuyển người bệnh thuộc thẩm quyền quản lý giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế thuộc thẩm quyền quản lý.
 
 #### Điều 28. Thủ tục khám bệnh, chữa bệnh bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 23 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
 ##### Khoản 1
 
@@ -1159,13 +973,9 @@ Việc giám định bảo hiểm y tế phải bảo đảm chính xác, công 
 
 Cơ quan bảo hiểm xã hội thực hiện việc giám định bảo hiểm y tế và chịu trách nhiệm trước pháp luật về kết quả giám định.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ## Chương VI. THANH TOÁN CHI PHÍ KHÁM BỆNH, CHỮA BỆNH BẢO HIỂM Y TẾ
 
 #### Điều 30. Phương thức thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 24 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1182,8 +992,6 @@ c) Thanh toán theo nhóm chẩn đoán.
 Chính phủ quy định chi tiết khoản 1 Điều này và quy định việc áp dụng phương thức thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế.
 
 #### Điều 31. Thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung theo quy định tại khoản 25 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1220,10 +1028,6 @@ c) Việc thanh toán, quyết toán chi phí khám bệnh, chữa bệnh bảo 
 Chính phủ quy định chi tiết điểm a và điểm b khoản 2, khoản 3 Điều này, trừ trường hợp quy định tại khoản 4 Điều này.
 
 #### Điều 32. Tạm ứng, thanh toán, quyết toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 21 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 26 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1277,13 +1081,7 @@ Các nguồn thu hợp pháp khác.
 
 Quỹ bảo hiểm y tế được quản lý tập trung, thống nhất, công khai, minh bạch và có sự phân cấp quản lý trong hệ thống cơ quan bảo hiểm xã hội.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 22 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 Hội đồng quản lý bảo hiểm xã hội theo quy định của Luật Bảo hiểm xã hội chịu trách nhiệm quản lý quỹ bảo hiểm y tế và tư vấn chính sách bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “Hội đồng quản lý bảo hiểm xã hội Việt Nam” được thay thế bằng cụm từ “Hội đồng quản lý bảo hiểm xã hội” theo quy định tại điểm b khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 2
 
@@ -1293,13 +1091,7 @@ Chính phủ quy định cụ thể việc quản lý quỹ bảo hiểm y tế;
 
 Hằng năm, Chính phủ báo cáo trước Quốc hội về quản lý và sử dụng quỹ bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 22 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 #### Điều 35. Phân bổ và sử dụng quỹ bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 23 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 27 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1339,10 +1131,6 @@ LIÊN QUAN ĐẾN BẢO HIỂM Y TẾ
 
 Được đăng ký cơ sở khám bệnh, chữa bệnh bảo hiểm y tế ban đầu theo quy định tại Điều 26 của Luật này.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 24 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 28 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
-
 ##### Khoản 3
 
 Được khám bệnh, chữa bệnh.
@@ -1351,13 +1139,9 @@ LIÊN QUAN ĐẾN BẢO HIỂM Y TẾ
 
 Được cơ quan bảo hiểm xã hội thanh toán chi phí khám bệnh, chữa bệnh theo chế độ bảo hiểm y tế.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 5
 
 Yêu cầu cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh bảo hiểm y tế và cơ quan liên quan giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 6
 
@@ -1381,8 +1165,6 @@ Thực hiện các quy định tại Điều 28 của Luật này khi đến kh�
 
 Chấp hành các quy định và hướng dẫn của cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh khi đến khám bệnh, chữa bệnh.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 5
 
 Thanh toán chi phí khám bệnh, chữa bệnh cho cơ sở khám bệnh, chữa bệnh ngoài phần chi phí do quỹ bảo hiểm y tế chi trả.
@@ -1392,8 +1174,6 @@ Thanh toán chi phí khám bệnh, chữa bệnh cho cơ sở khám bệnh, ch�
 ##### Khoản 1
 
 Yêu cầu cơ quan bảo hiểm xã hội, cơ quan nhà nước có thẩm quyền giải thích, cung cấp thông tin về chế độ bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 2
 
@@ -1413,21 +1193,15 @@ Lập hồ sơ đề nghị cấp thẻ bảo hiểm y tế.
 
 Giao thẻ hoặc thông báo về kết quả cấp thẻ bảo hiểm y tế cho người tham gia bảo hiểm y tế trong thời hạn 03 ngày làm việc kể từ ngày nhận được thẻ hoặc nhận được thông báo về kết quả cấp thẻ bảo hiểm y tế từ cơ quan bảo hiểm xã hội.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 29 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 4
 
 Cung cấp đầy đủ, chính xác thông tin, tài liệu có liên quan đến trách nhiệm thực hiện bảo hiểm y tế của người sử dụng lao động, của đại diện cho người tham gia bảo hiểm y tế khi có yêu cầu của cơ quan bảo hiểm xã hội, người lao động hoặc đại diện của người lao động.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 5
 
 Chấp hành việc thanh tra, kiểm tra về việc thực hiện các quy định của pháp luật về bảo hiểm y tế.
 
 #### Điều 40. Quyền của cơ quan bảo hiểm xã hội
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1436,8 +1210,6 @@ Yêu cầu người sử dụng lao động, đại diện của người tham g
 ##### Khoản 2
 
 Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế; thu hồi, tạm giữ thẻ bảo hiểm y tế đối với trường hợp quy định tại Điều 20 của Luật này.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 30 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 3
 
@@ -1451,15 +1223,11 @@ Từ chối thanh toán chi phí khám bệnh, chữa bệnh bảo hiểm y tế
 
 Yêu cầu người có trách nhiệm bồi thường thiệt hại cho người tham gia bảo hiểm y tế hoàn trả chi phí khám bệnh, chữa bệnh mà cơ quan bảo hiểm xã hội đã chi trả.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 6
 
 Kiến nghị với cơ quan nhà nước có thẩm quyền sửa đổi, bổ sung chính sách, pháp luật về bảo hiểm y tế và xử lý tổ chức, cá nhân vi phạm pháp luật về bảo hiểm y tế.
 
 #### Điều 41. Trách nhiệm của cơ quan bảo hiểm xã hội
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1468,8 +1236,6 @@ Tuyên truyền, phổ biến chính sách, pháp luật về bảo hiểm y t�
 ##### Khoản 2
 
 Tổ chức để đối tượng quy định tại khoản 5 Điều 12 của Luật này đóng bảo hiểm y tế theo hộ gia đình thuận lợi tại đại lý bảo hiểm y tế. Hướng dẫn hồ sơ, thủ tục, nơi đăng ký tham gia bảo hiểm y tế và tổ chức thực hiện chế độ bảo hiểm y tế, bảo đảm nhanh chóng, đơn giản và thuận tiện cho người tham gia bảo hiểm y tế. Rà soát, tổng hợp, xác nhận danh sách tham gia bảo hiểm y tế để tránh cấp trùng thẻ bảo hiểm y tế của các đối tượng quy định tại Điều 12 của Luật này, trừ các đối tượng do Bộ Quốc phòng và Bộ Công an quản lý.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 25 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 3
 
@@ -1495,8 +1261,6 @@ Cung cấp thông tin về các cơ sở khám bệnh, chữa bệnh bảo hiể
 
 Kiểm tra việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; giám định bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 31 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 9
 
 Bảo vệ quyền lợi của người tham gia bảo hiểm y tế; giải quyết theo thẩm quyền các kiến nghị, khiếu nại, tố cáo về chế độ bảo hiểm y tế.
@@ -1504,8 +1268,6 @@ Bảo vệ quyền lợi của người tham gia bảo hiểm y tế; giải quy
 ##### Khoản 10
 
 Lưu trữ hồ sơ, số liệu về bảo hiểm y tế theo quy định của pháp luật; xác định thời gian tham gia bảo hiểm y tế để đảm bảo quyền lợi cho người tham gia bảo hiểm y tế; ứng dụng công nghệ thông tin trong quản lý bảo hiểm y tế, xây dựng cơ sở dữ liệu quốc gia về bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 25 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ##### Khoản 11
 
@@ -1521,13 +1283,9 @@ Tổ chức đào tạo, bồi dưỡng nghiệp vụ, nghiên cứu khoa học 
 
 Yêu cầu cơ quan bảo hiểm xã hội cung cấp đầy đủ, chính xác các thông tin có liên quan đến người tham gia bảo hiểm y tế, kinh phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế tại cơ sở khám bệnh, chữa bệnh.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 2
 
 Được cơ quan bảo hiểm xã hội tạm ứng kinh phí và thanh toán chi phí khám bệnh, chữa bệnh theo hợp đồng khám bệnh, chữa bệnh đã ký.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 3
 
@@ -1543,27 +1301,13 @@ Tổ chức khám bệnh, chữa bệnh bảo đảm chất lượng với thủ
 
 Cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh và thanh toán chi phí khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế theo yêu cầu của cơ quan bảo hiểm xã hội và cơ quan nhà nước có thẩm quyền; đối với hồ sơ đề nghị thanh toán trực tiếp, trong thời hạn 5 ngày làm việc, kể từ ngày nhận được yêu cầu của cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh bảo hiểm y tế có trách nhiệm cung cấp hồ sơ bệnh án, tài liệu liên quan đến khám bệnh, chữa bệnh của người tham gia bảo hiểm y tế.
 
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Bảo đảm điều kiện cần thiết cho cơ quan bảo hiểm xã hội thực hiện công tác giám định; phối hợp với cơ quan bảo hiểm xã hội trong việc tuyên truyền, giải thích về chế độ bảo hiểm y tế cho người tham gia bảo hiểm y tế.
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 4
 
 Kiểm tra, phát hiện và thông báo cho cơ quan bảo hiểm xã hội những trường hợp vi phạm về sử dụng thẻ bảo hiểm y tế; phối hợp với cơ quan bảo hiểm xã hội thu hồi, tạm giữ thẻ bảo hiểm y tế đối với các trường hợp quy định tại Điều 20 của Luật này.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 5
 
@@ -1577,27 +1321,19 @@ Tổ chức thực hiện công tác thống kê, báo cáo về bảo hiểm y 
 
 Lập bảng kê chi phí khám bệnh, chữa bệnh bảo hiểm y tế và chịu trách nhiệm trước pháp luật về tính hợp pháp, chính xác của bảng kê này.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 8
 
 Cung cấp bảng kê chi phí khám bệnh, chữa bệnh cho người tham gia bảo hiểm y tế khi có yêu cầu.
 
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
-
 ##### Khoản 9
 
 Bảo đảm đủ điều kiện cho hoạt động khám bệnh, chữa bệnh bảo hiểm y tế theo quy định của pháp luật về bảo hiểm y tế, pháp luật về khám bệnh, chữa bệnh và theo hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại khoản 32 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 #### Điều 44. Quyền của tổ chức đại diện người lao động và tổ chức đại diện người sử dụng lao động
 
 ##### Khoản 1
 
 Yêu cầu cơ quan bảo hiểm xã hội, cơ sở khám bệnh, chữa bệnh và người sử dụng lao động cung cấp đầy đủ, chính xác thông tin liên quan đến chế độ bảo hiểm y tế của người lao động.
-
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 2
 
@@ -1616,8 +1352,6 @@ Tham gia xây dựng, kiến nghị sửa đổi, bổ sung chính sách, pháp 
 ##### Khoản 3
 
 Tham gia giám sát việc thi hành pháp luật về bảo hiểm y tế, đôn đốc người sử dụng lao động đóng bảo hiểm y tế cho người lao động và tham gia giải quyết các trường hợp trốn đóng, nợ đóng bảo hiểm y tế.
-
-> **Sửa đổi:** Khoản này được sửa đổi, bổ sung theo quy định tại khoản 27 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
 ## Chương IX. THANH TRA, KHIẾU NẠI, TỐ CÁO, GIẢI QUYẾT TRANH CHẤP VÀ XỬ LÝ VI PHẠM VỀ BẢO HIỂM Y TẾ
 
@@ -1641,8 +1375,6 @@ b) Tổ chức, cá nhân đóng bảo hiểm y tế theo quy định tại kho�
 
 c) Cơ quan bảo hiểm xã hội;
 
-> **Sửa đổi:** Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 d) Cơ sở khám bệnh, chữa bệnh bảo hiểm y tế.
 
 ##### Khoản 2
@@ -1654,8 +1386,6 @@ a) Các bên tranh chấp có trách nhiệm tự hòa giải về nội dung tr
 b) Trường hợp hòa giải không thành thì các bên tranh chấp có quyền khởi kiện tại Tòa án theo quy định của pháp luật.
 
 #### Điều 48a. Chậm đóng bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 Chậm đóng bảo hiểm y tế là hành vi của người sử dụng lao động thuộc một trong các trường hợp sau đây:
 
@@ -1672,8 +1402,6 @@ Không lập danh sách hoặc lập danh sách không đầy đủ số ngườ
 Thuộc trường hợp không bị coi là trốn đóng bảo hiểm y tế theo quy định tại khoản 2 Điều 48b của Luật này.
 
 #### Điều 48b. Trốn đóng bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1692,10 +1420,6 @@ d) Các trường hợp khác bị coi là trốn đóng bảo hiểm y tế the
 Chính phủ quy định chi tiết Điều này; quy định các trường hợp thuộc khoản 1 Điều này nhưng có lý do chính đáng thì không bị coi là trốn đóng bảo hiểm y tế.
 
 #### Điều 49. Xử lý vi phạm pháp luật về bảo hiểm y tế
-
-> **Sửa đổi:** Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 28 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
->
-> Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 34 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 1
 
@@ -1730,10 +1454,6 @@ Cơ quan, tổ chức, người sử dụng lao động chậm đóng, trốn đ
 Chính phủ quy định chi tiết điểm a khoản 2, điểm a khoản 3 và khoản 4 Điều này.
 
 ## Chương X. ĐIỀU KHOẢN THI HÀNH
-
-> **Sửa đổi:** Điều 2 của Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014 quy định như sau:
->
-> _(Trích dẫn đầy đủ: xem chú thích [114] ở cuối văn bản.)_
 
 #### Điều 50. Điều khoản chuyển tiếp
 
@@ -1776,199 +1496,3 @@ d) Đối tượng quy định tại khoản 23 và khoản 24 Điều 12 của 
 #### Điều 52. Quy định chi tiết và hướng dẫn thi hành
 
 Chính phủ quy định chi tiết và hướng dẫn thi hành các điều, khoản được giao trong Luật; hướng dẫn những nội dung cần thiết khác của Luật này để đáp ứng yêu cầu của quản lý nhà nước.
-
-**[1]**
-
-Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam năm 1992 đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 51/2001/QH10;
-
-Quốc hội ban hành Luật sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp số 14/2008/QH12.”.
-
-Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế số 25/2008/QH12.”.
-
-Luật Phí và lệ phí số 97/2015/QH13 có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật Phí và lệ phí.”.
-
-Luật số 35/2018/QH14 sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật sửa đổi, bổ sung một số điều có liên quan đến quy hoạch của Luật Giao thông đường bộ số 23/2008/QH12, Bộ luật Hàng hải Việt Nam số 95/2015/QH13, Luật Đường sắt số 06/2017/QH14, Luật Giao thông đường thủy nội địa số 23/2004/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 48/2014/QH13 và Luật số 97/2015/QH13, Luật Tài nguyên nước số 17/2012/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 08/2017/QH14, Luật Đất đai số 45/2013/QH13, Luật Bảo vệ môi trường số 55/2014/QH13, Luật Khoáng sản số 60/2010/QH12, Luật Khí tượng thủy văn số 90/2015/QH13, Luật Đa dạng sinh học số 20/2008/QH12, Luật Tài nguyên, môi trường biển và hải đảo số 82/2015/QH13, Luật Bảo vệ và kiểm dịch thực vật số 41/2013/QH13, Luật Đê điều số 79/2006/QH11, Luật Thủy lợi số 08/2017/QH14, Luật Năng lượng nguyên tử số 18/2008/QH12, Luật Đo lường số 04/2011/QH13, Luật Tiêu chuẩn và quy chuẩn kỹ thuật số 68/2006/QH11, Luật Chất lượng sản phẩm, hàng hóa số 05/2007/QH12, Luật An toàn thông tin mạng số 86/2015/QH13, Luật Xuất bản số 19/2012/QH13, Luật Báo chí số 103/2016/QH13, Luật Giáo dục quốc phòng và an ninh số 30/2013/QH13, Luật Quản lý, sử dụng vốn nhà nước đầu tư vào sản xuất, kinh doanh tại doanh nghiệp số 69/2014/QH13, Luật Thực hành tiết kiệm, chống lãng phí số 44/2013/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 21/2017/QH14, Luật Hải quan số 54/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 71/2014/QH13, Luật Chứng khoán số 70/2006/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 62/2010/QH12, Luật Điện ảnh số 62/2006/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 31/2009/QH12, Luật Quảng cáo số 16/2012/QH13, Luật Xây dựng số 50/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 03/2016/QH14, Luật Quy hoạch đô thị số 30/2009/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 77/2015/QH13, Luật Dầu khí năm 1993 đã được sửa đổi, bổ sung một số điều theo Luật số 19/2000/QH10 và Luật số 10/2008/QH12, Bộ luật Lao động số 10/2012/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 92/2015/QH13, Luật Bảo hiểm xã hội số 58/2014/QH13, Luật Bảo hiểm y tế số 25/2008/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 32/2013/QH13, Luật số 46/2014/QH13 và Luật số 97/2015/QH13, Luật Phòng, chống bệnh truyền nhiễm số 03/2007/QH12, Luật Giám định tư pháp số 13/2012/QH13 và Luật Bảo vệ quyền lợi người tiêu dùng số 59/2010/QH12.”.
-
-Luật Cư trú số 68/2020/QH14 có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật Cư trú.”.
-
-Luật Lực lượng tham gia bảo vệ an ninh, trật tự ở cơ sở số 30/2023/QH15 có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật Lực lượng tham gia bảo vệ an ninh, trật tự ở cơ sở.”.
-
-Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
-
-Quốc hội ban hành Luật sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế số 25/2008/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 32/2013/QH13, Luật số 46/2014/QH13, Luật số 97/2015/QH13, Luật số 35/2018/QH14, Luật số 68/2020/QH14 và Luật số 30/2023/QH15.”.
-
-Luật Phòng bệnh số 114/2025/QH15 có căn cứ ban hành như sau:
-
-“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
-
-Quốc hội ban hành Luật Phòng bệnh.”.
-
-**[114]**
-
-Điều 2 của Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014 quy định như sau:
-
-“Điều 2
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2014, trừ quy định tại khoản 2 Điều này.
-
-2. Quy định về áp dụng thuế suất 20% đối với doanh nghiệp có tổng doanh thu năm không quá hai mươi tỷ đồng tại khoản 6 Điều 1 và quy định về áp dụng thuế suất 10% đối với thu nhập của doanh nghiệp từ thực hiện dự án đầu tư - kinh doanh nhà ở xã hội tại khoản 7 Điều 1 của Luật này được thực hiện từ ngày 01 tháng 7 năm 2013.
-
-3. Doanh nghiệp có dự án đầu tư mà tính đến hết kỳ tính thuế năm 2013 còn đang trong thời gian hưởng ưu đãi thuế thu nhập doanh nghiệp (thuế suất, thời gian miễn, giảm thuế) theo quy định của các văn bản quy phạm pháp luật về thuế thu nhập doanh nghiệp trước thời điểm Luật này có hiệu lực thi hành thì tiếp tục được hưởng cho thời gian còn lại theo quy định của các văn bản đó. Trường hợp đáp ứng điều kiện ưu đãi thuế theo quy định của Luật này thì được lựa chọn ưu đãi đang hưởng hoặc ưu đãi theo quy định của Luật này theo diện ưu đãi đối với đầu tư mới cho thời gian còn lại nếu đang hưởng theo diện doanh nghiệp thành lập mới từ dự án đầu tư hoặc theo diện ưu đãi đối với đầu tư mở rộng cho thời gian còn lại nếu đang hưởng theo diện đầu tư mở rộng.
-
-Tính đến hết kỳ tính thuế năm 2015, trường hợp doanh nghiệp có dự án đầu tư đang được áp dụng thuế suất ưu đãi 20% quy định tại khoản 3 Điều 13 Luật Thuế thu nhập doanh nghiệp số 14/2008/QH12 được sửa đổi, bổ sung tại khoản 7 Điều 1 của Luật này thì kể từ ngày 01 tháng 01 năm 2016 được chuyển sang áp dụng mức thuế suất 17% cho thời gian còn lại.
-
-4. Bãi bỏ các nội dung quy định về thuế thu nhập doanh nghiệp tại các điều, khoản của các luật sau đây:
-
-a) Khoản 2 Điều 7 của Luật Bảo hiểm tiền gửi số 06/2012/QH13;
-
-b) Khoản 2 Điều 4 của Luật Bảo hiểm y tế số 25/2008/QH12;
-
-c) Khoản 1 Điều 10; khoản 1 Điều 12; khoản 2 Điều 18; khoản 2 Điều 19; khoản 1 và khoản 2 Điều 22; khoản 3 Điều 24 và khoản 2 Điều 28 của Luật Công nghệ cao số 21/2008/QH12;
-
-d) Các khoản 1, 4, 5, 6, 7 và 8 Điều 44, Điều 45 của Luật Chuyển giao công nghệ số 80/2006/QH11;
-
-đ) Khoản 1 Điều 53, khoản 5 Điều 55 và khoản 3 Điều 86 của Luật Dạy nghề số 76/2006/QH11;
-
-e) Khoản 1 Điều 68 của Luật Người lao động Việt Nam đi làm việc tại nước ngoài số 72/2006/QH11;
-
-g) Khoản 2 Điều 6 của Luật Bảo hiểm xã hội số 71/2006/QH11;
-
-h) Khoản 3 Điều 8 của Luật Trợ giúp pháp lý số 69/2006/QH11;
-
-i) Khoản 3 Điều 66 của Luật Giáo dục đại học số 08/2012/QH13;
-
-k) Điều 34 của Luật Người khuyết tật số 51/2010/QH12;
-
-l) Khoản 4 Điều 33 của Luật Đầu tư số 59/2005/QH11;
-
-m) Khoản 2 Điều 58, khoản 2 Điều 73, khoản 3 Điều 117 và khoản 3 Điều 125 của Luật Doanh nghiệp số 60/2005/QH11.
-
-5. Chính phủ quy định chi tiết, hướng dẫn thi hành các điều, khoản được giao trong Luật.”.
-
-Điều 2 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015 quy định như sau:
-
-“Điều 2
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2015.
-
-2. Chính phủ quy định chi tiết những điều, khoản được giao trong Luật.”.
-
-Các điều 23, 24 và 25 của Luật Phí và lệ phí số 97/2015/QH13, có hiệu lực kể từ ngày 01 tháng 01 năm 2017 quy định như sau:
-
-“Điều 23. Hiệu lực thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2017.
-
-2. Sửa đổi, bãi bỏ các quy định sau đây:
-
-a) Bãi bỏ khoản 3 Điều 75 của Luật Giao thông đường thủy nội địa số 23/2004/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 48/2014/QH13;
-
-b) Bãi bỏ điểm a khoản 2 Điều 74 của Luật Đường sắt số 35/2005/QH11;
-
-c) Bỏ cụm từ “lệ phí tuyển sinh” tại Điều 101 và Điều 105 của Luật Giáo dục số 38/2005/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 44/2009/QH12, Điều 64 và Điều 65 của Luật Giáo dục đại học số 08/2012/QH13, Điều 28 và Điều 29 của Luật Giáo dục nghề nghiệp số 74/2014/QH13;
-
-d) Bãi bỏ khoản 4 Điều 18 của Luật Bảo hiểm y tế số 25/2008/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 46/2014/QH13;
-
-đ) Bãi bỏ Điều 25 và khoản 3 Điều 15 của Luật Kiểm toán độc lập số 67/2011/QH12;
-
-e) Bãi bỏ Chương IV-A về thuế môn bài quy định tại Nghị quyết số 200/NQ-TVQH ngày 18 tháng 01 năm 1966 của Ủy ban Thường vụ Quốc hội ấn định thuế công thương nghiệp đối với các hợp tác xã, tổ chức hợp tác và hộ riêng lẻ kinh doanh công thương nghiệp đã được sửa đổi, bổ sung một số điều theo Pháp lệnh số 10-LCT/HĐNN7 sửa đổi một số điều về thuế công thương nghiệp ngày 26 tháng 02 năm 1983, Pháp lệnh bổ sung, sửa đổi một số điều lệ về thuế công thương nghiệp và điều lệ về thuế hàng hóa ngày 17 tháng 11 năm 1987 và Pháp lệnh sửa đổi, bổ sung một số điều trong Pháp lệnh, Điều lệ về thuế công thương nghiệp và thuế hàng hóa ngày 03 tháng 3 năm 1989.
-
-3. Pháp lệnh Phí và lệ phí số 38/2001/PL-UBTVQH10 và Pháp lệnh Án phí, lệ phí toà án số 10/2009/PL-UBTVQH12 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.
-
-Điều 24. Quy định chuyển tiếp
-
-Các khoản phí trong Danh mục phí và lệ phí kèm theo Pháp lệnh Phí và lệ phí số 38/2001/PL-UBTVQH10 chuyển sang thực hiện theo cơ chế giá do Nhà nước định giá theo Danh mục tại Phụ lục số 2 kèm theo Luật này được thực hiện theo Luật Giá kể từ ngày Luật này có hiệu lực thi hành.
-
-Chính phủ quy định cụ thể cơ quan có thẩm quyền quy định giá và hình thức định giá.
-
-Điều 25. Quy định chi tiết
-
-Chính phủ quy định chi tiết các điều, khoản được giao trong Luật.”.
-
-Điều 31 của Luật số 35/2018/QH14 sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch, có hiệu lực kể từ ngày 01 tháng 01 năm 2019 quy định như sau:
-
-“Điều 31. Hiệu lực thi hành
-
-Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2019.”.
-
-Điều 38 của Luật Cư trú số 68/2020/QH14, có hiệu lực kể từ ngày 01 tháng 7 năm 2021 quy định như sau:
-
-“Điều 38. Điều khoản thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2021.
-
-2. Luật Cư trú số 81/2006/QH11 đã được sửa đổi, bổ sung một số điều theo Luật số 36/2013/QH13 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.
-
-3. Kể từ ngày Luật này có hiệu lực thi hành, Sổ hộ khẩu, Sổ tạm trú đã được cấp vẫn được sử dụng và có giá trị như giấy tờ, tài liệu xác nhận về cư trú theo quy định của Luật này cho đến hết ngày 31 tháng 12 năm 2022.
-
-Trường hợp thông tin trong Sổ hộ khẩu, Sổ tạm trú khác với thông tin trong Cơ sở dữ liệu về cư trú thì sử dụng thông tin trong Cơ sở dữ liệu về cư trú.
-
-Khi công dân thực hiện các thủ tục đăng ký cư trú dẫn đến thay đổi thông tin trong Sổ hộ khẩu, Sổ tạm trú thì cơ quan đăng ký cư trú có trách nhiệm thu hồi Sổ hộ khẩu, Sổ tạm trú đã cấp, thực hiện điều chỉnh, cập nhật thông tin trong Cơ sở dữ liệu về cư trú theo quy định của Luật này và không cấp mới, cấp lại Sổ hộ khẩu, Sổ tạm trú.
-
-4. Chính phủ, Bộ, cơ quan ngang Bộ và cơ quan khác có liên quan rà soát các văn bản quy phạm pháp luật thuộc thẩm quyền ban hành có nội dung quy định liên quan đến Sổ hộ khẩu, Sổ tạm trú hoặc có yêu cầu xuất trình giấy tờ, tài liệu xác nhận về cư trú để sửa đổi, bổ sung cho phù hợp với quy định của Luật này, hạn chế việc sử dụng thông tin về nơi cư trú là điều kiện để thực hiện các thủ tục hành chính.”.
-
-Điều 33 của Luật Lực lượng tham gia bảo vệ an ninh, trật tự ở cơ sở số 30/2023/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2024 quy định như sau:
-
-“Điều 33. Hiệu lực thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2024.
-
-2. Pháp lệnh Công an xã số 06/2008/PL-UBTVQH12 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.
-
-Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025 quy định như sau:
-
-Điều 3. Điều khoản thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025, trừ quy định tại khoản 2 và khoản 3 Điều này.
-
-2. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế tại các khoản 3, 16, 17, 21, 22, 23 và 28 Điều 1 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2025.
-
-3. Quy định về phạm vi được hưởng tại khoản 16 Điều 1 của Luật này, trừ các quy định về khám bệnh, chữa bệnh từ xa, hỗ trợ khám bệnh, chữa bệnh từ xa, khám bệnh, chữa bệnh y học gia đình, khám bệnh, chữa bệnh tại nhà và nguyên tắc xây dựng danh mục thiết bị y tế, dịch vụ kỹ thuật thuộc phạm vi được hưởng của người tham gia bảo hiểm y tế và quy định về mức hưởng tại khoản 17 Điều 1 của Luật này được áp dụng đối với các trường hợp sau đây có hiệu lực thi hành từ ngày 01 tháng 01 năm 2025:
-
-a) Đối tượng quy định tại khoản 10 Điều 1 của Luật này mà đối tượng này đã được quy định tại Điều 12 của Luật Bảo hiểm y tế số 25/2008/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 32/2013/QH13, Luật số 46/2014/QH13, Luật số 97/2015/QH13, Luật số 35/2018/QH14, Luật số 68/2020/QH14 và Luật số 30/2023/QH15;
-
-b) Đối tượng quy định tại điểm a khoản này khám bệnh, chữa bệnh tại cơ sở khám bệnh, chữa bệnh trước ngày 01 tháng 01 năm 2025 và kết thúc đợt điều trị từ ngày 01 tháng 01 năm 2025.
-
-4. Chậm nhất là ngày 01 tháng 01 năm 2027, thực hiện liên thông, sử dụng kết quả cận lâm sàng liên thông giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế phù hợp với yêu cầu chuyên môn theo quy định của Chính phủ.
-
-5. Quy định chuyển tiếp:
-
-a) Trường hợp người bệnh không thuộc đối tượng quy định tại điểm a và điểm b khoản 3 Điều này khám bệnh, chữa bệnh tại cơ sở khám bệnh, chữa bệnh trước ngày 01 tháng 7 năm 2025 và kết thúc đợt điều trị từ ngày 01 tháng 7 năm 2025 thì áp dụng theo quy định của Luật này;
-
-b) Mức tham chiếu quy định tại Luật này áp dụng theo mức lương cơ sở. Trường hợp chính sách tiền lương có thay đổi, Chính phủ quyết định mức tham chiếu cụ thể;
-
-c) Hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế được ký trước ngày 01 tháng 7 năm 2025 mà còn hiệu lực sau ngày 01 tháng 7 năm 2025 được thực hiện theo quy định của Chính phủ;
-
-d) Đối với số tiền bảo hiểm y tế mà người sử dụng lao động có trách nhiệm đóng theo quy định của Luật Bảo hiểm y tế số 25/2008/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 32/2013/QH13, Luật số 46/2014/QH13, Luật số 97/2015/QH13, Luật số 35/2018/QH14, Luật số 68/2020/QH14 và Luật số 30/2023/QH15 nhưng đến hết ngày 30 tháng 6 năm 2025 mà không đóng hoặc không đóng đầy đủ thì được xử lý theo quy định về chậm đóng của Luật này.”.
-
-Điều 45 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026 quy định như sau:
-
-“Điều 45. Hiệu lực thi hành
-
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
-
-2. Luật Phòng, chống bệnh truyền nhiễm số 03/2007/QH12 đã được sửa đổi, bổ sung một số điều theo Luật số 15/2008/QH12 và Luật số 35/2018/QH14 hết hiệu lực từ ngày Luật này có hiệu lực thi hành.”.

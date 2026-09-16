@@ -1,16 +1,12 @@
 """Bước formatting: chuyển văn bản pháp luật `.docx` sang Markdown có cấu trúc.
 
 Xem `formatting_spec.md` trong package này để biết chi tiết heading mapping,
-front matter, chú thích sửa đổi và QC warnings.
+front matter/back matter (chuyển bằng Gemini) và QC warnings.
 """
 
 from __future__ import annotations
 
-from production_legal_qa_rag.formatting.models import (
-    FormattingResult,
-    FrontMatter,
-    QcWarning,
-)
+from production_legal_qa_rag.formatting.models import FormattingResult, QcWarning
 from production_legal_qa_rag.formatting.pipeline import (
     convert_directory,
     convert_docx_to_markdown,
@@ -18,7 +14,6 @@ from production_legal_qa_rag.formatting.pipeline import (
 
 __all__ = [
     "FormattingResult",
-    "FrontMatter",
     "QcWarning",
     "convert_directory",
     "convert_docx_to_markdown",

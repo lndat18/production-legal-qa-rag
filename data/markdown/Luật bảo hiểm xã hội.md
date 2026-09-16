@@ -1,19 +1,15 @@
----
-so_hieu: "19/VBHN-VPQH"
-loai_van_ban: "Văn bản hợp nhất"
-ten_van_ban: "Luật Bảo hiểm xã hội"
-co_quan_ban_hanh: "VĂN PHÒNG QUỐC HỘI"
-ngay_ban_hanh: "2026-02-12"
-ngay_hieu_luc: "2025-07-01"
-is_van_ban_hop_nhat: true
-is_phu_luc: false
-source_path: "data/raw/Luật bảo hiểm xã hội.docx"
-parser_version: "1.0.0"
----
+VĂN PHÒNG QUỐC HỘI
+--------
+Số: 19/VBHN-VPQH
 
-LUẬT
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+---------------
+Hà Nội, ngày 12 tháng 02 năm 2026
 
-BẢO HIỂM XÃ HỘI
+**LUẬT**
+
+**BẢO HIỂM XÃ HỘI**
 
 Luật Bảo hiểm xã hội số 41/2024/QH15 ngày 29 tháng 6 năm 2024 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2025, được sửa đổi, bổ sung bởi:
 
@@ -25,33 +21,9 @@ Luật Bảo hiểm xã hội số 41/2024/QH15 ngày 29 tháng 6 năm 2024 củ
 
 4. Luật Phục hồi, phá sản số 142/2025/QH15 ngày 11 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 3 năm 2026.
 
-Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*
 
-Quốc hội ban hành Luật Bảo hiểm xã hội.
-
-> **Sửa đổi:** Luật Nhà giáo số 73/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Nhà giáo.”.
->
-> Luật Thanh tra số 84/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Thanh tra.”.
->
-> Luật Dân số số 113/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hoà xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Dân số.”.
->
-> Luật Phục hồi, phá sản số 142/2025/QH15 có căn cứ ban hành như sau:
->
-> “Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
->
-> Quốc hội ban hành Luật Phục hồi, phá sản.”.
+Quốc hội ban hành Luật Bảo hiểm xã hội[1].
 
 ## Chương I. NHỮNG QUY ĐỊNH CHUNG
 
@@ -583,8 +555,6 @@ Kiến nghị cơ quan nhà nước có thẩm quyền xử lý hành vi vi ph�
 
 Cơ quan bảo hiểm xã hội là cơ quan nhà nước có chức năng thực hiện chế độ, chính sách bảo hiểm xã hội; quản lý và sử dụng các quỹ bảo hiểm xã hội, quỹ bảo hiểm thất nghiệp, quỹ bảo hiểm y tế; nhiệm vụ khác theo quy định của Luật này và luật khác có liên quan.
 
-> **Sửa đổi:** Cụm từ “thanh tra chuyên ngành về đóng bảo hiểm xã hội, bảo hiểm thất nghiệp, bảo hiểm y tế;” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 2
 
 Chính phủ quy định chức năng, nhiệm vụ, quyền hạn và cơ cấu tổ chức của cơ quan bảo hiểm xã hội.
@@ -610,8 +580,6 @@ Từ chối chi trả chế độ bảo hiểm xã hội bắt buộc, bảo hi�
 ##### Khoản 5
 
 Kiểm tra việc thực hiện pháp luật về bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, việc thực hiện hợp đồng khám bệnh, chữa bệnh bảo hiểm y tế; việc đóng, chi trả bảo hiểm thất nghiệp, bảo hiểm y tế.
-
-> **Sửa đổi:** Cụm từ “Thanh tra chuyên ngành về đóng bảo hiểm xã hội, bảo hiểm thất nghiệp, bảo hiểm y tế.” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 ##### Khoản 6
 
@@ -1163,8 +1131,6 @@ Tạm dừng đóng vào quỹ hưu trí và tử tuất được quy định nh
 
 a) Trong trường hợp người sử dụng lao động gặp khó khăn phải tạm dừng sản xuất, kinh doanh dẫn đến việc người lao động và người sử dụng lao động không có khả năng đóng bảo hiểm xã hội hoặc người sử dụng lao động được áp dụng thủ tục phục hồi theo quy định của pháp luật về phục hồi, phá sản thì được tạm dừng đóng vào quỹ hưu trí và tử tuất trong thời gian tối đa 12 tháng;
 
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại khoản 2 Điều 86 của Luật Phục hồi, phá sản số 142/2025/QH15, có hiệu lực kể từ ngày 01 tháng 3 năm 2026.
-
 b) Hết thời hạn tạm dừng đóng quy định tại điểm a khoản này, người sử dụng lao động và người lao động tiếp tục đóng bảo hiểm xã hội bắt buộc và đóng bù cho thời gian tạm dừng đóng.
 
 Thời hạn đóng bù chậm nhất là ngày cuối cùng của tháng tiếp theo tháng kết thúc việc tạm dừng đóng. Số tiền đóng bù bằng số tiền phải đóng của những tháng tạm dừng đóng.
@@ -1533,8 +1499,6 @@ b) 07 ngày làm việc khi vợ sinh con phải phẫu thuật hoặc sinh con 
 
 c) Trường hợp vợ sinh đôi hoặc vợ sinh con thứ hai thì được nghỉ 10 ngày làm việc. Trường hợp sinh ba trở lên thì được nghỉ thêm 03 ngày làm việc cho mỗi con tính từ con thứ ba trở đi;
 
-> **Sửa đổi:** Điểm này được sửa đổi, bổ sung theo quy định tại khoản 2 Điều 29 của Luật Dân số số 113/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2026.
-
 d) Trường hợp vợ sinh đôi phải phẫu thuật thì được nghỉ 14 ngày làm việc. Trường hợp sinh ba trở lên phải phẫu thuật thì được nghỉ thêm 03 ngày làm việc cho mỗi con tính từ con thứ ba trở đi.
 
 ##### Khoản 3
@@ -1884,8 +1848,6 @@ Trường hợp thời gian nghỉ hưu trước tuổi dưới 06 tháng thì k
 ##### Khoản 3a
 
 Mức lương hưu hằng tháng của đối tượng quy định tại khoản 2 Điều 26 của Luật Nhà giáo được tính như quy định tại khoản 1 Điều này, thời gian nghỉ hưu ở tuổi thấp hơn thì không giảm tỷ lệ phần trăm hưởng lương hưu theo quy định tại khoản 3 Điều này.
-
-> **Sửa đổi:** Khoản này được bổ sung theo quy định tại Điều 40 của Luật Nhà giáo số 73/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
 
 ##### Khoản 4
 
@@ -3255,8 +3217,6 @@ Chỉ đạo, hướng dẫn tổ chức thực hiện chính sách, pháp luậ
 
 Kiểm tra, xử lý vi phạm pháp luật, giải quyết khiếu nại, tố cáo về trợ cấp hưu trí xã hội, bảo hiểm xã hội bắt buộc, bảo hiểm xã hội tự nguyện, trừ quy định tại khoản 2 Điều 137 của Luật này.
 
-> **Sửa đổi:** Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 6
 
 Chủ trì phối hợp với Bộ, cơ quan ngang Bộ, Bảo hiểm xã hội Việt Nam trình Chính phủ quyết định biện pháp xử lý trong trường hợp cần thiết để bảo vệ quyền, lợi ích chính đáng về bảo hiểm xã hội của người lao động.
@@ -3291,8 +3251,6 @@ Xây dựng, trình cấp có thẩm quyền ban hành hoặc ban hành theo th�
 
 Kiểm tra, xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về quản lý tài chính bảo hiểm xã hội.
 
-> **Sửa đổi:** Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
-
 ##### Khoản 3
 
 Chủ trì xây dựng nội dung về tình hình quản lý và sử dụng quỹ bảo hiểm xã hội gửi Bộ Lao động - Thương binh và Xã hội để tổng hợp, xây dựng báo cáo của Chính phủ quy định tại khoản 5 Điều 135 của Luật này.
@@ -3308,8 +3266,6 @@ Trình Chính phủ quy định về hoạt động đầu tư quỹ bảo hiể
 ##### Khoản 6
 
 Xây dựng, trình cấp có thẩm quyền ban hành hoặc ban hành theo thẩm quyền chính sách, pháp luật về bảo hiểm hưu trí bổ sung; chỉ đạo, hướng dẫn tổ chức triển khai thực hiện chính sách, pháp luật về bảo hiểm hưu trí bổ sung; theo dõi, đánh giá, kiểm tra tình hình thực hiện bảo hiểm hưu trí bổ sung; xử lý vi phạm pháp luật và giải quyết khiếu nại, tố cáo về bảo hiểm hưu trí bổ sung; thực hiện công tác thống kê, thông tin về bảo hiểm hưu trí bổ sung.
-
-> **Sửa đổi:** Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 #### Điều 138. Trách nhiệm của Ủy ban nhân dân các cấp
 
@@ -3332,10 +3288,6 @@ d) Kiểm tra, thanh tra, xử phạt vi phạm hành chính và giải quyết 
 đ) Kiến nghị với cơ quan nhà nước có thẩm quyền sửa đổi, bổ sung chính sách, pháp luật về bảo hiểm xã hội.
 
 ## Chương XI. ĐIỀU KHOẢN THI HÀNH
-
-> **Sửa đổi:** Điều 41 của Luật Nhà giáo số 73/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
->
-> _(Trích dẫn đầy đủ: xem chú thích [10] ở cuối văn bản.)_
 
 #### Điều 139. Sửa đổi, bổ sung một số luật có liên quan đến bảo hiểm xã hội
 
@@ -3453,13 +3405,53 @@ Văn bản ủy quyền cho người khác nhận lương hưu, trợ cấp bả
 
 Chính phủ quy định chi tiết Điều này.
 
-**[10]**
+---
 
-Điều 41 của Luật Nhà giáo số 73/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
+[1] Luật Nhà giáo số 73/2025/QH15 có căn cứ ban hành như sau:
+
+“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
+
+Quốc hội ban hành Luật Nhà giáo.”.
+
+Luật Thanh tra số 84/2025/QH15 có căn cứ ban hành như sau:
+
+“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
+
+Quốc hội ban hành Luật Thanh tra.”.
+
+Luật Dân số số 113/2025/QH15 có căn cứ ban hành như sau:
+
+“Căn cứ Hiến pháp nước Cộng hoà xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
+
+Quốc hội ban hành Luật Dân số.”.
+
+Luật Phục hồi, phá sản số 142/2025/QH15 có căn cứ ban hành như sau:
+
+“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;
+
+Quốc hội ban hành Luật Phục hồi, phá sản.”.
+
+[2] Cụm từ “thanh tra chuyên ngành về đóng bảo hiểm xã hội, bảo hiểm thất nghiệp, bảo hiểm y tế;” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
+
+[3] Cụm từ “Thanh tra chuyên ngành về đóng bảo hiểm xã hội, bảo hiểm thất nghiệp, bảo hiểm y tế.” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
+
+[4] Điểm này được sửa đổi, bổ sung theo quy định tại khoản 2 Điều 86 của Luật Phục hồi, phá sản số 142/2025/QH15, có hiệu lực kể từ ngày 01 tháng 3 năm 2026.
+
+[5] Điểm này được sửa đổi, bổ sung theo quy định tại khoản 2 Điều 29 của Luật Dân số số 113/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2026.
+
+[6] Khoản này được bổ sung theo quy định tại Điều 40 của Luật Nhà giáo số 73/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
+
+[7] Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
+
+[8] Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
+
+[9] Cụm từ “thanh tra,” được bỏ theo quy định tại điểm s khoản 1 Điều 62 của Luật Thanh tra số 84/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
+
+[10] Điều 41 của Luật Nhà giáo số 73/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
 
 “Điều 41. Hiệu lực thi hành
 
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.*
 
 2. Việc áp dụng Luật Nhà giáo đối với nhà giáo trong trường của cơ quan nhà nước, tổ chức chính trị, lực lượng vũ trang nhân dân do Chính phủ quy định.”.
 
@@ -3467,9 +3459,9 @@ Chính phủ quy định chi tiết Điều này.
 
 “Điều 63. Hiệu lực thi hành
 
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025.
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025.*
 
-2. Luật Thanh tra số 11/2022/QH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành, trừ quy định tại khoản 1 và khoản 3 Điều 64 của Luật này.
+*2. Luật Thanh tra số 11/2022/QH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành, trừ quy định tại khoản 1 và khoản 3 Điều 64 của Luật này.*
 
 3. Chính phủ quy định chi tiết các điều, khoản được giao và hướng dẫn thực hiện Luật này.”.
 
@@ -3477,14 +3469,14 @@ Khoản 1 và khoản 3 Điều 30 của Luật Dân số số 113/2025/QH15, c�
 
 “Điều 30. Hiệu lực thi hành
 
-1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.
+*1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*
 
-3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.
+*3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.*
 
 Điều 87 của Luật Phục hồi, phá sản số 142/2025/QH15, có hiệu lực kể từ ngày 01 tháng 3 năm 2026 quy định như sau:
 
 “Điều 87. Hiệu lực thi hành
 
-1. Luật này có hiệu lực thi hành từ ngày 01 tháng 3 năm 2026, trừ trường hợp quy định tại khoản 3 Điều 38 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 3 năm 2026, trừ trường hợp quy định tại khoản 3 Điều 38 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.*
 
 2. Luật Phá sản số 51/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 85/2025/QH15 hết hiệu lực thi hành kể từ ngày Luật này có hiệu lực thi hành, trừ trường hợp quy định tại điểm a và điểm b khoản 1 Điều 88 của Luật này.”.

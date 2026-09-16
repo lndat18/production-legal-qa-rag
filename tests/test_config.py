@@ -85,18 +85,18 @@ def test_vector_db_settings_bao_loi_khi_thieu_index_name(
 
 
 # ==========================================================================
-# LLMSettings -- bắt buộc GROQ_API_KEY
+# LLMSettings -- bắt buộc GEMINI_API_KEY
 # ==========================================================================
 
 
 def test_llm_settings_doc_dung_bien_moi_truong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
     settings = LLMSettings()  # type: ignore[call-arg]
-    assert settings.groq_api_key == "test-groq-key"
+    assert settings.gemini_api_key == "test-gemini-key"
 
 
-def test_llm_settings_bao_loi_khi_thieu_groq_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+def test_llm_settings_bao_loi_khi_thieu_gemini_api_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )

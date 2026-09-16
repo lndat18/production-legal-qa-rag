@@ -1,32 +1,3 @@
----
-so_hieu: "145/2020/NĐ-CP"
-loai_van_ban: "Nghị định"
-ten_van_ban: "Nghị định quy định chi tiết và hướng dẫn thi hành một số điều của Bộ luật Lao động về điều kiện lao động và quan hệ lao động"
-co_quan_ban_hanh: "CHÍNH PHỦ"
-ngay_ban_hanh: "2020-12-14"
-ngay_hieu_luc: "2021-02-01"
-is_van_ban_hop_nhat: false
-is_phu_luc: false
-source_path: "data/raw/Điều kiện lao động và quan hệ lao động.docx"
-parser_version: "1.0.0"
----
-
-NGHỊ ĐỊNH
-
-QUY ĐỊNH CHI TIẾT VÀ HƯỚNG DẪN THI HÀNH MỘT SỐ ĐIỀU CỦA BỘ LUẬT LAO ĐỘNG VỀ ĐIỀU KIỆN LAO ĐỘNG VÀ QUAN HỆ LAO ĐỘNG
-
-Căn cứ Luật Tổ chức Chính phủ ngày 19 tháng 6 năm 2015; Luật sửa đổi, bổ sung một số điều của Luật Tổ chức Chính phủ và Luật Tổ chức chính quyền địa phương ngày 22 tháng 11 năm 2019;
-
-Căn cứ Bộ luật Lao động ngày 20 tháng 11 năm 2019;
-
-Căn cứ Luật Đầu tư ngày 17 tháng 6 năm 2020;
-
-Căn cứ Luật Doanh nghiệp ngày 1 7 tháng 6 năm 2020;
-
-Theo đề nghị của Bộ trưởng Bộ Lao động - Thương binh và Xã hội;
-
-Chính phủ ban hành Nghị định quy định chi tiết và hướng dẫn thi hành một số điều của Bộ luật Lao động về điều kiện lao động và quan hệ lao động.
-
 ## Chương I. NHỮNG QUY ĐỊNH CHUNG
 
 #### Điều 1. Phạm vi điều chỉnh
@@ -2229,7 +2200,7 @@ c) Tiếp nhận thông báo về việc sử dụng, chấm dứt sử dụng l
 
 ##### Khoản 1
 
-Là công dân Việt, có năng lực hành vi dân sự đầy đủ theo quy định của Bộ luật Dân sự, có sức khỏe và phẩm chất đạo đức tốt.
+Là công dân Việt , có năng lực hành vi dân sự đầy đủ theo quy định của Bộ luật Dân sự, có sức khỏe và phẩm chất đạo đức tốt.
 
 ##### Khoản 2
 
@@ -2417,7 +2388,7 @@ d) Cử hòa giải viên lao động tham gia các lớp tập huấn, bồi d�
 
 ##### Khoản 1
 
-Là công dân Việt, có năng lực hành vi dân sự đầy đủ theo quy định của Bộ luật Dân sự, có sức khỏe và phẩm chất đạo đức tốt, có uy tín, công tâm.
+Là công dân Việt , có năng lực hành vi dân sự đầy đủ theo quy định của Bộ luật Dân sự, có sức khỏe và phẩm chất đạo đức tốt, có uy tín, công tâm.
 
 ##### Khoản 2
 

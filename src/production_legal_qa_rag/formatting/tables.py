@@ -2,10 +2,12 @@
 
 Bảng trong văn bản pháp luật được phân loại theo NỘI DUNG, không theo vị trí:
 bảng chữ ký của Nghị định 293 nằm ở giữa văn bản, toàn bộ Phụ lục nằm sau nó.
-Module này vừa render bảng DOCX sang Markdown/HTML (``table_to_markdown``),
-vừa tách bảng quốc hiệu/loại bỏ bảng nhiễu (``triage_tables``), vừa parse
-ngược bảng Markdown dạng pipe về ma trận ô (``parse_pipe_table``) để
-``frontmatter.py`` trích metadata từ bảng quốc hiệu.
+Module này render bảng DOCX sang Markdown/HTML (``table_to_markdown``), nhận
+diện bảng chữ ký (``is_signature_table`` — dùng để xác định biên back matter,
+``backmatter.py`` mục 1.1 spec) và loại bảng đính kèm khỏi vùng nội dung ở
+giữa (``filter_middle_tables``). Không còn phân loại bảng "quốc hiệu" — bảng
+đó giờ nằm trong vùng front matter, Gemini xử lý nguyên khối cùng các block
+khác (mục 1.1, 6 spec).
 """
 
 from __future__ import annotations
@@ -18,7 +20,6 @@ from docx.table import Table, _Cell
 from production_legal_qa_rag.formatting.models import QcWarning
 from production_legal_qa_rag.formatting.patterns import (
     RE_ATTACHMENT_TABLE,
-    RE_QUOC_HIEU_CELL,
     RE_SIGNATURE_CELL,
     normalize_text,
 )
@@ -27,9 +28,6 @@ if TYPE_CHECKING:
     # Chỉ dùng cho type hint: import thật sẽ tạo vòng lặp vì docx_reader gọi
     # ngược lại table_to_markdown khi đọc DOCX.
     from production_legal_qa_rag.formatting.docx_reader import Block
-
-# Số block đầu văn bản còn được coi là vùng có thể chứa bảng quốc hiệu.
-_QUOC_HIEU_SEARCH_LIMIT = 3
 
 
 def _cell_lines(cell: _Cell) -> list[str]:
@@ -50,9 +48,9 @@ def _cell_to_markdown(cell: _Cell) -> str:
 def _single_row_table_to_html(table: Table) -> str:
     """Xuất bảng một hàng không có header bằng HTML hợp lệ trong Markdown.
 
-    Sau khi bảng chữ ký bị loại ở bước triage, các bảng một hàng còn lại là
-    bảng công thức (vd. "Tiền lương làm thêm giờ = ... x ..."). Bảng pipe sẽ
-    đẩy số hạng đầu tiên lên làm header, nên dùng HTML.
+    Bảng một hàng trong corpus là bảng công thức (vd. "Tiền lương làm thêm
+    giờ = ... x ..."). Bảng pipe sẽ đẩy số hạng đầu tiên lên làm header, nên
+    dùng HTML.
     """
     cells = [
         f"      <td>{'<br>'.join(escape(line) for line in _cell_lines(cell))}</td>"
@@ -93,67 +91,37 @@ def table_to_markdown(table: Table) -> str:
     )
 
 
-def parse_pipe_table(markdown: str) -> list[list[str]]:
-    """Tách bảng Markdown dạng pipe về lại ma trận ô."""
-    rows: list[list[str]] = []
-    for line in markdown.splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if all(set(cell) <= {"-", " "} and cell for cell in cells):
-            continue  # dòng phân cách header
-        rows.append(cells)
-    return rows
+def is_signature_table(block: Block) -> bool:
+    """Bảng có phải bảng chữ ký hay không (nhận diện theo nội dung).
+
+    Dùng để xác định biên back matter (``backmatter.find_boundary``, mục 1.1
+    spec) — KHÔNG dùng để phân loại "quốc hiệu" (đã bỏ hoàn toàn).
+    """
+    return block.kind == "table" and bool(RE_SIGNATURE_CELL.search(block.text))
 
 
-def triage_tables(
-    blocks: list[Block],
-) -> tuple[Block | None, list[Block], list[QcWarning]]:
-    """Tách bảng quốc hiệu và loại bảng nhiễu.
+def filter_middle_tables(blocks: list[Block]) -> tuple[list[Block], list[QcWarning]]:
+    """Loại bảng đính kèm khỏi vùng nội dung ở giữa.
 
-    Nhận diện theo NỘI DUNG, không theo vị trí: bảng chữ ký của Nghị định 293
-    nằm ở block 39/170, toàn bộ Phụ lục nằm sau nó. Hai trong sáu bảng chữ ký
-    lại có ô đầu rỗng nên riêng "Nơi nhận:" không đủ.
+    Chỉ xử lý bảng đính kèm ("FILE ĐƯỢC ĐÍNH KÈM..."): bảng chữ ký đã được
+    cắt khỏi vùng này từ trước bởi ``backmatter.split_backmatter`` (mục 1.1
+    spec) — không lặp lại việc nhận diện ở đây.
 
     Args:
-        blocks: Toàn bộ Block đọc được từ DOCX, theo đúng thứ tự xuất hiện.
+        blocks: Block thuộc vùng nội dung ở giữa, đã cắt front/back matter.
 
     Returns:
-        Bộ ba ``(bảng quốc hiệu hoặc None, block còn giữ lại, cảnh báo QC)``.
+        Cặp ``(block còn giữ lại, cảnh báo QC)``.
     """
     warnings: list[QcWarning] = []
-    quoc_hieu: Block | None = None
     kept: list[Block] = []
 
     for index, block in enumerate(blocks):
-        if block.kind != "table":
-            kept.append(block)
-            continue
-
-        if (
-            quoc_hieu is None
-            and index < _QUOC_HIEU_SEARCH_LIMIT
-            and RE_QUOC_HIEU_CELL.search(block.text)
-        ):
-            quoc_hieu = block
-            continue
-
-        if RE_SIGNATURE_CELL.search(block.text):
-            warnings.append(
-                QcWarning(code="dropped_noi_nhan_table", detail=f"block {index}")
-            )
-            continue
-
-        if RE_ATTACHMENT_TABLE.search(block.text):
+        if block.kind == "table" and RE_ATTACHMENT_TABLE.search(block.text):
             warnings.append(
                 QcWarning(code="dropped_attachment_table", detail=f"block {index}")
             )
             continue
-
         kept.append(block)
 
-    if quoc_hieu is None:
-        warnings.append(QcWarning(code="missing_quoc_hieu_table", detail=""))
-
-    return quoc_hieu, kept, warnings
+    return kept, warnings

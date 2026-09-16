@@ -1,8 +1,13 @@
 """Bộ test cho bước formatting (DOCX -> Markdown), theo `formatting_spec.md`.
 
-Cấu trúc theo từng module trong `src/production_legal_qa_rag/formatting/`:
-patterns, footnotes, tables, frontmatter, emitter, validator, models
-(schema), docx_reader (đọc DOCX thật) và pipeline (integration trên
+Thiết kế mới (mục 1.1): front matter/back matter không còn trích field/YAML,
+chỉ xác định biên deterministic rồi gọi Gemini (`llm_client.convert_to_markdown`)
+convert nguyên khối sang markdown thuần. Test suite này KHÔNG BAO GIỜ gọi
+Gemini API thật (fixture `_default_llm_stub` mock `llm_client.convert_to_markdown`
+cho toàn bộ session, mặc định trả `None`) -- free tier chỉ 20 request/ngày.
+
+Cấu trúc theo từng module: models, patterns, docx_reader, tables, emitter,
+validator, frontmatter, backmatter, llm_client, pipeline (integration trên
 `data/raw/*.docx` thật + CLI).
 """
 
@@ -14,41 +19,44 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import get_args
 from unittest.mock import Mock
 
 import pytest
-import yaml
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from production_legal_qa_rag.config import LLMSettings
 from production_legal_qa_rag.formatting import (
+    backmatter,
     emitter,
-    footnotes,
     frontmatter,
     llm_client,
     pipeline,
     tables,
     validator,
 )
-from production_legal_qa_rag.formatting.docx_reader import Block, read_docx
-from production_legal_qa_rag.formatting.footnotes import Footnote
+from production_legal_qa_rag.formatting.docx_reader import (
+    Block,
+    read_docx,
+    serialize_blocks_for_llm,
+)
 from production_legal_qa_rag.formatting.models import (
-    FootnoteEntry,
-    FootnoteExtraction,
     FormattingResult,
-    FrontMatter,
-    FrontMatterExtraction,
     QcWarning,
+    QcWarningCode,
 )
 from production_legal_qa_rag.formatting.patterns import (
     RE_DIEM,
     RE_DIEU,
+    RE_FOOTNOTE_MARKER,
     RE_KHOAN,
     is_structural,
     normalize_text,
     sort_key,
+    strip_markers,
 )
 from production_legal_qa_rag.formatting.pipeline import (
     convert_directory,
@@ -61,39 +69,15 @@ RAW_DIR = PROJECT_ROOT / "data" / "raw"
 REFERENCE_MD_DIR = PROJECT_ROOT / "data" / "markdown"
 
 # Rich (dùng bởi Typer để render --help) vẫn chèn mã CSI cho style (bold, dim)
-# dù đã set NO_COLOR — NO_COLOR chỉ tắt màu, không tắt style. Gỡ mã ANSI trước
+# dù đã set NO_COLOR -- NO_COLOR chỉ tắt màu, không tắt style. Gỡ mã ANSI trước
 # khi so khớp chuỗi để không phụ thuộc vào việc Rich style output ra sao.
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 RAW_FILES = sorted(RAW_DIR.glob("*.docx")) if RAW_DIR.exists() else []
 
-# Toàn bộ mã QcWarning hợp lệ mà package hiện phát ra (mục 3, 7 của spec: QC
-# warnings không bao giờ làm fail file, nhưng không được có mã MỚI ngoài danh
-# sách này). Cập nhật danh sách này trong cùng lúc thêm rule QC mới.
-KNOWN_WARNING_CODES = {
-    "orphan_footnote",
-    "long_footnote_deferred",
-    "unused_footnote",
-    "dropped_noi_nhan_table",
-    "dropped_attachment_table",
-    "missing_quoc_hieu_table",
-    "missing_frontmatter_field",
-    "missing_optional_frontmatter_field",
-    "ambiguous_footnote_region",
-    "footnote_number_gap",
-    "footnote_marker_in_table",
-    "heading_too_deep",
-    "heading_level_skip",
-    "suspicious_heading_length",
-    "no_heading",
-    "dieu_not_monotonic",
-    "khoan_not_monotonic",
-    "empty_dieu",
-    "llm_frontmatter_extraction_failed",
-    "llm_footnote_extraction_failed",
-    "llm_frontmatter_mismatch",
-    "llm_footnote_count_mismatch",
-}
+# Toàn bộ mã QcWarning hợp lệ đọc trực tiếp từ `QcWarningCode` (models.py) --
+# không hard-code lại danh sách ở đây, tránh lệch nhau khi thêm rule QC mới.
+KNOWN_WARNING_CODES = set(get_args(QcWarningCode))
 
 
 def P(text: str, *, style: str | None = None, bold: bool = False) -> Block:
@@ -105,35 +89,49 @@ def T(text: str) -> Block:
 
 
 # ==========================================================================
-# Không bao giờ gọi Groq API thật trong test suite (CI không có
-# GROQ_API_KEY; máy dev có thể có key thật trong `.env` -- không nên phụ
-# thuộc vào việc thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
+# Không bao giờ gọi Gemini API thật trong test suite (CI không có
+# GEMINI_API_KEY; máy dev có thể có key thật -- không nên phụ thuộc vào việc
+# thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
 # ==========================================================================
 
-# Giữ tham chiếu tới hàm THẬT trước khi fixture session dưới đây ghi đè
-# `llm_client.extract_structured` -- section "llm_client.py" cần gọi đúng
-# implementation thật (chỉ mock `_client`, không mock `extract_structured`
-# chính nó) để kiểm tra logic try/except/tham số thật của nó. Chạy ở mức
-# module (import-time), trước khi bất kỳ fixture nào được khởi tạo.
-_REAL_EXTRACT_STRUCTURED = llm_client.extract_structured
+# Giữ tham chiếu tới hàm THẬT trước khi fixture dưới đây ghi đè
+# `llm_client.convert_to_markdown` -- các test của "llm_client.py" cần gọi
+# đúng implementation thật (chỉ mock `_client`, không mock `convert_to_markdown`
+# chính nó) để kiểm tra logic try/except/retry thật của nó.
+_REAL_CONVERT_TO_MARKDOWN = llm_client.convert_to_markdown
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _no_real_llm_calls():
-    """Mặc định `llm_client.extract_structured` luôn trả `None` (LLM "lỗi")
-    cho toàn bộ session test.
-
-    Scope session, không dùng fixture `monkeypatch` (chỉ function-scope):
-    `real_results` (dưới đây) cũng session-scope và gọi
-    `convert_docx_to_markdown` trên 6 file thật ngay lần đầu được yêu cầu --
-    nếu chỉ tắt LLM ở fixture function-scope thì fixture session đó có thể
-    build sớm hơn, vẫn lọt qua gọi API thật. `real_results` khai báo phụ
-    thuộc trực tiếp vào fixture này để đảm bảo thứ tự.
+@pytest.fixture(autouse=True)
+def _default_llm_stub(monkeypatch: pytest.MonkeyPatch):
+    """Mặc định `llm_client.convert_to_markdown` trả `None` (Gemini "lỗi")
+    cho MỌI test, trừ khi test tự monkeypatch lại giá trị khác bên trong.
     """
-    original = llm_client.extract_structured
-    llm_client.extract_structured = lambda *args, **kwargs: None
-    yield
-    llm_client.extract_structured = original
+    monkeypatch.setattr(llm_client, "convert_to_markdown", lambda *a, **k: None)
+
+
+def _forbid_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _fail(*_args, **_kwargs):
+        raise AssertionError("llm_client.convert_to_markdown không được gọi ở đây")
+
+    monkeypatch.setattr(llm_client, "convert_to_markdown", _fail)
+
+
+def _sequential_llm(
+    monkeypatch: pytest.MonkeyPatch, values: list[str | None]
+) -> list[str]:
+    """Trả lần lượt từng giá trị trong `values` cho mỗi lần gọi, đúng thứ tự
+    (front rồi back, theo `pipeline.convert_docx_to_markdown`). Trả về danh
+    sách các prompt đã nhận được, để test kiểm tra số lần gọi.
+    """
+    iterator = iter(values)
+    calls: list[str] = []
+
+    def fake(prompt: str, *, max_retries: int | None = None) -> str | None:
+        calls.append(prompt)
+        return next(iterator)
+
+    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
+    return calls
 
 
 # ==========================================================================
@@ -146,49 +144,24 @@ def test_qc_warning_default_detail_rong():
     assert warning.detail == ""
 
 
-def test_front_matter_to_yaml_gia_tri_none_thanh_null():
-    front_matter = FrontMatter(source_path="a.docx")
-    lines = dict(
-        line.split(": ", 1) for line in front_matter.to_yaml().splitlines()[1:-1]
-    )
-    assert lines["so_hieu"] == "null"
-    assert lines["is_van_ban_hop_nhat"] == "false"
-    assert lines["is_phu_luc"] == "false"
-
-
-def _parse_front_matter_yaml(rendered: str) -> dict:
-    """`to_yaml()` sinh hai dòng `---` (mở/đóng) kiểu front matter, không phải
-    một document YAML đơn: `yaml.safe_load` trần sẽ coi dòng `---` đóng là mở
-    đầu document thứ hai (rỗng) và báo lỗi ComposerError. Lấy document đầu
-    tiên bằng `safe_load_all` để phản ánh đúng cách frontmatter thật được
-    parse (bỏ qua document rỗng theo sau)."""
-    return next(yaml.safe_load_all(rendered))
-
-
-def test_front_matter_to_yaml_escape_dau_ngoac_kep():
-    front_matter = FrontMatter(ten_van_ban='Luật "sửa đổi" số 1')
-    rendered = front_matter.to_yaml()
-    assert '\\"sửa đổi\\"' in rendered
-    # Phải là YAML hợp lệ, parse lại đúng giá trị gốc.
-    parsed = _parse_front_matter_yaml(rendered)
-    assert parsed["ten_van_ban"] == 'Luật "sửa đổi" số 1'
-
-
-def test_front_matter_to_yaml_la_yaml_hop_le_va_khop_field():
-    front_matter = FrontMatter(
-        so_hieu="293/2025/NĐ-CP",
-        loai_van_ban="Nghị định",
-        is_phu_luc=True,
-    )
-    parsed = _parse_front_matter_yaml(front_matter.to_yaml())
-    assert parsed["so_hieu"] == "293/2025/NĐ-CP"
-    assert parsed["is_phu_luc"] is True
-    assert parsed["parser_version"] == front_matter.parser_version
+def test_qc_warning_code_khong_hop_le_bi_tu_choi():
+    with pytest.raises(ValidationError):
+        QcWarning(code="ma_khong_ton_tai")  # type: ignore[arg-type]
 
 
 def test_formatting_result_warnings_mac_dinh_rong():
-    result = FormattingResult(markdown="x", front_matter=FrontMatter())
+    result = FormattingResult(markdown="x")
     assert result.warnings == []
+
+
+def test_formatting_result_thieu_markdown_bao_loi():
+    with pytest.raises(ValidationError):
+        FormattingResult()  # type: ignore[call-arg]
+
+
+def test_qc_warning_code_gom_du_hai_ma_gemini_moi():
+    assert "llm_frontmatter_conversion_failed" in KNOWN_WARNING_CODES
+    assert "llm_backmatter_conversion_failed" in KNOWN_WARNING_CODES
 
 
 # ==========================================================================
@@ -197,7 +170,7 @@ def test_formatting_result_warnings_mac_dinh_rong():
 
 
 def test_normalize_text_gop_khoang_trang_va_nbsp():
-    assert normalize_text("Điều 1.  Phạm  vi") == "Điều 1. Phạm vi"
+    assert normalize_text("Điều 1.  Phạm  vi") == "Điều 1. Phạm vi"
 
 
 def test_normalize_text_strip_dau_cuoi():
@@ -226,8 +199,8 @@ def test_re_dieu_ho_tro_so_hieu_chu():
 
 
 def test_re_dieu_khong_khop_khi_thieu_dau_cham():
-    # "Điều 2 của Luật số 46/2014/QH13 quy định..." (trích dẫn trong chú
-    # thích) không được nhận nhầm thành heading Điều.
+    # "Điều 2 của Luật số 46/2014/QH13 quy định..." (trích dẫn) không được
+    # nhận nhầm thành heading Điều.
     assert RE_DIEU.match("Điều 2 của Luật số 46/2014/QH13 quy định như sau:") is None
 
 
@@ -245,220 +218,154 @@ def test_re_diem_hai_dang_chu_va_gach_dau_dong():
     assert dash is not None and dash.group(1) is None
 
 
-def test_is_structural_nhan_dien_dieu_la_cau_truc():
+def test_is_structural_nhan_dien_dieu_va_chuong_la_cau_truc():
     assert is_structural("Điều 5. Tên điều")
     assert is_structural("Chương IV")
     assert not is_structural("Người lao động làm việc theo hợp đồng.")
 
 
+def test_is_structural_khong_nhan_dien_khoan():
+    # Khoản KHÔNG được coi là biên front matter -- các dòng "1. Luật Nhà giáo
+    # số 73/2025/QH15..." trong dẫn nhập văn bản hợp nhất không được nhận
+    # nhầm thành biên (mục 1.1 spec).
+    assert not is_structural("1. Luật Nhà giáo số 73/2025/QH15.")
+
+
 # ==========================================================================
-# footnotes.py
+# patterns.py -- strip_markers()/RE_FOOTNOTE_MARKER, marker chú thích "[n]"
+# dính liền trong vùng nội dung ở giữa (formatting_spec.md mục 1.1, "Lưu ý
+# quan trọng"). Regression cho lỗi footnote marker phá RE_KHOAN/RE_DIEU.
 # ==========================================================================
 
 
-@pytest.mark.parametrize(
-    ("raw", "expected_text", "expected_numbers"),
-    [
-        ("3.3[3] nội dung", "3. nội dung", [3]),
-        ("10.[15] nội dung", "10. nội dung", [15]),
-        ("1.4[4] nội dung", "1. nội dung", [4]),
-    ],
-)
-def test_strip_markers_chi_nuot_chu_so_lap_bang_num(
-    raw, expected_text, expected_numbers
-):
-    stripped, found = footnotes.strip_markers(raw)
-    assert stripped == expected_text
-    assert found == expected_numbers
-
-
-def test_strip_markers_khong_marker_giu_nguyen():
-    stripped, found = footnotes.strip_markers("Không có chú thích nào ở đây.")
-    assert stripped == "Không có chú thích nào ở đây."
-    assert found == []
-
-
-def test_strip_markers_va_them_lai_khoang_trang_bi_mat():
-    stripped, found = footnotes.strip_markers("a)[1]Thành lập doanh nghiệp")
-    assert stripped == "a) Thành lập doanh nghiệp"
-    assert found == [1]
-
-
-def test_strip_all_khong_go_marker_trong_bang():
-    blocks = [T("| a[1] | b |\n| --- | --- |\n| c | d |")]
-    cleaned, refs, warnings = footnotes.strip_all(blocks)
-    assert cleaned[0].text == blocks[0].text
-    assert refs == {}
-    assert any(w.code == "footnote_marker_in_table" for w in warnings)
-
-
-def test_find_region_start_mot_ket_qua():
-    blocks = [P("Nội dung thân văn bản."), P("[1] Nội dung sửa đổi đầu tiên.")]
-    index, warnings = footnotes.find_region_start(blocks)
-    assert index == 1
-    assert warnings == []
-
-
-def test_find_region_start_khong_co():
-    blocks = [P("Không có chú thích nào.")]
-    index, warnings = footnotes.find_region_start(blocks)
-    assert index is None
-    assert warnings == []
-
-
-def test_find_region_start_nhieu_ket_qua_canh_bao_va_lay_cuoi():
-    blocks = [P("[1] Lần đầu (giả)."), P("Ở giữa."), P("[1] Lần cuối (thật).")]
-    index, warnings = footnotes.find_region_start(blocks)
-    assert index == 2
-    assert any(w.code == "ambiguous_footnote_region" for w in warnings)
-
-
-def test_parse_region_dang_ngoac_va_dang_tran():
-    blocks = [
-        P("[1] Nội dung chú thích một."),
-        P("2 Nội dung chú thích hai."),
-    ]
-    footnote_map, warnings = footnotes.parse_region(blocks)
-    assert footnote_map[1].text == "Nội dung chú thích một."
-    assert footnote_map[2].text == "Nội dung chú thích hai."
-    assert warnings == []
-
-
-def test_parse_region_bao_lo_hong_so_hieu():
-    blocks = [P("[1] Đầu tiên."), P("[3] Nhảy cóc.")]
-    footnote_map, warnings = footnotes.parse_region(blocks)
-    assert set(footnote_map) == {1, 3}
-    assert any(w.code == "footnote_number_gap" for w in warnings)
-
-
-def test_parse_region_trich_dan_khong_bi_nham_thanh_dinh_nghia_moi():
-    # "1. Luật này có hiệu lực..." có dấu chấm nên không khớp RE_FN_DEF_BARE.
-    blocks = [
-        P("[1] Trích dẫn: 1. Luật này có hiệu lực kể từ ngày công bố."),
-    ]
-    footnote_map, _ = footnotes.parse_region(blocks)
-    assert footnote_map[1].paragraphs == (
-        "Trích dẫn: 1. Luật này có hiệu lực kể từ ngày công bố.",
+def test_strip_markers_go_marker_dinh_ngay_sau_so_khoan():
+    # "1.[2] Bảo hiểm..." -- không strip trước thì RE_KHOAN (yêu cầu khoảng
+    # trắng ngay sau dấu chấm) sẽ không khớp và mất heading Khoản.
+    assert (
+        strip_markers("1.[2] Bảo hiểm y tế là hình thức bắt buộc.")
+        == "1. Bảo hiểm y tế là hình thức bắt buộc."
     )
 
 
-def test_render_blockquote_ngan_inline_toan_bo():
-    footnote = Footnote(number=1, paragraphs=("Nội dung ngắn.",))
-    inline, deferred = footnotes.render_blockquote(footnote, inline_max=1200)
-    assert inline == "> **Sửa đổi:** Nội dung ngắn."
-    assert deferred is None
+def test_strip_markers_go_marker_o_cuoi_dong():
+    assert strip_markers("Điều 7a. Bảo hiểm Xã hội[16]") == "Điều 7a. Bảo hiểm Xã hội"
 
 
-def test_render_blockquote_dai_thi_doi_xuong_cuoi():
-    footnote = Footnote(number=2, paragraphs=("x" * 2000,))
-    inline, deferred = footnotes.render_blockquote(footnote, inline_max=1200)
-    assert "xem chú thích [2] ở cuối văn bản" in inline
-    assert deferred is not None
-    assert deferred.startswith("**[2]**")
+def test_strip_markers_khong_nuot_so_hieu_khi_co_dau_cham_o_giua():
+    # "10.[15]" -- chữ số trước "[" không liền kề (có dấu chấm chen giữa) nên
+    # KHÔNG bị coi là chữ số lặp cần nuốt, số hiệu "10." phải giữ nguyên.
+    assert strip_markers("10.[15] Điều khoản") == "10. Điều khoản"
 
 
-def test_render_blockquote_rong_tra_ve_rong():
-    footnote = Footnote(number=3, paragraphs=("   ",))
-    inline, deferred = footnotes.render_blockquote(footnote, inline_max=1200)
-    assert inline == ""
-    assert deferred is None
+def test_strip_markers_bo_chu_so_lap_ngay_truoc_marker():
+    # "3.3[3]" -- chữ số lặp dính liền ngay trước "[" và BẰNG số marker, bị
+    # nuốt cùng marker, chỉ giữ lại "3." gốc.
+    assert strip_markers("3.3[3] Nội dung.") == "3. Nội dung."
 
 
-# --- resolve_region: LLM là đường chính, parse_region là baseline ---------
+def test_strip_markers_va_lap_lai_khoang_trang_thieu_sau_marker():
+    # Sau khi gỡ marker dính liền, "a)[3]Thành lập" mất khoảng trắng --
+    # RE_MISSING_SPACE phải vá lại.
+    assert strip_markers("a)[3]Thành lập") == "a) Thành lập"
 
 
-def test_resolve_region_llm_thanh_cong_dung_gia_tri_llm(monkeypatch):
-    region_blocks = [
-        P("[1] Nội dung chú thích một."),
-        P("2 Nội dung chú thích hai."),
-    ]
-    monkeypatch.setattr(
-        footnotes.llm_client,
-        "extract_structured",
-        lambda *a, **k: FootnoteExtraction(
-            entries=[
-                FootnoteEntry(number=1, content="Nội dung theo LLM một."),
-                FootnoteEntry(number=2, content="Nội dung theo LLM hai."),
-            ]
-        ),
-    )
-    footnote_map, warnings = footnotes.resolve_region(region_blocks)
-    assert footnote_map[1].text == "Nội dung theo LLM một."
-    assert footnote_map[2].text == "Nội dung theo LLM hai."
-    assert not any(w.code.startswith("llm_footnote") for w in warnings)
+def test_strip_markers_don_dep_khoang_trang_thua_truoc_dau_cau():
+    assert strip_markers("Nội dung[5] , tiếp theo.") == "Nội dung, tiếp theo."
 
 
-def test_resolve_region_llm_loi_hoan_toan_fallback_baseline():
-    """LLM trả `None` (mặc định của fixture session -- mô phỏng hết
-    `max_retries`/timeout) -- dùng nguyên map từ `parse_region` (baseline)
-    và phát `llm_footnote_extraction_failed`."""
-    region_blocks = [
-        P("[1] Nội dung chú thích một."),
-        P("2 Nội dung chú thích hai."),
-    ]
-    footnote_map, warnings = footnotes.resolve_region(region_blocks)
-    assert footnote_map[1].text == "Nội dung chú thích một."
-    assert footnote_map[2].text == "Nội dung chú thích hai."
-    assert any(w.code == "llm_footnote_extraction_failed" for w in warnings)
+def test_strip_markers_khong_co_marker_giu_nguyen():
+    assert strip_markers("Không có marker nào ở đây.") == "Không có marker nào ở đây."
 
 
-def test_resolve_region_llm_tra_rong_coi_nhu_loi_fallback_baseline(monkeypatch):
-    region_blocks = [P("[1] Nội dung chú thích một.")]
-    monkeypatch.setattr(
-        footnotes.llm_client,
-        "extract_structured",
-        lambda *a, **k: FootnoteExtraction(entries=[]),
-    )
-    footnote_map, warnings = footnotes.resolve_region(region_blocks)
-    assert footnote_map[1].text == "Nội dung chú thích một."
-    assert any(w.code == "llm_footnote_extraction_failed" for w in warnings)
+def test_re_footnote_marker_khop_va_lay_duoc_so():
+    match = RE_FOOTNOTE_MARKER.search("Bảo hiểm Xã hội[16]")
+    assert match is not None
+    assert match.group(1) == "16"
 
 
-def test_resolve_region_llm_lech_so_luong_dung_llm_va_canh_bao(monkeypatch):
-    """LLM trả kết quả hợp lệ nhưng số lượng chú thích khác baseline -- vẫn
-    dùng map của LLM (đường chính), chỉ phát cảnh báo lệch (mục 7 spec)."""
-    region_blocks = [
-        P("[1] Nội dung chú thích một."),
-        P("2 Nội dung chú thích hai."),
-    ]
-    monkeypatch.setattr(
-        footnotes.llm_client,
-        "extract_structured",
-        lambda *a, **k: FootnoteExtraction(
-            entries=[FootnoteEntry(number=1, content="Chỉ một chú thích theo LLM.")]
-        ),
-    )
-    footnote_map, warnings = footnotes.resolve_region(region_blocks)
-    assert set(footnote_map) == {1}
-    assert footnote_map[1].text == "Chỉ một chú thích theo LLM."
-    assert any(w.code == "llm_footnote_count_mismatch" for w in warnings)
+# ==========================================================================
+# docx_reader.py -- đọc DOCX thật, giữ thứ tự paragraph/table xen kẽ
+# ==========================================================================
 
 
-def test_resolve_region_giu_canh_bao_baseline_du_llm_thanh_cong(monkeypatch):
-    """Cảnh báo từ `parse_region` (vd. lỗ hổng số hiệu) là tín hiệu QC từ
-    chính vùng văn bản, độc lập với nguồn nội dung được chọn -- vẫn giữ dù
-    LLM trả kết quả hợp lệ."""
-    region_blocks = [P("[1] Đầu tiên."), P("[3] Nhảy cóc.")]
-    monkeypatch.setattr(
-        footnotes.llm_client,
-        "extract_structured",
-        lambda *a, **k: FootnoteExtraction(
-            entries=[
-                FootnoteEntry(number=1, content="Đầu tiên."),
-                FootnoteEntry(number=3, content="Nhảy cóc."),
-            ]
-        ),
-    )
-    _footnote_map, warnings = footnotes.resolve_region(region_blocks)
-    assert any(w.code == "footnote_number_gap" for w in warnings)
+def test_read_docx_giu_dung_thu_tu_xen_ke(tmp_path: Path):
+    document = Document()
+    document.add_paragraph("Điều 1. Phạm vi điều chỉnh")
+    table = document.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Cột A"
+    table.cell(0, 1).text = "Cột B"
+    table.cell(1, 0).text = "1"
+    table.cell(1, 1).text = "2"
+    document.add_paragraph("1. Nội dung khoản một.")
+    document.add_paragraph("   ")  # đoạn trắng, phải bị bỏ qua
+
+    docx_path = tmp_path / "sample.docx"
+    document.save(docx_path)
+
+    blocks = read_docx(docx_path)
+    assert [block.kind for block in blocks] == ["paragraph", "table", "paragraph"]
+    assert blocks[0].text == "Điều 1. Phạm vi điều chỉnh"
+    assert blocks[1].text.startswith("| Cột A | Cột B |")
+    assert blocks[2].text == "1. Nội dung khoản một."
 
 
-def test_extract_footnotes_llm_ket_qua_sai_kieu_tra_ve_none(monkeypatch):
-    monkeypatch.setattr(
-        footnotes.llm_client, "extract_structured", lambda *a, **k: "không phải schema"
-    )
-    result = footnotes.extract_footnotes_llm([P("[1] Nội dung.")])
-    assert result is None
+def test_read_docx_in_dam_toan_doan_la_bold(tmp_path: Path):
+    document = Document()
+    paragraph = document.add_paragraph()
+    run = paragraph.add_run("NGHỊ ĐỊNH")
+    run.bold = True
+
+    docx_path = tmp_path / "bold.docx"
+    document.save(docx_path)
+
+    blocks = read_docx(docx_path)
+    assert blocks[0].is_bold is True
+    assert blocks[0].is_italic is False
+
+
+def test_read_docx_in_nghieng_toan_doan_la_italic(tmp_path: Path):
+    document = Document()
+    paragraph = document.add_paragraph()
+    run = paragraph.add_run("Độc lập - Tự do - Hạnh phúc")
+    run.italic = True
+
+    docx_path = tmp_path / "italic.docx"
+    document.save(docx_path)
+
+    blocks = read_docx(docx_path)
+    assert blocks[0].is_italic is True
+    assert blocks[0].is_bold is False
+
+
+def test_serialize_blocks_for_llm_bold_duoc_bao_bang_sao_kep():
+    blocks = [P("CHÍNH PHỦ", bold=True)]
+    assert serialize_blocks_for_llm(blocks) == "**CHÍNH PHỦ**"
+
+
+def test_serialize_blocks_for_llm_italic_duoc_bao_bang_mot_sao():
+    blocks = [Block(kind="paragraph", text="Độc lập - Tự do", is_italic=True)]
+    assert serialize_blocks_for_llm(blocks) == "*Độc lập - Tự do*"
+
+
+def test_serialize_blocks_for_llm_dam_va_nghieng_duoc_bao_bang_ba_sao():
+    blocks = [Block(kind="paragraph", text="CHÍNH PHỦ", is_bold=True, is_italic=True)]
+    assert serialize_blocks_for_llm(blocks) == "***CHÍNH PHỦ***"
+
+
+def test_serialize_blocks_for_llm_khong_dinh_dang_giu_nguyen():
+    blocks = [P("Số: 293/2025/NĐ-CP")]
+    assert serialize_blocks_for_llm(blocks) == "Số: 293/2025/NĐ-CP"
+
+
+def test_serialize_blocks_for_llm_nhieu_block_cach_nhau_dong_trong():
+    blocks = [P("A"), P("B")]
+    assert serialize_blocks_for_llm(blocks) == "A\n\nB"
+
+
+def test_serialize_blocks_for_llm_giu_nguyen_bang():
+    table_text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+    blocks = [T(table_text)]
+    assert serialize_blocks_for_llm(blocks) == table_text
 
 
 # ==========================================================================
@@ -491,279 +398,45 @@ def test_table_to_markdown_mot_hang_ra_html():
     assert "A = B x C" in rendered
 
 
-def test_parse_pipe_table_bo_dong_phan_cach():
-    markdown = "| a | b |\n| --- | --- |\n| 1 | 2 |"
-    assert tables.parse_pipe_table(markdown) == [["a", "b"], ["1", "2"]]
+def test_is_signature_table_nhan_dien_theo_noi_dung():
+    assert tables.is_signature_table(T("| TM. THỦ TƯỚNG | |\n| --- | --- |\n| A | B |"))
+    assert tables.is_signature_table(
+        T("| Nơi nhận: | |\n| --- | --- |\n| - Như trên | |")
+    )
 
 
-def test_triage_tables_tach_quoc_hieu_va_loai_bang_nhieu():
+def test_is_signature_table_khong_nhan_dien_bang_thuong():
+    assert not tables.is_signature_table(
+        T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000 |")
+    )
+
+
+def test_is_signature_table_bo_qua_paragraph():
+    # Chỉ block dạng bảng mới được xét, dù nội dung đoạn văn khớp regex.
+    assert not tables.is_signature_table(P("TM. THỦ TƯỚNG"))
+
+
+def test_filter_middle_tables_loai_bang_dinh_kem():
     blocks = [
-        T("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\nSố: 293/2025/NĐ-CP"),
         P("Điều 1. Phạm vi điều chỉnh"),
-        T("| Nơi nhận: | |\n| --- | --- |\n| - Như trên | |"),
         T("FILE ĐƯỢC ĐÍNH KÈM THEO VĂN BẢN"),
-        T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000.000 |"),
+        T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000 |"),
     ]
-    quoc_hieu, kept, warnings = tables.triage_tables(blocks)
-    assert quoc_hieu is blocks[0]
-    assert kept == [blocks[1], blocks[4]]
-    codes = {w.code for w in warnings}
-    assert codes == {"dropped_noi_nhan_table", "dropped_attachment_table"}
+    kept, warnings = tables.filter_middle_tables(blocks)
+    assert kept == [blocks[0], blocks[2]]
+    assert [w.code for w in warnings] == ["dropped_attachment_table"]
 
 
-def test_triage_tables_canh_bao_khi_khong_co_quoc_hieu():
-    blocks = [P("Điều 1. Phạm vi điều chỉnh")]
-    quoc_hieu, kept, warnings = tables.triage_tables(blocks)
-    assert quoc_hieu is None
+def test_filter_middle_tables_khong_co_bang_dinh_kem_giu_nguyen():
+    blocks = [P("Điều 1. A"), T("| Vùng | Mức |\n| --- | --- |\n| I | 5.000 |")]
+    kept, warnings = tables.filter_middle_tables(blocks)
     assert kept == blocks
-    assert any(w.code == "missing_quoc_hieu_table" for w in warnings)
-
-
-# ==========================================================================
-# llm_client.py -- Groq + instructor, mock hoàn toàn (không gọi API thật)
-# ==========================================================================
-
-
-def test_extract_structured_thanh_cong_goi_dung_tham_so_tu_settings(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
-    expected = FrontMatterExtraction(so_hieu="293/2025/NĐ-CP")
-
-    fake_client = Mock()
-    fake_client.chat.completions.create.return_value = expected
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
-
-    result = _REAL_EXTRACT_STRUCTURED("prompt nội dung", FrontMatterExtraction)
-
-    assert result is expected
-    kwargs = fake_client.chat.completions.create.call_args.kwargs
-    assert kwargs["model"] == "openai/gpt-oss-120b"
-    assert kwargs["max_retries"] == 2
-    assert kwargs["timeout"] == 30
-    assert kwargs["response_model"] is FrontMatterExtraction
-    assert kwargs["messages"] == [{"role": "user", "content": "prompt nội dung"}]
-
-
-def test_extract_structured_max_retries_tham_so_ghi_de_settings(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
-    fake_client = Mock()
-    fake_client.chat.completions.create.return_value = FrontMatterExtraction()
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
-
-    _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction, max_retries=5)
-
-    assert fake_client.chat.completions.create.call_args.kwargs["max_retries"] == 5
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        RuntimeError("groq lỗi giả lập"),
-        TimeoutError("hết thời gian chờ"),
-        ValueError("x"),
-    ],
-)
-def test_extract_structured_client_loi_tra_ve_none_khong_raise(monkeypatch, error):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
-    fake_client = Mock()
-    fake_client.chat.completions.create.side_effect = error
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
-
-    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
-    assert result is None
-
-
-def test_extract_structured_loi_khoi_tao_client_tra_ve_none(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
-
-    def _boom():
-        raise RuntimeError("không kết nối được Groq")
-
-    monkeypatch.setattr(llm_client, "_client", _boom)
-
-    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
-    assert result is None
-
-
-def test_extract_structured_thieu_groq_api_key_tra_ve_none_khong_raise(monkeypatch):
-    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()` raise
-    `ValidationError`, `extract_structured` phải bắt và trả `None`, không để
-    lộ exception (mục 5, 7 spec: lỗi LLM không bao giờ chặn pipeline)."""
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    monkeypatch.setattr(
-        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
-    )
-
-    result = _REAL_EXTRACT_STRUCTURED("prompt", FrontMatterExtraction)
-    assert result is None
-
-
-# ==========================================================================
-# frontmatter.py
-# ==========================================================================
-
-
-def test_extract_quoc_hieu_tu_bang():
-    table_block = T(
-        "| CHÍNH PHỦ | CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM |\n"
-        "| --- | --- |\n"
-        "| Số: 293/2025/NĐ-CP | Hà Nội, ngày 10 tháng 11 năm 2025 |"
-    )
-    result = frontmatter.extract_quoc_hieu(table_block)
-    assert result["so_hieu"] == "293/2025/NĐ-CP"
-    assert result["co_quan_ban_hanh"] == "CHÍNH PHỦ"
-    assert result["ngay_ban_hanh"] == "2025-11-10"
-
-
-def test_extract_quoc_hieu_khong_co_bang():
-    result = frontmatter.extract_quoc_hieu(None)
-    assert result == {
-        "so_hieu": None,
-        "co_quan_ban_hanh": None,
-        "ngay_ban_hanh": None,
-    }
-
-
-_QUOC_HIEU_BLOCK_293 = T(
-    "| CHÍNH PHỦ | CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM |\n"
-    "| --- | --- |\n"
-    "| Số: 293/2025/NĐ-CP | Hà Nội, ngày 10 tháng 11 năm 2025 |"
-)
-
-_BODY_293 = [
-    P("NGHỊ ĐỊNH"),
-    P("Quy định về ban hành Nghị định về mức lương tối thiểu."),
-    P("Điều 10. Hiệu lực thi hành"),
-    P("Nghị định này có hiệu lực thi hành kể từ ngày 01 tháng 01 năm 2026."),
-]
-
-
-def test_build_frontmatter_day_du_truong(monkeypatch):
-    """`quoc_hieu_block` là raw `Block` (bảng quốc hiệu), không phải dict đã
-    trích sẵn -- prompt LLM cần đọc nguyên văn bảng (mục 6, 7 spec). Ở đây
-    LLM trả kết quả khớp hoàn toàn baseline regex nên không có cảnh báo lệch
-    hay thiếu trường."""
-    extraction = FrontMatterExtraction(
-        so_hieu="293/2025/NĐ-CP",
-        loai_van_ban="Nghị định",
-        ten_van_ban="Nghị định về mức lương tối thiểu",
-        co_quan_ban_hanh="CHÍNH PHỦ",
-        ngay_ban_hanh="2025-11-10",
-        ngay_hieu_luc="2026-01-01",
-    )
-    monkeypatch.setattr(
-        frontmatter.llm_client, "extract_structured", lambda *a, **k: extraction
-    )
-    front_matter, warnings = frontmatter.build_frontmatter(
-        _BODY_293,
-        _QUOC_HIEU_BLOCK_293,
-        source_path="data/raw/x.docx",
-        is_phu_luc=False,
-    )
-    assert front_matter.so_hieu == "293/2025/NĐ-CP"
-    assert front_matter.loai_van_ban == "Nghị định"
-    assert front_matter.ngay_hieu_luc == "2026-01-01"
-    assert front_matter.is_van_ban_hop_nhat is False
     assert warnings == []
 
 
-def test_build_frontmatter_llm_loi_hoan_toan_fallback_baseline():
-    """LLM trả `None` (hết `max_retries`/timeout, mục 5 spec) -- fallback về
-    baseline regex, phát `llm_frontmatter_extraction_failed` cho MỖI trường
-    bắt buộc (số hiệu, ngày hiệu lực), không fail, không mất giá trị baseline.
-    """
-    front_matter, warnings = frontmatter.build_frontmatter(
-        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path="data/raw/x.docx", is_phu_luc=False
-    )
-    assert front_matter.so_hieu == "293/2025/NĐ-CP"
-    assert front_matter.loai_van_ban == "Nghị định"
-    assert front_matter.ngay_hieu_luc == "2026-01-01"
-    codes_detail = {(w.code, w.detail) for w in warnings}
-    assert ("llm_frontmatter_extraction_failed", "so_hieu") in codes_detail
-    assert ("llm_frontmatter_extraction_failed", "ngay_hieu_luc") in codes_detail
-    assert not any(w.code == "llm_frontmatter_mismatch" for w in warnings)
-
-
-def test_build_frontmatter_llm_thieu_truong_bat_buoc_rieng_le(monkeypatch):
-    """LLM trả object hợp lệ nhưng thiếu MỘT trường bắt buộc (`so_hieu`) --
-    trường đó fallback baseline + cảnh báo, trường bắt buộc còn lại
-    (`ngay_hieu_luc`) và trường tuỳ chọn vẫn dùng giá trị LLM."""
-    monkeypatch.setattr(
-        frontmatter.llm_client,
-        "extract_structured",
-        lambda *a, **k: FrontMatterExtraction(
-            so_hieu=None, loai_van_ban="Nghị định", ngay_hieu_luc="2026-01-01"
-        ),
-    )
-    front_matter, warnings = frontmatter.build_frontmatter(
-        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path=None, is_phu_luc=False
-    )
-    assert front_matter.so_hieu == "293/2025/NĐ-CP"  # fallback baseline
-    assert front_matter.ngay_hieu_luc == "2026-01-01"  # từ LLM
-    assert any(
-        w.code == "llm_frontmatter_extraction_failed" and w.detail == "so_hieu"
-        for w in warnings
-    )
-
-
-def test_build_frontmatter_llm_lech_baseline_dung_gia_tri_llm_va_canh_bao(monkeypatch):
-    """LLM và baseline đều có giá trị nhưng khác nhau -- dùng giá trị LLM
-    (đường chính), KHÔNG tự động chọn baseline, chỉ phát cảnh báo lệch (mục 7
-    spec: "không tự động chọn baseline khi có lệch")."""
-    monkeypatch.setattr(
-        frontmatter.llm_client,
-        "extract_structured",
-        lambda *a, **k: FrontMatterExtraction(
-            so_hieu="999/2025/XX-YY", ngay_hieu_luc="2026-01-01"
-        ),
-    )
-    front_matter, warnings = frontmatter.build_frontmatter(
-        _BODY_293, _QUOC_HIEU_BLOCK_293, source_path=None, is_phu_luc=False
-    )
-    assert front_matter.so_hieu == "999/2025/XX-YY"
-    assert any(
-        w.code == "llm_frontmatter_mismatch" and w.detail == "so_hieu" for w in warnings
-    )
-
-
-def test_build_frontmatter_thieu_truong_bat_buoc_canh_bao():
-    front_matter, warnings = frontmatter.build_frontmatter(
-        [P("Một dòng bất kỳ.")],
-        None,
-        source_path=None,
-        is_phu_luc=False,
-    )
-    codes = {w.code for w in warnings}
-    assert "missing_frontmatter_field" in codes
-    assert front_matter.so_hieu is None
-
-
-def test_build_frontmatter_van_ban_hop_nhat_qua_so_hieu():
-    quoc_hieu_block = T("Số: 01/VBHN-BLĐTBXH")
-    front_matter, _ = frontmatter.build_frontmatter(
-        [P("một dòng")],
-        quoc_hieu_block,
-        source_path=None,
-        is_phu_luc=False,
-    )
-    assert front_matter.is_van_ban_hop_nhat is True
-    assert front_matter.loai_van_ban == "Văn bản hợp nhất"
-
-
-def test_extract_frontmatter_llm_ket_qua_sai_kieu_tra_ve_none(monkeypatch):
-    """`llm_client.extract_structured` (mock) trả về giá trị không đúng
-    schema kỳ vọng -- `extract_frontmatter_llm` phải tự bọc lại thành
-    `None`, không để lộ giá trị sai kiểu ra cho caller."""
-    monkeypatch.setattr(
-        frontmatter.llm_client,
-        "extract_structured",
-        lambda *a, **k: "không phải schema",
-    )
-    result = frontmatter.extract_frontmatter_llm(None, [P("Một dòng.")])
-    assert result is None
-
-
 # ==========================================================================
-# emitter.py
+# emitter.py -- không đổi so với bản cũ, chỉ đổi signature (không còn
+# refs/footnote_map/preamble_end -- front/back matter đã được cắt từ trước).
 # ==========================================================================
 
 
@@ -775,16 +448,27 @@ def test_emit_anh_xa_heading_co_ban():
         P("1. Nội dung khoản một."),
         P("a) Điểm a của khoản một."),
     ]
-    preamble_end = emitter.find_preamble_end(blocks)
-    parts, deferred, in_phu_luc, warnings = emitter.emit(blocks, {}, {}, preamble_end)
+    parts = emitter.emit(blocks)
     assert parts[0] == "## Chương I. NHỮNG QUY ĐỊNH CHUNG"
     assert parts[1] == "#### Điều 1. Phạm vi điều chỉnh"
     assert parts[2] == "##### Khoản 1"
     assert parts[3] == "Nội dung khoản một."
     assert parts[4] == "a) Điểm a của khoản một."
-    assert deferred == []
-    assert in_phu_luc is False
-    assert warnings == []
+
+
+def test_emit_phan_ghep_tieu_de_va_khong_o_trong_phu_luc():
+    blocks = [P("Phần thứ nhất"), P("QUY ĐỊNH CHUNG"), P("1. Nội dung.")]
+    parts = emitter.emit(blocks)
+    assert parts[0] == "# Phần thứ nhất. QUY ĐỊNH CHUNG"
+    assert parts[1] == "##### Khoản 1"
+    assert parts[2] == "Nội dung."
+
+
+def test_emit_bang_duoc_xuat_nguyen_van():
+    table_text = "| a | b |\n| --- | --- |\n| 1 | 2 |"
+    blocks = [P("Điều 1. A"), T(table_text)]
+    parts = emitter.emit(blocks)
+    assert parts[1] == table_text
 
 
 def test_emit_phu_luc_khoan_ngan_gop_vao_heading():
@@ -793,18 +477,15 @@ def test_emit_phu_luc_khoan_ngan_gop_vao_heading():
         P("DANH MỤC TỈNH THÀNH"),
         P("28. Thành phố Hồ Chí Minh"),
     ]
-    preamble_end = emitter.find_preamble_end(blocks)
-    parts, _, in_phu_luc, _ = emitter.emit(blocks, {}, {}, preamble_end)
+    parts = emitter.emit(blocks)
     assert parts[0] == "# PHỤ LỤC — DANH MỤC TỈNH THÀNH"
     assert parts[1] == "##### 28. Thành phố Hồ Chí Minh"
-    assert in_phu_luc is True
 
 
 def test_emit_phu_luc_khoan_dai_khong_gop_vao_heading():
     long_content = "Nội dung dài " * 20  # > 120 ký tự
     blocks = [P("PHỤ LỤC"), P("BẢNG DANH MỤC"), P(f"1. {long_content}")]
-    preamble_end = emitter.find_preamble_end(blocks)
-    parts, _, _, _ = emitter.emit(blocks, {}, {}, preamble_end)
+    parts = emitter.emit(blocks)
     assert parts[1] == "##### Khoản 1"
     assert parts[2] == long_content
 
@@ -815,55 +496,64 @@ def test_emit_tach_phan_kem_theo_khoi_tieu_de_phu_luc():
         P("BẢNG LƯƠNG (Kèm theo Nghị định số 293/2025/NĐ-CP)"),
         P("1. Nội dung."),
     ]
-    preamble_end = emitter.find_preamble_end(blocks)
-    parts, _, _, _ = emitter.emit(blocks, {}, {}, preamble_end)
+    parts = emitter.emit(blocks)
     assert parts[0] == "# PHỤ LỤC — BẢNG LƯƠNG"
     assert parts[1] == "(Kèm theo Nghị định số 293/2025/NĐ-CP)"
 
 
-def test_emit_chen_chu_thich_inline_va_canh_bao_orphan():
-    blocks = [P("Điều 1. Phạm vi"), P("1. Nội dung khoản một.")]
-    refs = {1: [7]}
-    footnote_map = {5: Footnote(number=5, paragraphs=("Nội dung chú thích 5.",))}
-    preamble_end = emitter.find_preamble_end(blocks)
-    parts, deferred, _, warnings = emitter.emit(
-        blocks, refs, footnote_map, preamble_end
-    )
-    assert any(part.startswith("> **Sửa đổi:**") is False for part in parts)
-    assert any(w.code == "orphan_footnote" and w.detail == "[7]" for w in warnings)
-    assert any(w.code == "unused_footnote" and w.detail == "[5]" for w in warnings)
-    assert deferred == []
-
-
-def test_emit_footnote_dai_dua_xuong_cuoi():
-    blocks = [P("Điều 1. Phạm vi")]
-    refs = {0: [1]}
-    footnote_map = {1: Footnote(number=1, paragraphs=("x" * 2000,))}
-    preamble_end = emitter.find_preamble_end(blocks)
-    _parts, deferred, _, warnings = emitter.emit(
-        blocks, refs, footnote_map, preamble_end
-    )
-    assert deferred and deferred[0].startswith("**[1]**")
-    assert any(w.code == "long_footnote_deferred" for w in warnings)
-
-
-def test_find_preamble_end_bo_qua_danh_so_o_dan_nhap():
+def test_emit_ra_khoi_phu_luc_khi_gap_chuong_khoan_khong_gop_nua():
     blocks = [
-        P("Căn cứ Luật Nhà giáo số 73/2025/QH15..."),
-        P("1. Luật Nhà giáo số 73/2025/QH15."),
+        P("PHỤ LỤC"),
+        P("DANH MỤC"),
+        P("28. Hà Nội"),
         P("Chương I"),
-        P("NHỮNG QUY ĐỊNH CHUNG"),
+        P("PHẦN MỚI"),
+        P("1. Nội dung."),
     ]
-    assert emitter.find_preamble_end(blocks) == 2
+    parts = emitter.emit(blocks)
+    assert parts[-2] == "##### Khoản 1"
+    assert parts[-1] == "Nội dung."
+
+
+# --- Regression: marker "[n]" dính liền phá RE_KHOAN/RE_DIEU nếu không --
+# gỡ trước khi khớp heading (formatting_spec.md mục 1.1, "Lưu ý quan
+# trọng"; xem thêm test strip_markers ở patterns.py) --------------------
+
+
+def test_emit_go_marker_truoc_khi_khop_khoan():
+    blocks = [
+        P("Điều 1. Phạm vi điều chỉnh"),
+        P("1.[2] Bảo hiểm y tế là hình thức bắt buộc."),
+    ]
+    parts = emitter.emit(blocks)
+    assert parts[1] == "##### Khoản 1"
+    assert parts[2] == "Bảo hiểm y tế là hình thức bắt buộc."
+
+
+def test_emit_go_marker_truoc_khi_khop_dieu():
+    blocks = [P("Điều 7a.[3] Bảo hiểm xã hội")]
+    parts = emitter.emit(blocks)
+    assert parts[0] == "#### Điều 7a. Bảo hiểm xã hội"
+
+
+def test_emit_khong_go_marker_trong_bang():
+    # Bảng KHÔNG bị strip -- marker còn sót trong bảng là dấu hiệu bất
+    # thường, validator.py cảnh báo riêng (orphan_footnote), emitter không
+    # tự ý sửa nội dung bảng.
+    table_text = "| a | [2] |\n| --- | --- |\n| 1 | 2 |"
+    blocks = [P("Điều 1. A"), T(table_text)]
+    parts = emitter.emit(blocks)
+    assert parts[1] == table_text
 
 
 # ==========================================================================
-# validator.py
+# validator.py -- chỉ chạy trên markdown vùng nội dung ở giữa, không còn
+# khối YAML/blockquote chú thích để bóc tách.
 # ==========================================================================
 
 
 def test_validate_khong_co_heading_canh_bao():
-    warnings = validator.validate("---\nso_hieu: null\n---\n\nMột đoạn văn thường.")
+    warnings = validator.validate("Một đoạn văn thường không có heading nào.")
     assert any(w.code == "no_heading" for w in warnings)
 
 
@@ -905,16 +595,10 @@ def test_validate_dieu_rong_canh_bao():
     assert any(w.code == "empty_dieu" and w.detail == "Điều 1. A" for w in warnings)
 
 
-def test_validate_marker_mo_coi_ngoai_blockquote():
-    markdown = "#### Điều 1. A\n\nNội dung còn sót marker [9] chưa được chèn lại."
+def test_validate_dieu_co_bang_khong_bi_bao_rong():
+    markdown = "#### Điều 1. A\n\n<table>\n<tr><td>x</td></tr>\n</table>"
     warnings = validator.validate(markdown)
-    assert any(w.code == "orphan_footnote" for w in warnings)
-
-
-def test_validate_marker_trong_blockquote_khong_bi_bao():
-    markdown = "#### Điều 1. A\n\n> **Sửa đổi:** đã dời [9] xuống cuối."
-    warnings = validator.validate(markdown)
-    assert not any(w.code == "orphan_footnote" for w in warnings)
+    assert not any(w.code == "empty_dieu" for w in warnings)
 
 
 def test_validate_heading_dai_bat_thuong():
@@ -923,53 +607,497 @@ def test_validate_heading_dai_bat_thuong():
     assert any(w.code == "suspicious_heading_length" for w in warnings)
 
 
+def test_validate_marker_con_sot_bi_canh_bao_orphan_footnote():
+    # emitter._strip_block_markers không strip trong bảng (chỉ paragraph) --
+    # nếu marker còn sót ở bất kỳ đâu trong output, đó là bất thường cần rà
+    # lại thủ công (formatting_spec.md mục 1.1).
+    markdown = "#### Điều 1. A\n\nNội dung còn sót [5] marker."
+    warnings = validator.validate(markdown)
+    matching = [w for w in warnings if w.code == "orphan_footnote"]
+    assert len(matching) == 1
+    assert matching[0].detail == "[5]"
+
+
+def test_validate_nhieu_marker_con_sot_moi_marker_mot_canh_bao():
+    markdown = "Nội dung [1] và [2] còn sót."
+    warnings = validator.validate(markdown)
+    matching = [w for w in warnings if w.code == "orphan_footnote"]
+    assert [w.detail for w in matching] == ["[1]", "[2]"]
+
+
+def test_validate_khong_con_marker_khong_bi_canh_bao_orphan_footnote():
+    markdown = "#### Điều 1. A\n\nNội dung sạch không có marker."
+    warnings = validator.validate(markdown)
+    assert not any(w.code == "orphan_footnote" for w in warnings)
+
+
 # ==========================================================================
-# docx_reader.py -- đọc DOCX thật, giữ thứ tự paragraph/table xen kẽ
+# frontmatter.py
 # ==========================================================================
 
 
-def test_read_docx_giu_dung_thu_tu_xen_ke(tmp_path: Path):
+def test_frontmatter_find_boundary_tra_ve_chi_so_dau_tien_la_heading():
+    blocks = [P("CHÍNH PHỦ"), P("Điều 1. Phạm vi.")]
+    assert frontmatter.find_boundary(blocks) == 1
+
+
+def test_frontmatter_find_boundary_khong_co_heading_tra_ve_do_dai_list():
+    blocks = [P("CHÍNH PHỦ"), P("Số: 1/2025/NĐ-CP")]
+    assert frontmatter.find_boundary(blocks) == len(blocks)
+
+
+def test_frontmatter_find_boundary_bo_qua_dong_danh_so_o_dan_nhap():
+    blocks = [
+        P("Căn cứ Luật Nhà giáo số 73/2025/QH15..."),
+        P("1. Luật Nhà giáo số 73/2025/QH15."),
+        P("Chương I"),
+        P("NHỮNG QUY ĐỊNH CHUNG"),
+    ]
+    assert frontmatter.find_boundary(blocks) == 2
+
+
+def test_frontmatter_find_boundary_chi_xet_paragraph():
+    blocks = [T("Điều 1. Trong bảng không phải heading thật.")]
+    assert frontmatter.find_boundary(blocks) == len(blocks)
+
+
+def test_convert_frontmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch):
+    _forbid_llm_calls(monkeypatch)
+    markdown, warnings = frontmatter.convert_frontmatter([])
+    assert markdown == ""
+    assert warnings == []
+
+
+def test_convert_frontmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        llm_client, "convert_to_markdown", lambda *a, **k: "**CHÍNH PHỦ**"
+    )
+    markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
+    assert markdown == "**CHÍNH PHỦ**"
+    assert warnings == []
+
+
+def test_convert_frontmatter_gemini_loi_phat_canh_bao():
+    # Fixture `_default_llm_stub` đã trả None mặc định.
+    markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ")])
+    assert markdown == ""
+    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
+
+
+def test_convert_frontmatter_prompt_chua_noi_dung_block(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    captured: dict[str, str] = {}
+
+    def fake(prompt: str, *, max_retries: int | None = None) -> str:
+        captured["prompt"] = prompt
+        return "kết quả"
+
+    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
+    frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
+    assert "**CHÍNH PHỦ**" in captured["prompt"]
+
+
+# ==========================================================================
+# backmatter.py
+# ==========================================================================
+
+
+def test_backmatter_find_boundary_lay_bang_ky_cuoi_cung():
+    blocks = [T("TM. THỦ TƯỚNG"), P("Ở giữa."), T("Nơi nhận:")]
+    assert backmatter.find_boundary(blocks) == 2
+
+
+def test_backmatter_find_boundary_khong_co_bang_ky_tra_ve_none():
+    blocks = [P("Nội dung.")]
+    assert backmatter.find_boundary(blocks) is None
+
+
+def test_backmatter_split_backmatter_co_noi_dung_sau_bang_ky():
+    blocks = [P("Ở giữa."), T("TM. THỦ TƯỚNG"), P("[1] Ghi chú.")]
+    middle, back, warnings = backmatter.split_backmatter(blocks)
+    assert middle == [blocks[0]]
+    assert back == [blocks[2]]
+    assert [w.code for w in warnings] == ["dropped_noi_nhan_table"]
+
+
+def test_backmatter_split_backmatter_khong_con_block_sau_bang_ky():
+    blocks = [P("Ở giữa."), T("TM. THỦ TƯỚNG")]
+    middle, back, warnings = backmatter.split_backmatter(blocks)
+    assert middle == [blocks[0]]
+    assert back == []
+    assert [w.code for w in warnings] == ["dropped_noi_nhan_table"]
+
+
+def test_backmatter_split_backmatter_khong_co_bang_ky():
+    blocks = [P("Ở giữa.")]
+    middle, back, warnings = backmatter.split_backmatter(blocks)
+    assert middle == blocks
+    assert back == []
+    assert warnings == []
+
+
+def test_convert_backmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch):
+    _forbid_llm_calls(monkeypatch)
+    markdown, warnings = backmatter.convert_backmatter([])
+    assert markdown == ""
+    assert warnings == []
+
+
+def test_convert_backmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        llm_client, "convert_to_markdown", lambda *a, **k: "[1] Ghi chú sửa đổi."
+    )
+    markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú sửa đổi.")])
+    assert markdown == "[1] Ghi chú sửa đổi."
+    assert warnings == []
+
+
+def test_convert_backmatter_gemini_loi_phat_canh_bao():
+    markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú.")])
+    assert markdown == ""
+    assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
+
+
+def test_convert_backmatter_prompt_giu_nguyen_marker_khong_bi_strip(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Khác với vùng nội dung ở giữa (strip_markers), marker "[n]" ở back
+    # matter là số thứ tự chú thích thật (vd. "[1] Luật Công nghiệp...") --
+    # PHẢI giữ nguyên khi gửi cho Gemini (formatting_spec.md mục 1.1, "Lưu ý
+    # quan trọng").
+    captured: dict[str, str] = {}
+
+    def fake(prompt: str, *, max_retries: int | None = None) -> str:
+        captured["prompt"] = prompt
+        return "kết quả"
+
+    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
+    backmatter.convert_backmatter([P("[1] Luật Công nghiệp có hiệu lực từ...")])
+    assert "[1] Luật Công nghiệp có hiệu lực từ..." in captured["prompt"]
+
+
+# ==========================================================================
+# llm_client.py -- Gemini (google-genai), mock hoàn toàn (không gọi API thật)
+# ==========================================================================
+
+
+def test_client_gemini_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, *, api_key: str, http_options) -> None:
+            captured["api_key"] = api_key
+            captured["timeout"] = http_options.timeout
+
+    monkeypatch.setattr(llm_client.genai, "Client", FakeClient)
+    llm_client._client.cache_clear()
+    try:
+        llm_client._client()
+        assert captured["api_key"] == "fake-key-khong-goi-thuc-te"
+        assert captured["timeout"] == 30 * 1000
+    finally:
+        llm_client._client.cache_clear()
+
+
+def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.models.generate_content.return_value = Mock(text="  Kết quả markdown  ")
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt nội dung")
+
+    assert result == "Kết quả markdown"
+    kwargs = fake_client.models.generate_content.call_args.kwargs
+    assert kwargs["model"] == "gemini-3.6-flash"
+    assert kwargs["contents"] == "prompt nội dung"
+
+
+def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.models.generate_content.side_effect = [
+        RuntimeError("lỗi mạng giả lập"),
+        Mock(text="Kết quả sau khi thử lại"),
+    ]
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+
+    assert result == "Kết quả sau khi thử lại"
+    assert fake_client.models.generate_content.call_count == 2
+
+
+def test_convert_to_markdown_het_so_lan_thu_tra_ve_none(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+
+    assert result is None
+    assert fake_client.models.generate_content.call_count == 2  # max_retries mặc định
+
+
+def test_convert_to_markdown_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.models.generate_content.side_effect = [
+        Mock(text=""),
+        Mock(text="Nội dung thật"),
+    ]
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+
+    assert result == "Nội dung thật"
+    assert fake_client.models.generate_content.call_count == 2
+
+
+def test_convert_to_markdown_max_retries_ghi_de_settings(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-khong-goi-thuc-te")
+    fake_client = Mock()
+    fake_client.models.generate_content.side_effect = RuntimeError("lỗi giả lập")
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt", max_retries=1)
+
+    assert result is None
+    assert fake_client.models.generate_content.call_count == 1
+
+
+def test_convert_to_markdown_thieu_gemini_api_key_tra_ve_none_khong_raise(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Không có `GEMINI_API_KEY` (đúng thực trạng CI) -- `LLMSettings()`
+    raise `ValidationError`, `convert_to_markdown` phải bắt và trả `None`,
+    không để lộ exception (mục 5, 7 spec: lỗi Gemini không bao giờ chặn
+    pipeline)."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+
+    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+    assert result is None
+
+
+# ==========================================================================
+# pipeline.py -- _compose_markdown (ghép 3 phần)
+# ==========================================================================
+
+
+def test_compose_markdown_day_du_ba_phan():
+    markdown = pipeline._compose_markdown("FRONT", "MIDDLE", "BACK")
+    assert markdown == "FRONT\n\nMIDDLE\n\n---\n\nBACK\n"
+
+
+def test_compose_markdown_khong_co_front_matter():
+    markdown = pipeline._compose_markdown("", "MIDDLE", "")
+    assert markdown == "MIDDLE\n"
+
+
+def test_compose_markdown_khong_co_back_matter():
+    markdown = pipeline._compose_markdown("FRONT", "MIDDLE", "")
+    assert markdown == "FRONT\n\nMIDDLE\n"
+
+
+# ==========================================================================
+# pipeline.py -- convert_docx_to_markdown (integration DOCX thật, LLM mock)
+# ==========================================================================
+
+
+def _build_docx(path: Path, items: list[tuple[str, object]]) -> None:
+    """DSL nhỏ để dựng DOCX test: ("p", text) | ("p_bold", text) | ("table", rows)."""
     document = Document()
-    document.add_paragraph("Điều 1. Phạm vi điều chỉnh")
-    table = document.add_table(rows=2, cols=2)
-    table.cell(0, 0).text = "Cột A"
-    table.cell(0, 1).text = "Cột B"
-    table.cell(1, 0).text = "1"
-    table.cell(1, 1).text = "2"
-    document.add_paragraph("1. Nội dung khoản một.")
-    document.add_paragraph("   ")  # đoạn trắng, phải bị bỏ qua
+    for kind, payload in items:
+        if kind == "p":
+            document.add_paragraph(str(payload))
+        elif kind == "p_bold":
+            paragraph = document.add_paragraph()
+            run = paragraph.add_run(str(payload))
+            run.bold = True
+        elif kind == "table":
+            rows = payload
+            assert isinstance(rows, list)
+            table = document.add_table(rows=len(rows), cols=len(rows[0]))
+            for row_index, row in enumerate(rows):
+                for col_index, value in enumerate(row):
+                    table.cell(row_index, col_index).text = value
+        else:
+            raise ValueError(f"kind không hỗ trợ: {kind}")
+    document.save(path)
 
-    docx_path = tmp_path / "sample.docx"
-    document.save(docx_path)
 
-    blocks = read_docx(docx_path)
-    assert [block.kind for block in blocks] == ["paragraph", "table", "paragraph"]
-    assert blocks[0].text == "Điều 1. Phạm vi điều chỉnh"
-    assert blocks[1].text.startswith("| Cột A | Cột B |")
-    assert blocks[2].text == "1. Nội dung khoản một."
+def test_convert_docx_to_markdown_ghep_du_front_middle_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "[1] Ghi chú sửa đổi."])
+    docx_path = tmp_path / "full.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p_bold", "CHÍNH PHỦ"),
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung khoản một."),
+            ("table", [["TM. THỦ TƯỚNG"], ["Nguyễn Văn A"]]),
+            ("p", "[1] Ghi chú sửa đổi."),
+        ],
+    )
+
+    result = convert_docx_to_markdown(docx_path)
+
+    assert result.markdown == (
+        "**CHÍNH PHỦ**\n\n"
+        "#### Điều 1. Phạm vi điều chỉnh\n\n"
+        "##### Khoản 1\n\n"
+        "Nội dung khoản một.\n\n"
+        "---\n\n"
+        "[1] Ghi chú sửa đổi.\n"
+    )
+    assert "TM. THỦ TƯỚNG" not in result.markdown
+    codes = {w.code for w in result.warnings}
+    assert "dropped_noi_nhan_table" in codes
+    assert "llm_frontmatter_conversion_failed" not in codes
+    assert "llm_backmatter_conversion_failed" not in codes
 
 
-def test_read_docx_in_dam_toan_doan_la_bold(tmp_path: Path):
-    document = Document()
-    paragraph = document.add_paragraph()
-    run = paragraph.add_run("NGHỊ ĐỊNH")
-    run.bold = True
+def test_convert_docx_to_markdown_khong_co_back_matter_khong_goi_llm_hai_lan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    calls = _sequential_llm(monkeypatch, ["FRONT_MD"])
+    docx_path = tmp_path / "no_back.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p", "CHÍNH PHỦ"),
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung khoản một."),
+        ],
+    )
 
-    docx_path = tmp_path / "bold.docx"
-    document.save(docx_path)
+    result = convert_docx_to_markdown(docx_path)
 
-    blocks = read_docx(docx_path)
-    assert blocks[0].is_bold is True
+    assert result.markdown == (
+        "FRONT_MD\n\n#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung khoản một.\n"
+    )
+    assert len(calls) == 1  # chỉ front matter gọi Gemini
+    codes = {w.code for w in result.warnings}
+    assert "llm_backmatter_conversion_failed" not in codes
+    assert "dropped_noi_nhan_table" not in codes
+
+
+def test_convert_docx_to_markdown_gemini_loi_bo_qua_front_matter_khong_fail(
+    tmp_path: Path,
+):
+    # Fixture `_default_llm_stub` đã trả None mặc định (Gemini "lỗi").
+    docx_path = tmp_path / "front_fail.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p", "CHÍNH PHỦ"),
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung."),
+        ],
+    )
+
+    result = convert_docx_to_markdown(docx_path)
+
+    assert (
+        result.markdown
+        == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    )
+    assert any(w.code == "llm_frontmatter_conversion_failed" for w in result.warnings)
+
+
+def test_convert_docx_to_markdown_gemini_loi_bo_qua_back_matter_khong_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _sequential_llm(monkeypatch, ["FRONT_MD", None])
+    docx_path = tmp_path / "back_fail.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p", "CHÍNH PHỦ"),
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung."),
+            ("table", [["TM. THỦ TƯỚNG"], ["Nguyễn Văn A"]]),
+            ("p", "[1] Ghi chú."),
+        ],
+    )
+
+    result = convert_docx_to_markdown(docx_path)
+
+    assert result.markdown == (
+        "FRONT_MD\n\n#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    )
+    assert "---" not in result.markdown
+    codes = {w.code for w in result.warnings}
+    assert "llm_backmatter_conversion_failed" in codes
+    assert "dropped_noi_nhan_table" in codes
+
+
+def test_convert_docx_to_markdown_khong_co_front_matter_khong_goi_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _forbid_llm_calls(monkeypatch)
+    docx_path = tmp_path / "no_front.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung."),
+        ],
+    )
+
+    result = convert_docx_to_markdown(docx_path)
+
+    assert (
+        result.markdown
+        == "#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung.\n"
+    )
+    assert result.warnings == []
+
+
+def test_convert_docx_to_markdown_file_rong_bao_loi_ro_rang(tmp_path: Path):
+    docx_path = tmp_path / "rong.docx"
+    Document().save(docx_path)
+
+    with pytest.raises(ValueError, match="Không trích xuất được nội dung"):
+        convert_docx_to_markdown(docx_path)
+
+
+def test_convert_docx_to_markdown_deterministic_khi_llm_on_dinh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(llm_client, "convert_to_markdown", lambda *a, **k: "FRONT_MD")
+    docx_path = tmp_path / "det.docx"
+    _build_docx(
+        docx_path,
+        [("p", "CHÍNH PHỦ"), ("p", "Điều 1. A"), ("p", "1. Nội dung.")],
+    )
+
+    first = convert_docx_to_markdown(docx_path).markdown
+    second = convert_docx_to_markdown(docx_path).markdown
+    assert first == second
 
 
 # ==========================================================================
-# pipeline.py -- integration trên corpus thật + CLI + atomic write
+# pipeline.py -- integration trên corpus thật (data/raw/*.docx), LLM mock
 # ==========================================================================
-
-
-@pytest.fixture(scope="session")
-def real_results(_no_real_llm_calls) -> dict[str, FormattingResult]:
-    return {path.stem: convert_docx_to_markdown(path) for path in RAW_FILES}
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
@@ -977,92 +1105,59 @@ def test_data_raw_co_du_6_file():
     assert len(RAW_FILES) == 6
 
 
-def _strip_front_matter(markdown: str) -> str:
-    """Bỏ khối YAML front matter -- mục 7 spec (sửa): giá trị field do LLM
-    sinh, không so khớp byte-for-byte."""
-    return markdown.split("\n---\n", 1)[1]
-
-
-def _mask_blockquote_content(markdown: str) -> str:
-    """Giữ đúng VỊ TRÍ chèn blockquote chú thích (mỗi dòng blockquote vẫn là
-    một dòng riêng, đúng thứ tự so với heading/nội dung xung quanh) nhưng
-    thay nội dung text bên trong bằng placeholder cố định -- mục 7 spec
-    (sửa): nội dung đó do LLM sinh, không so khớp byte-for-byte, chỉ vị trí
-    chèn (do `find_region_start`/`strip_all`/`emitter` quyết định) mới cần.
-    """
-    return "\n".join(
-        "> [nội dung chú thích, không so khớp byte-for-byte]"
-        if line.startswith(">")
-        else line
-        for line in markdown.splitlines()
-    )
+def _heading_lines(markdown: str) -> list[str]:
+    return [line for line in markdown.splitlines() if line.startswith("#")]
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
 @pytest.mark.parametrize("path", RAW_FILES, ids=lambda p: p.stem)
-def test_convert_khop_voi_tham_chieu_data_markdown(path: Path):
-    """Khớp byte-for-byte với `data/markdown/*.md` hiện có, CHỈ cho heading
-    markdown, nội dung Khoản/Điều gốc và vị trí chèn blockquote chú thích
-    (mục 7 spec, sửa cho LLM extraction). Front matter YAML và nội dung text
-    bên trong blockquote do LLM sinh, không so khớp byte-for-byte.
-
-    `data/markdown/*.md` không phải golden-file chính thức nhưng là tham
-    chiếu đã được đối chiếu thủ công (theo commit message); một khác biệt ở
-    đây là tín hiệu mạnh cho REVISE, không phải lý do tự động coi là đúng.
-    """
+def test_convert_heading_khop_voi_tham_chieu_data_markdown(path: Path):
+    """Mục 7 spec: heading mapping cho phần nội dung ở giữa phải khớp với
+    `data/markdown/*.md` (tham chiếu, không phải golden-file chính thức).
+    Front/back matter do Gemini sinh không so khớp -- ở đây LLM bị mock trả
+    `None`, nên chỉ heading của vùng nội dung ở giữa được so sánh (front/back
+    matter không chứa heading nào, mục 1.1 spec, nên không ảnh hưởng danh
+    sách heading)."""
     reference_path = REFERENCE_MD_DIR / f"{path.stem}.md"
     if not reference_path.exists():
         pytest.skip(f"Không có tham chiếu cho {path.stem}")
-    # Tham chiếu được sinh bằng CLI gọi với `--raw-dir data/raw` (đường dẫn
-    # tương đối, từ thư mục gốc repo) nên `source_path` trong front matter là
-    # tương đối. Dùng cùng dạng đường dẫn ở đây để so khớp thật sự (không
-    # lệch mỗi khác biệt chỉ vì absolute/relative) -- dù front matter giờ
-    # không so khớp byte-for-byte nữa, giữ nguyên cho nhất quán với cách
-    # tham chiếu được sinh ra.
-    relative_path = Path("data") / "raw" / path.name
-    result = convert_docx_to_markdown(relative_path)
 
-    actual_body = _mask_blockquote_content(_strip_front_matter(result.markdown))
-    expected_body = _mask_blockquote_content(
-        _strip_front_matter(reference_path.read_text(encoding="utf-8"))
-    )
-    assert actual_body == expected_body
+    result = convert_docx_to_markdown(path)
+    actual_headings = _heading_lines(result.markdown)
+    expected_headings = _heading_lines(reference_path.read_text(encoding="utf-8"))
+    assert actual_headings == expected_headings
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
 @pytest.mark.parametrize("path", RAW_FILES, ids=lambda p: p.stem)
 def test_convert_la_ham_thuan_deterministic(path: Path):
-    """NT: cùng input phải ra byte-for-byte cùng output, chạy lại nhiều lần."""
+    """NT: cùng input phải ra byte-for-byte cùng output, chạy lại nhiều lần
+    (LLM mock trả None ổn định, nên toàn bộ output -- không chỉ vùng giữa --
+    deterministic ở đây)."""
     first = convert_docx_to_markdown(path).markdown
     second = convert_docx_to_markdown(path).markdown
     assert first == second
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
-@pytest.mark.parametrize("path", RAW_FILES, ids=lambda p: p.stem)
-def test_convert_front_matter_hop_le(path: Path):
-    result = convert_docx_to_markdown(path)
-    assert result.markdown.startswith("---\n")
-    parsed = yaml.safe_load(result.markdown.split("\n---\n", 1)[0] + "\n")
-    assert parsed["parser_version"] == result.front_matter.parser_version
-    assert parsed["so_hieu"] == result.front_matter.so_hieu
-
-
-@pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
-def test_convert_khong_co_ma_canh_bao_moi(real_results):
-    """Mục 7 spec: không phát sinh mã QC warning mới ngoài danh sách đã biết."""
+def test_convert_khong_co_ma_canh_bao_moi():
+    """Mục 7 spec: không phát sinh mã QC warning mới ngoài `QcWarningCode`."""
     unknown: set[str] = set()
-    for result in real_results.values():
+    for path in RAW_FILES:
+        result = convert_docx_to_markdown(path)
         unknown |= {w.code for w in result.warnings} - KNOWN_WARNING_CODES
-    assert not unknown, (
-        f"Mã QC warning mới, chưa có trong KNOWN_WARNING_CODES: {unknown}"
-    )
+    assert not unknown, f"Mã QC warning mới, chưa có trong QcWarningCode: {unknown}"
 
 
 @pytest.mark.skipif(not RAW_FILES, reason="data/raw/*.docx không tồn tại")
 def test_convert_file_khong_ton_tai_bao_loi_ro_rang():
     with pytest.raises(PackageNotFoundError):
         convert_docx_to_markdown(RAW_DIR / "khong_ton_tai.docx")
+
+
+# ==========================================================================
+# pipeline.py -- write_atomic / convert_directory
+# ==========================================================================
 
 
 def test_write_atomic_ghi_dung_noi_dung(tmp_path: Path):
@@ -1155,9 +1250,10 @@ def test_cli_chuyen_doi_toan_bo_thu_muc(tmp_path: Path):
 def test_cli_thuc_thi_duoc_qua_module_chinh():
     """`python tools/format_documents.py --help` không lỗi (kiểm tra entry point).
 
-    Ép NO_COLOR + COLUMNS rộng: Rich (dùng bởi Typer) tô màu ANSI và tự xuống
-    dòng theo bề rộng terminal, nên trên CI (không phải TTY, COLUMNS khác máy
-    dev) "raw-dir" có thể bị mã màu hoặc dấu xuống dòng chen vào giữa.
+    Ép NO_COLOR + COLUMNS rộng: Rich (dùng bởi Typer để render --help) tô màu
+    ANSI và tự xuống dòng theo bề rộng terminal, nên trên CI (không phải TTY,
+    COLUMNS khác máy dev) "raw-dir" có thể bị mã màu hoặc dấu xuống dòng chen
+    vào giữa.
     """
     env = {**os.environ, "NO_COLOR": "1", "COLUMNS": "200"}
     completed = subprocess.run(

@@ -5,6 +5,10 @@ Stateless, không có DB tracking — mỗi lần chạy xử lý lại toàn b�
 multiprocessing): với quy mô corpus hiện tại (6 file), xử lý tuần tự đủ
 nhanh và đơn giản hơn hẳn so với phối hợp ProcessPoolExecutor. Lỗi ở một
 file không chặn các file còn lại trong batch.
+
+``convert_docx_to_markdown`` ghép 3 phần theo mục 1.1, 2 spec: front matter
+(Gemini) + nội dung ở giữa (pipeline hiện có, không đổi) + back matter
+(Gemini, nếu có, ngăn cách bằng dòng ``---``).
 """
 
 from __future__ import annotations
@@ -15,15 +19,30 @@ import traceback
 from pathlib import Path
 
 from production_legal_qa_rag.formatting import (
+    backmatter,
     docx_reader,
     emitter,
-    footnotes,
     frontmatter,
     tables,
     validator,
 )
-from production_legal_qa_rag.formatting.footnotes import Footnote
 from production_legal_qa_rag.formatting.models import FormattingResult, QcWarning
+
+
+def _compose_markdown(
+    front_markdown: str, middle_markdown: str, back_markdown: str
+) -> str:
+    """Ghép front matter + nội dung ở giữa + back matter (mục 1.1, 2 spec).
+
+    Không có YAML, không có heading gán riêng cho front/back matter — cả hai
+    là văn bản thường nối trực tiếp. Back matter (nếu có) ngăn cách bằng một
+    dòng ``---``.
+    """
+    sections = [section for section in (front_markdown, middle_markdown) if section]
+    markdown = "\n\n".join(sections)
+    if back_markdown:
+        markdown = f"{markdown}\n\n---\n\n{back_markdown}"
+    return f"{markdown}\n"
 
 
 def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
@@ -33,7 +52,7 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
         path: Đường dẫn tới file `.docx` nguồn.
 
     Returns:
-        Kết quả chuyển đổi: markdown, front matter và danh sách cảnh báo QC.
+        Kết quả chuyển đổi: markdown và danh sách cảnh báo QC.
 
     Raises:
         ValueError: Khi không trích xuất được nội dung nào từ file.
@@ -45,55 +64,35 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
 
     warnings: list[QcWarning] = []
 
-    # S0 — triage bảng, phải chạy trước mọi thứ khác.
-    quoc_hieu_block, body, table_warnings = tables.triage_tables(blocks)
+    # S0 — biên front matter: block đầu tiên khớp regex heading cấu trúc.
+    fm_boundary = frontmatter.find_boundary(blocks)
+    front_blocks = blocks[:fm_boundary]
+    rest = blocks[fm_boundary:]
+
+    # S1 — biên back matter: sau bảng chữ ký cuối cùng, nếu có.
+    middle_raw, back_blocks, split_warnings = backmatter.split_backmatter(rest)
+    warnings.extend(split_warnings)
+
+    # S2 — lọc bảng đính kèm khỏi vùng nội dung ở giữa.
+    middle_blocks, table_warnings = tables.filter_middle_tables(middle_raw)
     warnings.extend(table_warnings)
 
-    # S1 — cắt vùng chú thích TRƯỚC khi nhận diện heading.
-    region_start, region_warnings = footnotes.find_region_start(body)
-    warnings.extend(region_warnings)
-    footnote_map: dict[int, Footnote]
-    if region_start is None:
-        footnote_map = {}
-    else:
-        footnote_map, parse_warnings = footnotes.resolve_region(body[region_start:])
-        warnings.extend(parse_warnings)
-        body = body[:region_start]
-
-    # S2 — gỡ marker TRƯỚC khi nhận diện heading.
-    body, refs, strip_warnings = footnotes.strip_all(body)
-    warnings.extend(strip_warnings)
-
-    # S3 — biên vùng dẫn nhập.
-    preamble_end = emitter.find_preamble_end(body)
-
-    # S5 — emit (chạy trước front matter vì is_phu_luc do vòng emit xác định).
-    parts, deferred, is_phu_luc, emit_warnings = emitter.emit(
-        body, refs, footnote_map, preamble_end
-    )
-    warnings.extend(emit_warnings)
-
-    # S4 — front matter, dựng trên body đã gỡ marker.
-    front_matter, fm_warnings = frontmatter.build_frontmatter(
-        body,
-        quoc_hieu_block,
-        source_path=str(path),
-        is_phu_luc=is_phu_luc,
-    )
+    # S3 — chuyển front matter/back matter bằng Gemini (song song về mặt logic,
+    # tuần tự về mặt gọi API — không có fallback khi lỗi).
+    front_markdown, fm_warnings = frontmatter.convert_frontmatter(front_blocks)
     warnings.extend(fm_warnings)
 
-    # S6 — ghép.
-    sections = [front_matter.to_yaml(), *parts]
-    if deferred:
-        sections.extend(deferred)
-    markdown = "\n\n".join(section for section in sections if section) + "\n"
+    back_markdown, bm_warnings = backmatter.convert_backmatter(back_blocks)
+    warnings.extend(bm_warnings)
 
-    # S7 — QC.
-    warnings.extend(validator.validate(markdown))
+    # S4 — emit nội dung ở giữa (không đổi so với bản cũ).
+    middle_markdown = "\n\n".join(emitter.emit(middle_blocks))
+    warnings.extend(validator.validate(middle_markdown))
 
-    return FormattingResult(
-        markdown=markdown, front_matter=front_matter, warnings=warnings
-    )
+    # S5 — ghép.
+    markdown = _compose_markdown(front_markdown, middle_markdown, back_markdown)
+
+    return FormattingResult(markdown=markdown, warnings=warnings)
 
 
 def write_atomic(path: str | Path, content: str) -> None:
