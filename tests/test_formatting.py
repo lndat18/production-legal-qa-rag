@@ -248,9 +248,7 @@ def test_strip_markers_go_marker_dinh_ngay_sau_so_khoan():
 
 
 def test_strip_markers_go_marker_o_cuoi_dong():
-    assert (
-        strip_markers("Điều 7a. Bảo hiểm Xã hội[16]") == "Điều 7a. Bảo hiểm Xã hội"
-    )
+    assert strip_markers("Điều 7a. Bảo hiểm Xã hội[16]") == "Điều 7a. Bảo hiểm Xã hội"
 
 
 def test_strip_markers_khong_nuot_so_hieu_khi_co_dau_cham_o_giua():
@@ -350,9 +348,7 @@ def test_serialize_blocks_for_llm_italic_duoc_bao_bang_mot_sao():
 
 
 def test_serialize_blocks_for_llm_dam_va_nghieng_duoc_bao_bang_ba_sao():
-    blocks = [
-        Block(kind="paragraph", text="CHÍNH PHỦ", is_bold=True, is_italic=True)
-    ]
+    blocks = [Block(kind="paragraph", text="CHÍNH PHỦ", is_bold=True, is_italic=True)]
     assert serialize_blocks_for_llm(blocks) == "***CHÍNH PHỦ***"
 
 
