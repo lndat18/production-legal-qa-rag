@@ -12,28 +12,64 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Xác định diff có đụng code không
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Không xác định được base (branch mới/force-push) -- chạy full CI để an toàn."
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_CODE=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep -E '^(src/|tests/|tools/|pyproject\.toml|uv\.lock|\.github/workflows/)' || true)
+
+          if [ -n "$CHANGED_CODE" ]; then
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Diff không đụng src/tests/tools/pyproject.toml/uv.lock/.github/workflows -- skip check nặng."
+            echo "code_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install uv
+        if: steps.diff.outputs.code_changed == 'true'
         uses: astral-sh/setup-uv@v3
         with:
           python-version: "3.14"
           enable-cache: true
 
       - name: Install dependencies
+        if: steps.diff.outputs.code_changed == 'true'
         run: uv sync --all-groups
 
       - name: Run tests (skip slow/model-loading tests)
+        if: steps.diff.outputs.code_changed == 'true'
         run: uv run pytest -m "not slow"
 
       - name: Lint (ruff check)
+        if: steps.diff.outputs.code_changed == 'true'
         run: uv run ruff check .
 
       - name: Format check (ruff format)
+        if: steps.diff.outputs.code_changed == 'true'
         run: uv run ruff format --check .
 
       - name: Type check (mypy)
+        if: steps.diff.outputs.code_changed == 'true'
         run: uv run mypy src
 
       - name: Dependency audit (pip-audit)
+        if: steps.diff.outputs.code_changed == 'true'
         run: uvx pip-audit
         continue-on-error: true
