@@ -396,6 +396,19 @@ class _FakePineconeClient:
         return self.index
 
 
+class _ReadinessPineconeClient(_FakePineconeClient):
+    """Fake client có trạng thái tạo index bất đồng bộ theo từng poll."""
+
+    def __init__(self, ready_states: list[bool]) -> None:
+        super().__init__([])
+        self._ready_states = ready_states
+        self.describe_calls: list[str] = []
+
+    def describe_index(self, name: str) -> SimpleNamespace:
+        self.describe_calls.append(name)
+        return SimpleNamespace(status=SimpleNamespace(ready=self._ready_states.pop(0)))
+
+
 def test_vector_store_tao_index_full_refresh_va_upsert_theo_batch(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -427,6 +440,59 @@ def test_vector_store_tao_index_full_refresh_va_upsert_theo_batch(
         "chunk-1",
         "chunk-2",
     ]
+
+
+def test_vector_store_cho_index_ready_truoc_khi_delete_hoac_upsert(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client = _ReadinessPineconeClient([False, True])
+    now = [0.0]
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(pinecone_client, "get_embedding_dimension", lambda _: 768)
+    monkeypatch.setattr(pinecone_client.time, "monotonic", lambda: now[0])
+
+    def _sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(pinecone_client.time, "sleep", _sleep)
+    store = PineconeVectorStore(
+        _vector_settings(monkeypatch),
+        _embedding_settings(monkeypatch),
+        client,  # type: ignore[arg-type]
+    )
+
+    store.upsert([])
+
+    assert client.describe_calls == ["legal-index", "legal-index"]
+    assert sleep_calls == [1.0]
+    assert [event for event, _ in client.events] == ["create", "Index", "delete"]
+
+
+def test_vector_store_raise_timeout_neu_index_khong_ready(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client = _ReadinessPineconeClient([False, False])
+    now = [0.0]
+    monkeypatch.setattr(pinecone_client, "get_embedding_dimension", lambda _: 768)
+    monkeypatch.setattr(pinecone_client, "_INDEX_READY_TIMEOUT_SECONDS", 2.0)
+    monkeypatch.setattr(pinecone_client.time, "monotonic", lambda: now[0])
+
+    def _advance_time(seconds: float) -> None:
+        now[0] += seconds
+
+    monkeypatch.setattr(pinecone_client.time, "sleep", _advance_time)
+    store = PineconeVectorStore(
+        _vector_settings(monkeypatch),
+        _embedding_settings(monkeypatch),
+        client,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TimeoutError, match="chưa ready"):
+        store.upsert([])
+
+    assert client.describe_calls == ["legal-index", "legal-index"]
+    assert [event for event, _ in client.events] == ["create"]
 
 
 def test_vector_store_khong_tao_lai_index_da_ton_tai(
