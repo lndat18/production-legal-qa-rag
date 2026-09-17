@@ -22,6 +22,7 @@ class EmbeddingSettings(BaseSettings):
 
     model_name: str = "CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2"
     max_tokens: int = 236
+    hf_token: str = Field(validation_alias="HF_TOKEN")
 
 
 class VectorDBSettings(BaseSettings):
@@ -36,6 +37,8 @@ class VectorDBSettings(BaseSettings):
 
     pinecone_api_key: str = Field(validation_alias="PINECONE_API_KEY")
     index_name: str = Field(validation_alias="PINECONE_INDEX_NAME")
+    cloud: str = "aws"
+    region: str = "us-east-1"
 
 
 class LLMSettings(BaseSettings):
