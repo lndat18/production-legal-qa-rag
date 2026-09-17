@@ -255,18 +255,20 @@ Hai vùng nội dung nằm **ngoài** cấu trúc Phần/Chương/Mục/Điều/
   ngay phía trên nó trong frontmatter (thường là dòng loại văn bản — "LUẬT",
   "NGHỊ ĐỊNH"..., xem `formatting_spec.md` mục 1.1), tạo thành
   `source_document` (mục 2).
-- **Backmatter** (phần cuối): vùng chú thích sửa đổi dài bị
-  `formatting/footnotes.py::render_blockquote` dời xuống cuối file thay vì
-  inline tại chỗ (khi chú thích vượt `FOOTNOTE_INLINE_MAX_CHARS`), đánh dấu
-  bằng 1 dòng in đậm không phải heading: `**[n]**` (regex
-  `^\*\*\[\d+\]\*\*$`). Từ dòng `**[n]**` đầu tiên xuất hiện sau heading cuối
-  cùng của file cho tới hết file là vùng backmatter — toàn bộ phần này trích
-  dẫn nguyên văn Điều/Khoản của **luật khác** (vd. Điều 41 Luật Nhà giáo,
-  Điều 63 Luật Thanh tra trong `Luật bảo hiểm xã hội.md` dòng 3456), không
-  phải cấu trúc Điều/Khoản thật của văn bản đang parse — **không** được coi
-  là heading/Khoản mới. Hiện `parser.py` không nhận diện vùng này, khiến nó
-  bị nuốt nhầm vào nội dung Khoản cuối cùng đang mở (vd. lẫn vào Khoản 15
-  Điều 141 `Luật bảo hiểm xã hội.md`) — đây là lỗi cần sửa.
+- **Backmatter** (phần cuối): vùng chú thích sửa đổi/trích dẫn luật khác dời
+  xuống cuối file, được `formatting/pipeline.py._compose_markdown` ngăn cách
+  với nội dung chính bằng đúng 1 dòng `---` đứng riêng (`formatting_spec.md`
+  mục 1.1 "Ghép output cuối cùng" + mục 2) — regex `^-{3}$`, khớp khít đúng 3
+  ký tự nên không nhận nhầm dòng gạch ngang trang trí dài hơn còn sót trong
+  frontmatter (vd. "--------"). Dòng `---` đầu tiên xuất hiện sau nội dung
+  Khoản cuối cùng của file là ranh giới: mọi thứ sau đó tới hết file là vùng
+  backmatter — toàn bộ phần này trích dẫn nguyên văn Điều/Khoản của **luật
+  khác** (vd. Điều 41 Luật Nhà giáo, Điều 63 Luật Thanh tra trong
+  `Luật bảo hiểm xã hội.md` dòng 3456), không phải cấu trúc Điều/Khoản thật
+  của văn bản đang parse — **không** được coi là heading/Khoản mới.
+  `parser.py` nhận diện ranh giới này qua `patterns.RE_BACKMATTER_SEPARATOR`,
+  tách backmatter ra khỏi nội dung Khoản cuối cùng đang mở thay vì để lẫn
+  vào đó.
 
 Coi mỗi vùng là **1 Khoản ngầm định cấp văn bản** riêng biệt, không có
 Phần/Chương/Mục/Điều/Khoản bao ngoài:
@@ -318,7 +320,7 @@ Phân biệt với nội dung đứng giữa 2 heading Phần/Chương/Mục mà
 trường hợp đó **vẫn bị bỏ qua** như thiết kế hiện tại của `parser.py`, vì nó
 không phải nội dung pháp lý độc lập và không khớp định nghĩa frontmatter
 (không đứng trước heading đầu tiên của cả file) hay backmatter (không đứng
-sau marker `**[n]**` ở cuối file).
+sau dòng `---` phân cách ở cuối file).
 
 ## 5. Xử lý Khoản chứa bảng
 
@@ -482,7 +484,7 @@ tools/chunk_documents.py (Typer CLI)
 
 | Module          | Trách nhiệm                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patterns.py`   | Regex nhận diện heading markdown (Phần/Chương/Mục/Điều/Khoản), nhãn Điểm (`a)`, `b)`...), dòng bảng markdown (`\|...\|`), dòng marker chú thích dời cuối `**[n]**` (mục 4.6).                                                                                                                                                                                                                                            |
+| `patterns.py`   | Regex nhận diện heading markdown (Phần/Chương/Mục/Điều/Khoản), nhãn Điểm (`a)`, `b)`...), dòng bảng markdown (`\|...\|`), dòng phân cách backmatter `---` (mục 4.6).                                                                                                                                                                                                                                                     |
 | `parser.py`     | Đọc file markdown, trích `source_document` từ heading `#` đầu tiên trong vùng frontmatter (mục 2, phân biệt với heading cấu trúc Phần/Phụ Lục bằng regex chuyên biệt, mục 4.6), dựng `DocumentTree` — cây breadcrumb tới từng Khoản kèm nội dung thô, gồm cả Khoản ngầm định cấp văn bản cho frontmatter/backmatter (mục 4.6); phát hiện `has_table`/trích `raw_table` cho từng Khoản.                              |
 | `tables.py`     | Chuyển `raw_table` (markdown) thành `standardization_table` (mục 5.3).                                                                                                                                                                                                                                                                                                                                                   |
 | `tokenizer.py`  | `count_tokens(text) -> int` — word-segment (pyvi) + đếm bằng `AutoTokenizer` (mục 6).                                                                                                                                                                                                                                                                                                                                    |
@@ -512,7 +514,7 @@ tools/chunk_documents.py (Typer CLI)
   nội dung khớp nguyên văn đoạn mở đầu gốc (vd. "LUẬT", "BẢO HIỂM XÃ HỘI",
   "Căn cứ Hiến pháp...", "Quốc hội ban hành..." trong
   `Luật bảo hiểm xã hội.md`).
-- Với `Luật bảo hiểm xã hội.md` (dòng 3456, marker `**[10]**`) — vùng chú
+- Với `Luật bảo hiểm xã hội.md` (dòng phân cách `---` ở dòng 3413) — vùng chú
   thích sửa đổi dời cuối (backmatter, mục 4.6) tách thành chunk riêng,
   breadcrumb `LUẬT BẢO HIỂM XÃ HỘI - Chú thích sửa đổi (cuối văn bản)`,
   **không** còn lẫn vào `content` của Khoản 15 Điều 141 (Khoản ngầm định
@@ -547,6 +549,11 @@ chi tiết quá trình brainstorm đã có trong git history của file này.
 - `source_document` = đoạn văn liền kề ngay phía trên heading `#` đầu tiên
   (thường là dòng loại văn bản, vd. "LUẬT") nối với chính heading đó, thành
   1 dòng plain text (mục 2).
+- Marker phân cách backmatter (mục 4.6) là 1 dòng `---` đứng riêng (do
+  `formatting/pipeline.py._compose_markdown` chèn), **không phải** `**[n]**`
+  như mô tả ban đầu — module `formatting/footnotes.py::render_blockquote`
+  gắn với marker cũ đã bị xoá khỏi `formatting/` từ bản redesign Groq
+  2026-09-16, phát hiện khi implement (`develop-cycle`, PR #14).
 
-Code (`parser.py`, `splitter.py`, `models.py`, `patterns.py`) **chưa** được
-cập nhật theo bản spec này — cần chạy qua develop-cycle để implement.
+Code (`parser.py`, `splitter.py`, `models.py`, `patterns.py`) đã được
+implement theo bản spec này (PR #14, branch `feature/chunking`).
