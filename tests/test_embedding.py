@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar, cast
 
 import pytest
 from pydantic import ValidationError
@@ -210,7 +211,7 @@ def test_coerce_embeddings_tu_response_tolist_va_validate_shape():
 class _FakeEmbedder:
     """Fake embedder giữ số lần khởi tạo để bảo vệ quota counter dùng chung."""
 
-    instances: list[_FakeEmbedder] = []
+    instances: ClassVar[list[_FakeEmbedder]] = []
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
@@ -381,7 +382,7 @@ class _FakePineconeClient:
     def create_index(self, **kwargs: object) -> None:
         self.events.append(("create", kwargs))
 
-    def Index(self, name: str) -> _FakePineconeIndex:  # noqa: N802 - SDK API
+    def Index(self, name: str) -> _FakePineconeIndex:
         self.events.append(("Index", name))
         return self.index
 
@@ -405,9 +406,9 @@ def test_vector_store_tao_index_full_refresh_va_upsert_theo_batch(
     assert create_kwargs["name"] == "legal-index"
     assert create_kwargs["dimension"] == 768
     assert create_kwargs["metric"] == "cosine"
-    spec = create_kwargs["spec"]
-    assert getattr(spec, "cloud") == "aws"
-    assert getattr(spec, "region") == "us-east-1"
+    spec = cast(pinecone_client.ServerlessSpec, create_kwargs["spec"])
+    assert spec.cloud == "aws"
+    assert spec.region == "us-east-1"
     assert client.events[1] == ("Index", "legal-index")
     assert client.events[2] == ("delete", True)
     batches = [value for event, value in client.events if event == "upsert"]
