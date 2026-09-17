@@ -159,6 +159,40 @@ def is_structural(text: str) -> bool:
     )
 
 
+# --- Dòng tên văn bản trong front matter (formatting_spec.md mục 1.1) -----
+
+# Khớp TRỌN DÒNG danh sách tên loại văn bản đơn thuần (không kèm tên riêng),
+# vd. dòng "NGHỊ ĐỊNH" đứng một mình trước dòng tên đầy đủ văn bản. Dùng bởi
+# `frontmatter.find_title` để loại các dòng này khỏi ứng viên heading tên văn
+# bản -- "BỘ LUẬT LAO ĐỘNG" (có thêm tên riêng) không khớp regex này nên vẫn
+# được chọn làm tên văn bản.
+RE_DOC_TYPE_ONLY = re.compile(
+    r"^(?:THÔNG\s+TƯ\s+LIÊN\s+TỊCH|THÔNG\s+TƯ|NGHỊ\s+ĐỊNH|NGHỊ\s+QUYẾT"
+    r"|BỘ\s+LUẬT|QUYẾT\s+ĐỊNH|PHÁP\s+LỆNH|CHỈ\s+THỊ|LUẬT)$",
+    re.IGNORECASE,
+)
+
+
+def is_uppercase_title(text: str) -> bool:
+    """Toàn bộ ký tự chữ cái trong ``text`` có viết hoa hay không.
+
+    Chỉ đếm ký tự chữ cái (bỏ qua số/dấu câu/khoảng trắng), yêu cầu tối thiểu
+    2 ký tự chữ cái để tránh khớp nhầm các dòng ngắn không phải tiêu đề (vd.
+    số hiệu, ký hiệu đơn lẻ). Dùng bởi ``frontmatter.find_title`` (mục 1.1
+    spec) để tìm dòng tên văn bản trong front matter -- khác mục đích với
+    ``_is_uppercase_title`` ở bản `loader.py` cũ (dùng để nhận diện heading
+    cấu trúc thân văn bản).
+
+    Args:
+        text: Text của một block (đã ``normalize_text``).
+
+    Returns:
+        ``True`` nếu có ít nhất 2 ký tự chữ cái và toàn bộ đều viết hoa.
+    """
+    letters = [character for character in text if character.isalpha()]
+    return len(letters) >= 2 and all(character.isupper() for character in letters)
+
+
 def sort_key(number: str) -> tuple[int, str]:
     """Khóa so sánh số hiệu dạng "48a".
 
