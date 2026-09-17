@@ -11,11 +11,19 @@ kỳ chunk nào lỗi/timeout → bỏ qua toàn bộ front matter (không rende
 ``QcWarning`` — không có fallback regex nào.
 
 **[CẬP NHẬT 2026-09-17]** Đúng 1 dòng — tên đầy đủ văn bản — được xác định
-deterministic bằng ``find_title`` (heuristic bold + toàn chữ hoa + không
-khớp ``patterns.RE_DOC_TYPE_ONLY``) và tự chèn thành heading ``# ...``,
-KHÔNG qua Groq (Groq không nhất quán khi được giao tự quyết định chèn
-heading). ``convert_frontmatter`` cắt ``blocks`` quanh dòng đó, convert
-phần trước/sau độc lập qua Groq. Xem formatting_spec.md mục 1.1.
+deterministic bằng ``find_title`` và tự chèn thành heading ``# ...``, KHÔNG
+qua Groq (Groq không nhất quán khi được giao tự quyết định chèn heading).
+``convert_frontmatter`` cắt ``blocks`` quanh dòng đó, convert phần trước/sau
+độc lập qua Groq.
+
+**[CẬP NHẬT 2026-09-17, sửa lại lần 2 — heuristic đơn giản hoá theo cấu trúc
+thật]** Bản đầu của ``find_title`` dựa vào bold + toàn chữ hoa của chính
+dòng tên văn bản — kiểm tra trên toàn bộ 6 file ``data/raw/*.docx`` thật cho
+thấy dòng này không phải lúc nào cũng bold (2/6 file dạng Nghị định). Nay
+đổi sang định vị bằng vị trí tương đối so với dòng loại văn bản
+(``patterns.RE_DOC_TYPE_ONLY``): block tên văn bản luôn là block paragraph
+ngay sau dòng loại văn bản, không cần điều kiện bold/viết hoa riêng. Xem
+formatting_spec.md mục 1.1.
 """
 
 from __future__ import annotations
@@ -27,11 +35,7 @@ from production_legal_qa_rag.formatting.docx_reader import (
     serialize_blocks_for_llm,
 )
 from production_legal_qa_rag.formatting.models import QcWarning
-from production_legal_qa_rag.formatting.patterns import (
-    RE_DOC_TYPE_ONLY,
-    is_structural,
-    is_uppercase_title,
-)
+from production_legal_qa_rag.formatting.patterns import RE_DOC_TYPE_ONLY, is_structural
 
 _FRONTMATTER_PROMPT_TEMPLATE = """\
 Bạn là trợ lý chuyển đổi văn bản pháp luật Việt Nam từ định dạng gốc sang \
@@ -79,46 +83,45 @@ def find_boundary(blocks: list[Block]) -> int:
 def find_title(blocks: list[Block]) -> int | None:
     """Chỉ số block chứa tên đầy đủ văn bản, xác định deterministic.
 
-    Quét ``blocks`` (đã cắt biên front matter bởi ``find_boundary``) theo
-    thứ tự, dừng tại block **paragraph** đầu tiên không còn thỏa ``is_bold``
-    + ``is_uppercase_title`` (đó là biên giữa vùng "tiêu đề" — quốc hiệu,
-    loại văn bản, tên văn bản — và vùng dẫn nhập kế tiếp). Block dạng
-    ``table`` (vd. bảng quốc hiệu 2 cột) không tự nó là ứng viên (không phải
-    paragraph) nhưng cũng KHÔNG làm dừng scan — chỉ block paragraph mới được
-    xét điều kiện dừng, khớp đúng ví dụ minh họa của spec (bảng quốc hiệu
-    đứng trước dòng "NGHỊ ĐỊNH" vẫn phải để scan tới được dòng đó). Trong
-    phạm vi trước biên dừng, trả về chỉ số block CUỐI CÙNG thỏa cả 3 điều
-    kiện: ``kind == "paragraph"``, ``is_bold``, ``is_uppercase_title(text)``,
-    và KHÔNG khớp ``RE_DOC_TYPE_ONLY`` (loại các dòng chỉ ghi tên loại văn
-    bản đơn thuần, vd. "NGHỊ ĐỊNH" đứng riêng, ra khỏi ứng viên). Xem
-    formatting_spec.md mục 1.1 cho 2 ca ranh giới đã biết (loại + tên tách 2
-    dòng riêng, hoặc gộp 1 dòng ở văn bản hợp nhất).
+    Định vị bằng vị trí tương đối so với dòng loại văn bản (khớp
+    ``patterns.RE_DOC_TYPE_ONLY``, vd. "LUẬT", "NGHỊ ĐỊNH") — đã kiểm tra
+    trên toàn bộ 6 file ``data/raw/*.docx`` thật: dòng loại văn bản và dòng
+    tên/nội dung chính luôn là 2 block paragraph liên tiếp, tách biệt
+    (không bao giờ gộp sẵn 1 dòng), và dòng tên không phải lúc nào cũng in
+    đậm (2/6 file dạng Nghị định hoàn toàn không bold) — vì vậy heuristic
+    này KHÔNG dựa vào bold/viết hoa của chính dòng tên văn bản:
+
+    1. Tìm block đầu tiên (``kind == "paragraph"``) khớp ``RE_DOC_TYPE_ONLY``
+       -- ``type_index``.
+    2. Nếu ``blocks[type_index + 1]`` tồn tại, ``kind == "paragraph"`` và có
+       text (khác rỗng) -- đó là block tên văn bản, trả về ``type_index + 1``.
+    3. Ngược lại (không tìm thấy ``type_index``, hoặc không có block hợp lệ
+       ngay sau nó) -- trả về ``None``.
 
     Args:
         blocks: Block front matter, đã cắt bởi ``find_boundary``.
 
     Returns:
-        Chỉ số block tên văn bản, hoặc ``None`` nếu không có block nào thỏa
-        (văn bản không theo 2 mẫu đã biết trên corpus).
+        Chỉ số block tên văn bản, hoặc ``None`` nếu không tìm được dòng loại
+        văn bản hoặc không có block hợp lệ ngay sau nó.
     """
-    scan_end = len(blocks)
+    type_index: int | None = None
     for index, block in enumerate(blocks):
-        if block.kind != "paragraph":
-            continue
-        if not (block.is_bold and is_uppercase_title(block.text)):
-            scan_end = index
+        if block.kind == "paragraph" and RE_DOC_TYPE_ONLY.match(block.text):
+            type_index = index
             break
 
-    title_index: int | None = None
-    for index in range(scan_end):
-        block = blocks[index]
-        if (
-            block.kind == "paragraph"
-            and block.is_bold
-            and is_uppercase_title(block.text)
-            and not RE_DOC_TYPE_ONLY.match(block.text)
-        ):
-            title_index = index
+    if type_index is None:
+        return None
+
+    title_index = type_index + 1
+    if title_index >= len(blocks):
+        return None
+
+    title_block = blocks[title_index]
+    if title_block.kind != "paragraph" or not title_block.text:
+        return None
+
     return title_index
 
 
