@@ -24,6 +24,7 @@ from production_legal_qa_rag.config import (
 def test_embedding_settings_gia_tri_mac_dinh_dung_spec(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("MODEL_NAME", raising=False)
     monkeypatch.delenv("MAX_TOKENS", raising=False)
+    monkeypatch.setenv("HF_TOKEN", "test-hf-token")
     settings = EmbeddingSettings()
     assert settings.model_name == "CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2"
     assert settings.max_tokens == 236
@@ -43,6 +44,25 @@ def test_embedding_settings_max_tokens_phai_la_so_nguyen(
         EmbeddingSettings()
 
 
+def test_embedding_settings_bao_loi_khi_thieu_hf_token(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """HF_TOKEN là bắt buộc để không rơi xuống anonymous quota (mục 7)."""
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setattr(
+        EmbeddingSettings,
+        "model_config",
+        {**EmbeddingSettings.model_config, "env_file": None},
+    )
+    with pytest.raises(ValidationError):
+        EmbeddingSettings()  # type: ignore[call-arg]
+
+
+def test_embedding_settings_doc_hf_token_tu_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    assert EmbeddingSettings().hf_token == "hf-test-token"
+
+
 # ==========================================================================
 # VectorDBSettings -- bắt buộc PINECONE_API_KEY / PINECONE_INDEX_NAME
 # ==========================================================================
@@ -54,6 +74,8 @@ def test_vector_db_settings_doc_dung_bien_moi_truong(monkeypatch: pytest.MonkeyP
     settings = VectorDBSettings()  # type: ignore[call-arg]
     assert settings.pinecone_api_key == "test-key"
     assert settings.index_name == "test-index"
+    assert settings.cloud == "aws"
+    assert settings.region == "us-east-1"
 
 
 def test_vector_db_settings_bao_loi_khi_thieu_pinecone_api_key(
