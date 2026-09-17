@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pinecone import Pinecone, ServerlessSpec
+from pinecone.exceptions import NotFoundException
 from transformers import AutoConfig
 
 from production_legal_qa_rag.config import EmbeddingSettings, VectorDBSettings
@@ -85,7 +86,14 @@ class PineconeVectorStore:
 
         deadline = time.monotonic() + _INDEX_READY_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if _index_is_ready(describe_index(self._vector_settings.index_name)):
+            try:
+                index_description = describe_index(self._vector_settings.index_name)
+            except NotFoundException:
+                # Control plane có thể chưa nhìn thấy index vừa tạo dù API create đã trả về.
+                time.sleep(_INDEX_READY_POLL_INTERVAL_SECONDS)
+                continue
+
+            if _index_is_ready(index_description):
                 return
             time.sleep(_INDEX_READY_POLL_INTERVAL_SECONDS)
 
