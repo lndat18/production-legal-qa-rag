@@ -165,7 +165,12 @@ def test_embedder_retry_het_lan_bo_ca_batch_va_tiep_tuc_batch_sau(
     monkeypatch.setattr(hf_client, "HF_BATCH_SIZE", 2)
     monkeypatch.setattr(hf_client.ViTokenizer, "tokenize", lambda content: content)
     client = _FakeHFClient(
-        [RuntimeError("HF lỗi"), RuntimeError("HF lỗi"), RuntimeError("HF lỗi"), [[9.0]]]
+        [
+            RuntimeError("HF lỗi"),
+            RuntimeError("HF lỗi"),
+            RuntimeError("HF lỗi"),
+            [[9.0]],
+        ]
     )
     embedder = HuggingFaceEmbedder(_embedding_settings(monkeypatch), client)  # type: ignore[arg-type]
 
@@ -223,7 +228,9 @@ class _FakeEmbedder:
         self.calls.append([chunk.chunk_id for chunk in chunks])
         return (
             [
-                EmbeddedChunk(**chunk.model_dump(), embedding=[float(chunk.token_count)])
+                EmbeddedChunk(
+                    **chunk.model_dump(), embedding=[float(chunk.token_count)]
+                )
                 for chunk in chunks
             ],
             [],
@@ -233,14 +240,16 @@ class _FakeEmbedder:
 def _write_chunks(path: Path, chunks: list[Chunk]) -> None:
     """Ghi input JSON cho integration test checkpoint."""
     path.write_text(
-        json.dumps([chunk.model_dump(mode="json") for chunk in chunks]), encoding="utf-8"
+        json.dumps([chunk.model_dump(mode="json") for chunk in chunks]),
+        encoding="utf-8",
     )
 
 
 def _write_embedded_chunks(path: Path, chunks: list[EmbeddedChunk]) -> None:
     """Ghi checkpoint JSON hợp lệ."""
     path.write_text(
-        json.dumps([chunk.model_dump(mode="json") for chunk in chunks]), encoding="utf-8"
+        json.dumps([chunk.model_dump(mode="json") for chunk in chunks]),
+        encoding="utf-8",
     )
 
 
