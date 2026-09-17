@@ -54,11 +54,18 @@ class LLMSettings(BaseSettings):
     gốc (chưa nhân hệ số an toàn — hệ số 0.9 áp dụng ngay trong
     `llm_client.py`, không lưu ở đây để tránh hai nơi cùng giữ một hằng số
     dẫn xuất).
+
+    `groq_api_key_2` (mục 1.3 spec) — key Groq thứ 2, TÙY CHỌN. Khi có mặt,
+    `llm_client.convert_chunks_concurrently` dispatch job qua 2 thread worker
+    chạy đồng thời (mỗi worker gắn chết 1 key, 1 rate-limiter độc lập) thay
+    vì lặp tuần tự bằng key 1. Không set → giữ nguyên hành vi tuần tự 1 key
+    hiện có, không lỗi, không cảnh báo.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     groq_api_key: str = Field(validation_alias="GROQ_API_KEY")
+    groq_api_key_2: str | None = Field(default=None, validation_alias="GROQ_API_KEY_2")
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
     timeout_seconds: int = 30

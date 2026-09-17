@@ -12,6 +12,14 @@ matter (Groq, theo chunk, nếu có, ngăn cách bằng dòng ``---``). Rate lim
 dùng chung xuyên suốt cả lần chạy (mục 1.2, 5 spec) là singleton module-level
 trong ``llm_client.py`` — tự động dùng chung cho mọi lệnh gọi trong tiến
 trình, không cần khởi tạo/truyền tham chiếu tường minh qua ``pipeline.py``.
+
+**[Mới 2026-09-17]** ``convert_docx_to_markdown`` dựng job qua
+``frontmatter.build_prompts``/``backmatter.build_prompts`` (thuần, không gọi
+Groq), nối ``before_prompts + after_prompts + chunk_prompts`` thành 1 danh
+sách duy nhất, gọi **1 lần duy nhất**
+``llm_client.convert_chunks_concurrently`` (mục 1.3 spec — 2 worker đồng
+thời nếu có ``GROQ_API_KEY_2``, tuần tự nếu không), rồi cắt kết quả theo
+ranh giới đã nhớ trước khi gọi ``frontmatter.assemble``/``backmatter.assemble``.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from production_legal_qa_rag.formatting import (
     docx_reader,
     emitter,
     frontmatter,
+    llm_client,
     tables,
     validator,
 )
@@ -80,12 +89,32 @@ def convert_docx_to_markdown(path: str | Path) -> FormattingResult:
     middle_blocks, table_warnings = tables.filter_middle_tables(middle_raw)
     warnings.extend(table_warnings)
 
-    # S3 — chuyển front matter/back matter bằng Groq, theo chunk (mục 1.2),
-    # tuần tự về mặt gọi API — không có fallback khi lỗi.
-    front_markdown, fm_warnings = frontmatter.convert_frontmatter(front_blocks)
+    # S3 — dựng job Groq (thuần, không I/O) cho front matter/back matter
+    # (mục 1.2), gộp chung thành 1 danh sách và gọi Groq đúng 1 lần (mục 1.3
+    # spec — 2 worker đồng thời nếu có GROQ_API_KEY_2, tuần tự nếu không).
+    front_jobs = frontmatter.build_prompts(front_blocks)
+    back_prompts = backmatter.build_prompts(back_blocks)
+
+    before_count = len(front_jobs.before_prompts)
+    after_count = len(front_jobs.after_prompts)
+    all_prompts = [
+        *front_jobs.before_prompts,
+        *front_jobs.after_prompts,
+        *back_prompts,
+    ]
+    all_results = llm_client.convert_chunks_concurrently(all_prompts)
+
+    before_results = all_results[:before_count]
+    after_results = all_results[before_count : before_count + after_count]
+    back_results = all_results[before_count + after_count :]
+
+    # S3b — ghép kết quả (thuần, không I/O) — không có fallback khi lỗi.
+    front_markdown, fm_warnings = frontmatter.assemble(
+        front_jobs.title_text, before_results, after_results
+    )
     warnings.extend(fm_warnings)
 
-    back_markdown, bm_warnings = backmatter.convert_backmatter(back_blocks)
+    back_markdown, bm_warnings = backmatter.assemble(back_results)
     warnings.extend(bm_warnings)
 
     # S4 — emit nội dung ở giữa (không đổi so với bản cũ).

@@ -8,6 +8,12 @@ deterministic bằng ``tables.is_signature_table`` (không đổi); nội dung �
 chia chunk (mục 1.2 spec — back matter một số văn bản vượt xa TPM free tier
 nếu gửi nguyên khối) rồi gửi từng chunk cho Groq, không trích field, không
 khớp lại marker với chú thích tương ứng.
+
+**[CẬP NHẬT 2026-09-17, sửa lại — dispatch đồng thời 2 key, mục 1.3]** Tách
+"dựng job" (``build_prompts``, thuần, không I/O) khỏi "gọi Groq" (nay do
+``pipeline.py`` điều phối 1 lần qua ``llm_client.convert_chunks_concurrently``,
+gộp chung với job front matter) khỏi "ghép kết quả" (``assemble``, thuần,
+không I/O). Module này không còn tự gọi Groq.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from production_legal_qa_rag.formatting.docx_reader import (
     serialize_blocks_for_llm,
 )
 from production_legal_qa_rag.formatting.models import QcWarning
+from production_legal_qa_rag.formatting.patterns import escape_setext_underline
 
 _BACKMATTER_PROMPT_TEMPLATE = """\
 Bạn là trợ lý chuyển đổi văn bản pháp luật Việt Nam từ định dạng gốc sang \
@@ -33,6 +40,9 @@ yêu cầu:
 - Giữ in đậm/in nghiêng nếu bản gốc có (đã được đánh dấu sẵn bằng ** và *).
 - KHÔNG dùng heading Markdown (không có dòng bắt đầu bằng #) — chỉ dùng đoạn \
 văn thường và in đậm/nghiêng.
+- Nếu gặp dòng chỉ toàn ký tự gạch ngang/gạch bằng (`-`/`=`, vd. đường kẻ \
+trang trí), PHẢI cách dòng text phía trên bằng 1 dòng trống, không đặt liền \
+kề — tránh vô tình tạo thành setext heading.
 
 Văn bản:
 {text}
@@ -79,37 +89,56 @@ def split_backmatter(
     return blocks[:boundary], blocks[boundary + 1 :], warnings
 
 
-def convert_backmatter(blocks: list[Block]) -> tuple[str, list[QcWarning]]:
-    """Chuyển vùng back matter sang markdown.
+def build_prompts(blocks: list[Block]) -> list[str]:
+    """Dựng danh sách prompt Groq cho back matter (thuần, không gọi Groq).
 
     Chia ``blocks`` thành chunk (``docx_reader.chunk_blocks_for_llm``, mục
     1.2 spec — bắt buộc vì back matter một số văn bản, vd. Luật bảo hiểm y
-    tế, vượt xa TPM free tier nếu gửi nguyên khối), gọi Groq tuần tự cho
-    từng chunk rồi nối kết quả theo đúng thứ tự, cách nhau 1 dòng trống. Bất
-    kỳ chunk nào lỗi → toàn bộ back matter bị bỏ qua (không ghép phần dở
-    dang).
+    tế, vượt xa TPM free tier nếu gửi nguyên khối) rồi dựng 1 prompt cho mỗi
+    chunk.
 
     Args:
         blocks: Block back matter, đã tách bởi ``split_backmatter``.
 
     Returns:
-        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có back
-        matter (``blocks`` rỗng — không gọi Groq, không phát warning, mục
-        1.1 spec) hoặc khi một chunk lỗi/timeout (phát
-        ``llm_backmatter_conversion_failed``, không fallback).
+        Danh sách prompt theo đúng thứ tự chunk, rỗng khi không có back
+        matter (``blocks`` rỗng — không có gì để gọi Groq, mục 1.1 spec).
     """
     if not blocks:
-        return "", []
+        return []
 
     chunks = chunk_blocks_for_llm(blocks, llm_client.get_chunk_token_limit())
-    markdown_parts: list[str] = []
-    for chunk in chunks:
-        prompt = _BACKMATTER_PROMPT_TEMPLATE.format(
-            text=serialize_blocks_for_llm(chunk)
-        )
-        markdown = llm_client.convert_to_markdown(prompt)
-        if markdown is None:
-            return "", [QcWarning(code="llm_backmatter_conversion_failed", detail="")]
-        markdown_parts.append(markdown)
+    return [
+        _BACKMATTER_PROMPT_TEMPLATE.format(text=serialize_blocks_for_llm(chunk))
+        for chunk in chunks
+    ]
 
-    return "\n\n".join(markdown_parts), []
+
+def assemble(chunk_results: list[str | None]) -> tuple[str, list[QcWarning]]:
+    """Nối kết quả Groq của back matter thành markdown cuối cùng (thuần).
+
+    Nối theo đúng thứ tự chunk gốc, cách nhau 1 dòng trống, rồi áp
+    ``patterns.escape_setext_underline`` (mục 1.1 spec, bug setext heading).
+
+    Args:
+        chunk_results: Kết quả Groq (``str | None``) theo đúng thứ tự chunk
+            gốc, đã được ``pipeline.py`` cắt ra từ kết quả
+            ``llm_client.convert_chunks_concurrently``.
+
+    Returns:
+        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có back
+        matter (``chunk_results`` rỗng — không gọi Groq, không phát warning,
+        mục 1.1 spec) hoặc khi có ít nhất 1 job lỗi (``None``) — phát
+        ``QcWarning`` (``llm_backmatter_conversion_failed``), không ghép
+        phần dở dang.
+    """
+    if not chunk_results:
+        return "", []
+    if any(result is None for result in chunk_results):
+        return "", [QcWarning(code="llm_backmatter_conversion_failed", detail="")]
+
+    markdown_parts: list[str] = [
+        result for result in chunk_results if result is not None
+    ]
+    markdown = "\n\n".join(markdown_parts)
+    return escape_setext_underline(markdown), []
