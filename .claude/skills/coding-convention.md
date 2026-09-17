@@ -88,4 +88,4 @@ def split_by_khoan(text: str, max_tokens: int = 192) -> list[str]:
 | CLI                          | `typer`                                                                      | argparse                            |
 | Audit dependency (bảo mật) | `pip-audit`                                                                  | —                                  |
 
-Khi cần chọn thư viện mới cho 1 tác vụ, ưu tiên: (1) đang được cộng đồng lớn dùng trong production 2026, (2) viết bằng Rust/tốc độ cao nếu có lựa chọn tương đương, (3) miễn phí/open-source, (4) tích hợp tốt với stack hiện tại (Pydantic, LangChain, LlamaIndex, Celery/Dagster).
+Khi cần chọn thư viện mới cho 1 tác vụ, ưu tiên: (1) đang được cộng đồng lớn dùng trong production 2026, (2) viết bằng Rust/tốc độ cao nếu có lựa chọn tương đương, (3) miễn phí/open-source, (4) tích hợp tốt với stack hiện tại (Pydantic, LangChain, Celery/Dagster).
