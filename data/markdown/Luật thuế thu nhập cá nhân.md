@@ -1,12 +1,13 @@
 VĂN PHÒNG QUỐC HỘI  
+
 -------  
 
 CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
 Độc lập - Tự do - Hạnh phúc  
+
 ---------------  
 
-Số: 112/VBHN-VPQH  
-
+Số: 112/VBHN‑VPQH  
 Hà Nội, ngày 20 tháng 5 năm 2026  
 
 **LUẬT**
@@ -689,14 +690,14 @@ Trường hợp có quy định khác nhau về ưu đãi thuế giữa Luật n
 
 *“Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;*
 
-*Quốc hội ban hành Luật sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân số 109/2025/QH15; Luật Thuế giá trị gia tăng số 48/2024/QH15 đã được sửa đổi, bổ sung một số điều theo Luật số 90/2025/QH15 và Luật số 149/2025/QH15; Luật Thuế thu nhập doanh nghiệp số 67/2025/QH15 đã được sửa đổi, bổ sung một số điều theo Luật số 116/2025/QH15; Luật số 127/2025/QH15, Luật số 133/2025/QH15, Luật số 141/2025/QH15 và Luật số 143/2025/QH15; Luật Thuế tiêu thụ đặc biệt số 66/2025/QH15.”.*
+*Quốc hội ban hành Luật sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân số 109/2025/QH15; Luật Thuế giá trị gia tăng số 48/2024/QH15 đã được sửa đổi, bổ sung một số điều theo Luật số 90/2025/QH15 và Luật số 149/2025/QH15; Luật Thuế thu nhập doanh nghiệp số 67/2025/QH15 đã được sửa đổi, bổ sung một số điều theo Luật số 116/2025/QH15; Luật số 127/2025/QH15, Luật số 133/2025/QH15, Luật số 141/2025/QH15 và Luật số 143/2025/QH15; Luật Thuế tiêu thụ đặc biệt số 66/2025/QH15.”*
 
 [2] Khoản này được sửa đổi, bổ sung theo quy định tại Điều 1 của Luật số 09/2026/QH16 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
 
 [3] Điều 5 của Luật số 09/2026/QH16 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực kể từ ngày 24 tháng 4 năm 2026 quy định như sau:
 
-***“Điều 5. Hiệu lực thi hành***  
+***“Điều 5. Hiệu lực thi hành”***
 
-*1. Luật này có hiệu lực thi hành từ ngày được thông qua, trừ quy định tại khoản 2 Điều này.*  
+*1. Luật này có hiệu lực thi hành từ ngày được thông qua, trừ quy định tại khoản 2 Điều này.*
 
-*2. Quy định tại các điều 1, 2 và 3 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.”.*
+*2. Quy định tại các điều 1, 2 và 3 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.”*
