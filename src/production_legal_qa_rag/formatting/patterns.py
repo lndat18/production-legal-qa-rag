@@ -173,6 +173,45 @@ RE_DOC_TYPE_ONLY = re.compile(
 )
 
 
+# --- Bug setext heading (formatting_spec.md mục 1.1, "[MỚI 2026-09-17]") --
+
+# Dòng thuần gạch ngang/gạch bằng (>= 3 ký tự) -- đúng ngưỡng CommonMark cho
+# thematic break/setext-heading underline (vd. "--------", "========"). Nếu
+# dòng này đứng ngay dưới một dòng text không rỗng (không có dòng trống ở
+# giữa), CommonMark hiểu nhầm đó là cú pháp setext heading, biến dòng text
+# phía trên thành heading cấp 1/2 ngoài ý muốn.
+RE_SETEXT_UNDERLINE = re.compile(r"^[-=]{3,}\s*$")
+
+
+def escape_setext_underline(markdown: str) -> str:
+    """Chèn 1 dòng trống trước mọi dòng gạch ngang/gạch bằng đứng liền kề text.
+
+    Áp dụng lên markdown front matter/back matter SAU KHI ghép xong các chunk
+    từ Groq (``frontmatter.assemble``/``backmatter.assemble``), trước khi trả
+    về cho ``pipeline.py`` -- Groq có thể trả về dòng gạch ngang trang trí
+    (vd. dưới tên cơ quan trong bảng quốc hiệu) liền ngay dưới dòng text, vô
+    tình tạo thành setext heading hợp lệ theo CommonMark (formatting_spec.md
+    mục 1.1, xác nhận thực tế trên ``Luật bảo hiểm xã hội.md``). Không áp
+    dụng cho phần nội dung ở giữa (``emitter.py`` tự sinh heading ATX ``#``,
+    không có dòng gạch ngang trang trí nào).
+
+    Args:
+        markdown: Markdown đã ghép xong (front matter hoặc back matter).
+
+    Returns:
+        Markdown với 1 dòng trống được chèn thêm trước mỗi dòng khớp
+        ``RE_SETEXT_UNDERLINE`` mà dòng ngay phía trên không phải dòng trống.
+        Không xoá nội dung, không đổi dòng gạch ngang.
+    """
+    lines = markdown.split("\n")
+    result: list[str] = []
+    for line in lines:
+        if RE_SETEXT_UNDERLINE.match(line) and result and result[-1].strip() != "":
+            result.append("")
+        result.append(line)
+    return "\n".join(result)
+
+
 def sort_key(number: str) -> tuple[int, str]:
     """Khóa so sánh số hiệu dạng "48a".
 

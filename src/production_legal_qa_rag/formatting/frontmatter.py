@@ -2,19 +2,17 @@
 
 Xác định biên là 100% deterministic (``find_boundary``, dùng
 ``patterns.is_structural``, không đổi so với bản cũ). Chuyển đổi NỘI DUNG là
-Groq (``llm_client.convert_to_markdown``) — không còn trích field
-(``so_hieu``/``loai_van_ban``/``ten_van_ban``/...), không sinh YAML (mục 1.1
-spec). Front matter luôn nhỏ trên corpus thực tế (mục 1.2 spec) nên thường
-chỉ tạo 1 chunk, nhưng vẫn đi qua ``docx_reader.chunk_blocks_for_llm`` để
-nhất quán với back matter và an toàn nếu front matter lớn hơn dự kiến. Bất
-kỳ chunk nào lỗi/timeout → bỏ qua toàn bộ front matter (không render), phát
-``QcWarning`` — không có fallback regex nào.
+Groq — không còn trích field (``so_hieu``/``loai_van_ban``/``ten_van_ban``/
+...), không sinh YAML (mục 1.1 spec). Front matter luôn nhỏ trên corpus thực
+tế (mục 1.2 spec) nên thường chỉ tạo 1 chunk, nhưng vẫn đi qua
+``docx_reader.chunk_blocks_for_llm`` để nhất quán với back matter và an toàn
+nếu front matter lớn hơn dự kiến. Bất kỳ chunk nào lỗi/timeout → bỏ qua toàn
+bộ front matter (không render), phát ``QcWarning`` — không có fallback regex
+nào.
 
 **[CẬP NHẬT 2026-09-17]** Đúng 1 dòng — tên đầy đủ văn bản — được xác định
 deterministic bằng ``find_title`` và tự chèn thành heading ``# ...``, KHÔNG
 qua Groq (Groq không nhất quán khi được giao tự quyết định chèn heading).
-``convert_frontmatter`` cắt ``blocks`` quanh dòng đó, convert phần trước/sau
-độc lập qua Groq.
 
 **[CẬP NHẬT 2026-09-17, sửa lại lần 2 — heuristic đơn giản hoá theo cấu trúc
 thật]** Bản đầu của ``find_title`` dựa vào bold + toàn chữ hoa của chính
@@ -24,9 +22,17 @@ thấy dòng này không phải lúc nào cũng bold (2/6 file dạng Nghị đ�
 (``patterns.RE_DOC_TYPE_ONLY``): block tên văn bản luôn là block paragraph
 ngay sau dòng loại văn bản, không cần điều kiện bold/viết hoa riêng. Xem
 formatting_spec.md mục 1.1.
+
+**[CẬP NHẬT 2026-09-17, sửa lại — dispatch đồng thời 2 key, mục 1.3]** Tách
+"dựng job" (``build_prompts``, thuần, không I/O) khỏi "gọi Groq" (nay do
+``pipeline.py`` điều phối 1 lần qua ``llm_client.convert_chunks_concurrently``,
+gộp chung với job back matter để cả 2 worker luôn bận) khỏi "ghép kết quả"
+(``assemble``, thuần, không I/O). Module này không còn tự gọi Groq.
 """
 
 from __future__ import annotations
+
+from dataclasses import dataclass, field
 
 from production_legal_qa_rag.formatting import llm_client
 from production_legal_qa_rag.formatting.docx_reader import (
@@ -35,7 +41,11 @@ from production_legal_qa_rag.formatting.docx_reader import (
     serialize_blocks_for_llm,
 )
 from production_legal_qa_rag.formatting.models import QcWarning
-from production_legal_qa_rag.formatting.patterns import RE_DOC_TYPE_ONLY, is_structural
+from production_legal_qa_rag.formatting.patterns import (
+    RE_DOC_TYPE_ONLY,
+    escape_setext_underline,
+    is_structural,
+)
 
 _FRONTMATTER_PROMPT_TEMPLATE = """\
 Bạn là trợ lý chuyển đổi văn bản pháp luật Việt Nam từ định dạng gốc sang \
@@ -53,10 +63,28 @@ thường và in đậm/nghiêng, giống cách văn bản gốc trình bày.
 - Bảng quốc hiệu (nếu có, dạng 2 cột CHÍNH PHỦ / CỘNG HÒA XÃ HỘI CHỦ NGHĨA \
 VIỆT NAM...) không cần giữ đúng bố cục song song — Markdown thuần không hỗ \
 trợ cột, trình bày tuần tự hợp lý là đủ, miễn giữ đúng nội dung.
+- Nếu gặp dòng chỉ toàn ký tự gạch ngang/gạch bằng (`-`/`=`, vd. đường kẻ \
+trang trí ngay dưới tên cơ quan), PHẢI cách dòng text phía trên bằng 1 dòng \
+trống, không đặt liền kề — tránh vô tình tạo thành setext heading.
 
 Văn bản:
 {text}
 """
+
+
+@dataclass(frozen=True, slots=True)
+class FrontMatterJobs:
+    """Job cần gửi Groq cho front matter (thuần, chưa gọi API — mục 1.3 spec).
+
+    Kết quả của ``build_prompts``: ``pipeline.py`` gộp ``before_prompts`` +
+    ``after_prompts`` (cùng job back matter) thành 1 danh sách duy nhất, gọi
+    ``llm_client.convert_chunks_concurrently`` 1 lần, rồi cắt kết quả trả về
+    theo đúng ranh giới (độ dài) 2 danh sách này để truyền vào ``assemble``.
+    """
+
+    title_text: str | None
+    before_prompts: list[str] = field(default_factory=list)
+    after_prompts: list[str] = field(default_factory=list)
 
 
 def find_boundary(blocks: list[Block]) -> int:
@@ -125,80 +153,138 @@ def find_title(blocks: list[Block]) -> int | None:
     return title_index
 
 
-def _convert_blocks(blocks: list[Block]) -> tuple[str, list[QcWarning]]:
-    """Chia ``blocks`` thành chunk, gọi Groq tuần tự và nối kết quả.
+def _build_chunk_prompts(blocks: list[Block]) -> list[str]:
+    """Chia ``blocks`` thành chunk (mục 1.2 spec) và dựng prompt Groq cho mỗi chunk.
 
-    Hàm nội bộ dùng bởi ``convert_frontmatter`` cho cả trường hợp không tìm
-    thấy tên văn bản (convert nguyên khối) lẫn trường hợp tìm thấy (convert
-    ``before``/``after`` độc lập, mục 1.1 spec).
+    Hàm thuần, không I/O — dùng bởi ``build_prompts`` cho cả trường hợp không
+    tìm thấy tên văn bản (toàn bộ ``blocks`` thành 1 danh sách prompt duy
+    nhất) lẫn trường hợp tìm thấy (``before``/``after`` độc lập, mục 1.1
+    spec).
 
     Args:
-        blocks: Danh sách Block cần convert (có thể rỗng).
+        blocks: Danh sách Block cần dựng prompt (có thể rỗng).
 
     Returns:
-        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi ``blocks`` rỗng
-        (không gọi Groq) hoặc khi một chunk lỗi/timeout (phát
-        ``llm_frontmatter_conversion_failed``, không fallback, không ghép
-        phần dở dang).
+        Danh sách prompt, rỗng khi ``blocks`` rỗng.
     """
     if not blocks:
-        return "", []
+        return []
 
     chunks = chunk_blocks_for_llm(blocks, llm_client.get_chunk_token_limit())
-    markdown_parts: list[str] = []
-    for chunk in chunks:
-        prompt = _FRONTMATTER_PROMPT_TEMPLATE.format(
-            text=serialize_blocks_for_llm(chunk)
-        )
-        markdown = llm_client.convert_to_markdown(prompt)
-        if markdown is None:
-            return "", [QcWarning(code="llm_frontmatter_conversion_failed", detail="")]
-        markdown_parts.append(markdown)
-
-    return "\n\n".join(markdown_parts), []
+    return [
+        _FRONTMATTER_PROMPT_TEMPLATE.format(text=serialize_blocks_for_llm(chunk))
+        for chunk in chunks
+    ]
 
 
-def convert_frontmatter(blocks: list[Block]) -> tuple[str, list[QcWarning]]:
-    """Chuyển vùng front matter (block trước heading đầu tiên) sang markdown.
+def build_prompts(blocks: list[Block]) -> FrontMatterJobs:
+    """Dựng danh sách prompt Groq cho front matter (thuần, không gọi Groq).
 
     Tìm dòng tên văn bản bằng ``find_title`` (mục 1.1 spec). Nếu tìm thấy:
-    cắt ``blocks`` thành ``before``/block tên văn bản/``after``, convert
-    ``before`` và ``after`` độc lập qua Groq (``_convert_blocks``), rồi chèn
-    ``# <nguyên văn dòng tên văn bản>`` xen giữa — dòng heading luôn được
-    chèn, kể cả khi ``before``/``after`` lỗi và bị bỏ qua. Nếu không tìm
-    thấy: convert nguyên khối ``blocks`` như cũ (không có heading), phát
-    thêm ``QcWarning`` (``frontmatter_title_not_found``).
+    cắt ``blocks`` thành ``before`` (gồm cả dòng loại văn bản)/block tên văn
+    bản/``after``, mỗi phần chunk + dựng prompt độc lập. Nếu không tìm thấy:
+    toàn bộ ``blocks`` thành 1 danh sách prompt duy nhất (``before_prompts``),
+    ``after_prompts`` rỗng, ``title_text=None``.
 
     Args:
         blocks: Block front matter, đã cắt bởi ``find_boundary``.
 
     Returns:
-        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có front
-        matter (``blocks`` rỗng — không gọi Groq).
+        ``FrontMatterJobs`` — rỗng hoàn toàn (không prompt nào, ``title_text``
+        ``None``) khi ``blocks`` rỗng (không có front matter).
     """
     if not blocks:
-        return "", []
+        return FrontMatterJobs(title_text=None, before_prompts=[], after_prompts=[])
 
     title_index = find_title(blocks)
     if title_index is None:
-        markdown, warnings = _convert_blocks(blocks)
-        return markdown, [
-            *warnings,
-            QcWarning(code="frontmatter_title_not_found", detail=""),
-        ]
+        return FrontMatterJobs(
+            title_text=None,
+            before_prompts=_build_chunk_prompts(blocks),
+            after_prompts=[],
+        )
 
     before_blocks = blocks[:title_index]
     title_block = blocks[title_index]
     after_blocks = blocks[title_index + 1 :]
 
-    before_markdown, before_warnings = _convert_blocks(before_blocks)
-    after_markdown, after_warnings = _convert_blocks(after_blocks)
+    return FrontMatterJobs(
+        title_text=title_block.text,
+        before_prompts=_build_chunk_prompts(before_blocks),
+        after_prompts=_build_chunk_prompts(after_blocks),
+    )
+
+
+def _assemble_results(
+    results: list[str | None],
+) -> tuple[str, list[QcWarning]]:
+    """Nối kết quả Groq của 1 phần (``before`` hoặc ``after``) theo thứ tự chunk.
+
+    Args:
+        results: Kết quả Groq (``str | None``) theo đúng thứ tự chunk gốc,
+            đã được ``pipeline.py`` cắt ra từ kết quả
+            ``llm_client.convert_chunks_concurrently``.
+
+    Returns:
+        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi ``results`` rỗng
+        (không có chunk nào — phần này không tồn tại) hoặc khi có ít nhất 1
+        job lỗi (``None``) — phát ``QcWarning``
+        (``llm_frontmatter_conversion_failed``), không ghép phần dở dang.
+    """
+    if not results:
+        return "", []
+    if any(result is None for result in results):
+        return "", [QcWarning(code="llm_frontmatter_conversion_failed", detail="")]
+
+    markdown_parts: list[str] = [result for result in results if result is not None]
+    return "\n\n".join(markdown_parts), []
+
+
+def assemble(
+    title_text: str | None,
+    before_results: list[str | None],
+    after_results: list[str | None],
+) -> tuple[str, list[QcWarning]]:
+    """Ghép kết quả Groq của front matter thành markdown cuối cùng (thuần).
+
+    Chèn ``# <nguyên văn title_text>`` xen giữa ``before``/``after`` nếu tìm
+    thấy tên văn bản — dòng heading luôn được chèn, kể cả khi ``before``/
+    ``after`` lỗi và bị bỏ qua. Không có ``title_text`` (front matter không
+    rỗng nhưng không tìm được dòng loại văn bản) → phát ``QcWarning``
+    (``frontmatter_title_not_found``). Áp ``patterns.escape_setext_underline``
+    lên kết quả cuối cùng (mục 1.1 spec, bug setext heading).
+
+    Args:
+        title_text: ``FrontMatterJobs.title_text`` từ ``build_prompts``.
+        before_results: Kết quả Groq của ``before_prompts``, cùng thứ tự.
+        after_results: Kết quả Groq của ``after_prompts``, cùng thứ tự.
+
+    Returns:
+        Cặp ``(markdown, warnings)``. ``markdown`` rỗng khi không có front
+        matter nào (``title_text is None`` và cả 2 danh sách kết quả đều
+        rỗng — tương ứng ``blocks`` rỗng ở ``build_prompts``, không phải lỗi,
+        không phát warning).
+    """
+    if title_text is None and not before_results and not after_results:
+        return "", []
+
+    before_markdown, before_warnings = _assemble_results(before_results)
+    after_markdown, after_warnings = _assemble_results(after_results)
 
     parts: list[str] = []
     if before_markdown:
         parts.append(before_markdown)
-    parts.append(f"# {title_block.text}")
+    if title_text is not None:
+        parts.append(f"# {title_text}")
     if after_markdown:
         parts.append(after_markdown)
 
-    return "\n\n".join(parts), [*before_warnings, *after_warnings]
+    markdown = "\n\n".join(parts)
+    if markdown:
+        markdown = escape_setext_underline(markdown)
+
+    warnings = [*before_warnings, *after_warnings]
+    if title_text is None:
+        warnings.append(QcWarning(code="frontmatter_title_not_found", detail=""))
+
+    return markdown, warnings

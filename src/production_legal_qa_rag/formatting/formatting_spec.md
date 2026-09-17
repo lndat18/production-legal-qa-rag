@@ -70,9 +70,13 @@ có, không đổi:**
   được serialize thành text kèm tín hiệu định dạng sẵn có từ
   `docx_reader.py` (bold, nghiêng, block là bảng hay đoạn văn — không cần
   phân loại "quốc hiệu"/"chữ ký" cụ thể ở bước này, phân loại chữ ký chỉ
-  dùng để **tìm biên**, xem trên), **chia thành chunk** (mục 1.2) rồi gửi
-  từng chunk cho Groq (`openai/gpt-oss-120b`) qua
-  `llm_client.convert_to_markdown()`.
+  dùng để **tìm biên**, xem trên), **chia thành chunk** (mục 1.2) thành
+  danh sách prompt gửi cho Groq (`openai/gpt-oss-120b`). **[Cập nhật
+  2026-09-17]** Việc gọi Groq cho các prompt này không còn nằm trong
+  `frontmatter.py`/`backmatter.py` — cả 2 chỉ dựng danh sách prompt
+  (`build_prompts`), `pipeline.py` gộp chung và gọi 1 lần qua
+  `llm_client.convert_chunks_concurrently()` (mục 1.3, chạy đồng thời 2
+  worker nếu có 2 API key).
 - Groq trả về **text markdown thuần** — không có schema/structured output,
   không tách field. Yêu cầu trong prompt: giữ nguyên nội dung, giữ in
   đậm/nghiêng nếu bản gốc có, giữ đúng thứ tự đoạn, **không tóm tắt, không
@@ -80,6 +84,39 @@ có, không đổi:**
   CHỦ NGHĨA VIỆT NAM...) không bắt buộc giữ đúng bố cục song song (Markdown
   thuần không hỗ trợ cột) — Groq tự quyết định trình bày tuần tự hợp lý,
   miễn giữ đúng nội dung.
+- **[MỚI 2026-09-17]** **Bug phát hiện thực tế — dòng gạch ngang trang trí bị
+  hiểu nhầm thành setext heading**: bảng quốc hiệu trong DOCX gốc thường có
+  1 dòng gạch ngang trang trí ngay dưới tên cơ quan (vd. cell chứa
+  `"VĂN PHÒNG QUỐC HỘI<br>--------"`, xem `docx_reader.py`/`tables.py`).
+  Khi Groq tách `<br>` thành 2 dòng liên tiếp, dòng gạch ngang đứng ngay
+  dưới dòng text (không có dòng trống ở giữa) — đây là cú pháp **setext
+  heading** hợp lệ của CommonMark (text + dòng `---`/`===` ngay sau = biến
+  dòng text thành heading cấp 2/1), khiến "VĂN PHÒNG QUỐC HỘI" hay
+  "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM" vô tình bị trình duyệt/markdown
+  editor hiển thị như heading dù text không hề chứa `#` — xác nhận thực tế
+  trên `Luật bảo hiểm xã hội.md` (2026-09-17). Đây là lỗi cấu trúc thật sự
+  (không phải chỉ thẩm mỹ): nếu `chunking/` hay công cụ khác dùng parser
+  Markdown chuẩn (nhận cả setext lẫn ATX heading) thay vì chỉ regex `#`,
+  các dòng này sẽ bị nhận nhầm thành heading thật.
+  - **Chỉ dẫn thêm trong prompt Groq** (best-effort, không đảm bảo 100%):
+    yêu cầu rõ nếu gặp dòng chỉ toàn ký tự gạch ngang/gạch bằng
+    (`-`/`=`, ví dụ đường kẻ trang trí dưới tên cơ quan) thì phải cách dòng
+    text phía trên bằng 1 dòng trống, không đặt liền kề — tránh vô tình tạo
+    setext heading.
+  - **[Mới]** **Post-process deterministic để đảm bảo 100%** (không dựa
+    hoàn toàn vào Groq tuân thủ prompt): hàm mới
+    `patterns.escape_setext_underline(markdown: str) -> str` — quét từng
+    dòng, nếu dòng khớp `^[-=]{3,}\s*$` (dòng thuần gạch ngang/gạch bằng,
+    ≥ 3 ký tự — đúng ngưỡng CommonMark) và dòng ngay phía trên **không
+    phải dòng trống** → chèn thêm 1 dòng trống giữa hai dòng đó (không xoá
+    nội dung, không đổi dòng gạch ngang, chỉ đảm bảo nó không còn đứng
+    liền kề dòng text → CommonMark hiểu đó là thematic break/horizontal
+    rule bình thường, không phải setext heading). Áp dụng hàm này lên
+    markdown front matter/back matter **sau khi ghép xong** các chunk từ
+    Groq (`frontmatter.py`/`backmatter.py`, trước khi trả về cho
+    `pipeline.py`) — không áp dụng cho phần nội dung ở giữa (không có vấn
+    đề này, do `emitter.py` tự sinh heading `#`, không có dòng gạch ngang
+    trang trí nào).
 - **[CẬP NHẬT 2026-09-17]** Đúng **1 dòng** trong front matter — tên đầy đủ
   của văn bản — dùng heading markdown (`#`), vd. `# QUY ĐỊNH MỨC LƯƠNG TỐI
   THIỂU ĐỐI VỚI NGƯỜI LAO ĐỘNG LÀM VIỆC THEO HỢP ĐỒNG LAO ĐỘNG`. Trước đây
@@ -265,11 +302,13 @@ giữa các lần gọi, bắt buộc phải **chia nhỏ (chunk) trước khi g
    — với corpus hiện tại (6 file, chunk hoá tối đa ~15-20 request) không
    chạm ngưỡng ngày; nếu corpus tăng quy mô lớn, đây là chỗ đầu tiên cần xét
    lại (giữ tinh thần "không over-engineering" đã có ở mục 5).
-5. **Ghép kết quả theo thứ tự chunk**: mỗi chunk gọi
-   `llm_client.convert_to_markdown()` độc lập (mô hình chỉ cần convert
-   nguyên văn, không cần ngữ cảnh toàn văn bản để làm đúng việc "giữ nguyên
-   nội dung/định dạng"), nối các đoạn markdown trả về theo đúng thứ tự
-   chunk, cách nhau 1 dòng trống.
+5. **Ghép kết quả theo thứ tự chunk**: mỗi chunk convert độc lập (mô hình
+   chỉ cần convert nguyên văn, không cần ngữ cảnh toàn văn bản để làm đúng
+   việc "giữ nguyên nội dung/định dạng") — **[Cập nhật 2026-09-17]** việc
+   gọi Groq cho các chunk này nay đi qua `llm_client.convert_chunks_concurrently()`
+   (mục 1.3, gộp chung với front matter, có thể chạy đồng thời 2 worker),
+   không còn gọi tuần tự từng chunk ngay trong `backmatter.py`; kết quả trả
+   về vẫn được nối theo đúng thứ tự chunk gốc, cách nhau 1 dòng trống.
 6. **Lỗi 1 chunk → toàn bộ front/back matter đó coi như lỗi**: nếu bất kỳ
    chunk nào hết `max_retries` mà vẫn lỗi, toàn bộ phần front matter hoặc
    back matter tương ứng bị bỏ qua (không ghép phần dở dang), phát QC
@@ -306,6 +345,115 @@ giữa các lần gọi, bắt buộc phải **chia nhỏ (chunk) trước khi g
   `x-ratelimit-remaining-tokens`) — dùng sliding-window tự tính ở mục 1.2 là
   đủ cho quy mô hiện tại, không cần đọc thêm response header để tối ưu.
 
+### 1.3. Dispatch động 2 API key Groq — hàng đợi dùng chung, tối ưu thời gian
+
+**[MỚI 2026-09-17, sửa lại — chạy đồng thời thật, không phải round-robin]**
+Bản đầu của mục này là round-robin cố định (0,1,0,1,...) nhưng **vẫn xử lý
+tuần tự từng request** — chỉ giảm thời gian `sleep()` chờ rate-limit, không
+giảm thời gian gọi API (latency mạng + inference cộng dồn). Theo yêu cầu
+người dùng (mục tiêu: tổng thời gian xử lý thấp nhất có thể), đổi sang
+**dispatch động qua 1 hàng đợi dùng chung — 2 worker chạy thật sự đồng
+thời**, mỗi worker gắn chết 1 API key, worker nào rảnh trước lấy job tiếp
+theo trong hàng đợi (không chờ đến lượt cố định).
+
+**Vì sao cách này nhanh hơn round-robin tuần tự:** Groq tính RPM/TPM theo
+**cửa sổ trượt 60 giây, riêng theo từng API key** — 2 key hoàn toàn độc lập,
+không chia sẻ ngân sách. Round-robin tuần tự chỉ giảm được thời gian
+`sleep()` (mỗi key nhận ~nửa tải nên cửa sổ đầy chậm hơn), nhưng thời gian
+gọi API vẫn cộng dồn vì tại mọi thời điểm chỉ có 1 request đang chạy.
+Dispatch đồng thời khiến 2 request **chạy song song thật** → tổng thời gian
+≈ `max(thời gian worker 1 bận, thời gian worker 2 bận)` thay vì tổng cộng
+dồn của cả 2 — nhanh hơn đáng kể khi có đủ job để cả 2 worker luôn bận.
+
+**Ví dụ minh hoạ (Luật bảo hiểm y tế — front matter ~434 token, back matter
+~11.671 token → 1 chunk front + 8 chunk back = 9 job, `CHUNK_TOKEN_LIMIT
+=1500`):** tại t=0, worker A (key 1) và worker B (key 2) đều rảnh → A lấy
+job front matter (nhỏ, xong nhanh) → A rảnh lại ngay, lấy chunk back matter
+kế tiếp trong hàng đợi; B vẫn đang xử lý chunk trước đó. Cả 2 worker luôn
+bận cho tới khi hàng đợi cạn (~4-5 job/worker) — mỗi worker xử lý tổng
+~12.000-15.000 token trong cả phiên, dưới xa `TPM_SAFE_LIMIT=7.200` nếu trải
+đều theo thời gian thực tế xử lý, nên hầu như không cần `sleep()` cho riêng
+file này.
+
+**Cơ chế:**
+
+- **Phạm vi hàng đợi: 1 tài liệu/lần** — gộp **toàn bộ job của front matter
+  (`before`/`after`, mục 1.1) lẫn back matter (mục 1.2)** của **cùng 1 file**
+  đang xử lý vào 1 hàng đợi dùng chung, KHÔNG gộp nhiều file — giữ nguyên
+  vòng lặp tuần tự theo file ở `convert_directory()` (mục 5), mỗi file vẫn
+  ghi atomic ngay khi xử lý xong, không đổi cấu trúc summary/lỗi-1-file-
+  không-chặn-batch hiện có.
+- **2 thread worker cố định**, mỗi thread gắn chết đúng 1 (client, state
+  rate-limiter sliding-window) — không worker nào đổi key giữa chừng, và vì
+  mỗi thread chỉ đụng state rate-limiter của chính nó nên **không cần khoá**
+  cho phần này (không có state dùng chung giữa 2 thread).
+- 1 `queue.Queue` (thư viện chuẩn, thread-safe sẵn) chứa toàn bộ job
+  `(chỉ_số_gốc, prompt)` của tài liệu đang xử lý — mỗi worker lặp: lấy job
+  kế tiếp từ queue (block tới khi có hoặc queue báo hết), gọi Groq bằng
+  client + rate-limiter của chính mình qua hàm nội bộ `_convert_one()`
+  (logic gọi/retry/rate-limit không đổi so với bản 1-key trước đây), ghi
+  kết quả vào `results[chỉ_số_gốc]` (dùng 1 `threading.Lock` nhỏ quanh thao
+  tác ghi để tránh phụ thuộc vào chi tiết cài đặt GIL của CPython).
+- Sau khi cả 2 thread xử lý hết hàng đợi (join 2 thread), `results` đã đủ
+  và **đúng thứ tự gốc** (đánh số theo chỉ số, không theo thứ tự hoàn
+  thành) — trả về nguyên `list[str | None]` cùng độ dài với danh sách
+  prompt đầu vào, `None` ở vị trí job lỗi (hết `max_retries`/timeout, y hệt
+  ngữ nghĩa `_convert_one()`).
+- **Chỉ 1 key (`GROQ_API_KEY_2` không set):** không spawn thread nào cả —
+  chạy vòng lặp tuần tự đơn giản gọi lần lượt từng prompt bằng key 1 (y hệt
+  hành vi hiện tại trước khi có tính năng này, không lỗi, không cảnh báo).
+
+**Tái cấu trúc cần thiết — tách "dựng job" khỏi "thực thi" và "ghép kết
+quả":** hiện `frontmatter.py`/`backmatter.py` tự chunk **và** tự gọi Groq
+tuần tự ngay trong nội bộ từng module — để gộp chung hàng đợi cho cả 2
+vùng, cần tách làm 3 bước, điều phối tại `pipeline.py`:
+
+1. **Dựng job** (thuần, không I/O): `frontmatter.build_prompts(front_blocks)`
+   trả về `title_text: str | None` (từ `find_title`) + `before_prompts:
+   list[str]` + `after_prompts: list[str]` (mỗi phần tự chunk qua
+   `chunk_blocks_for_llm` + `serialize_blocks_for_llm` như logic hiện có,
+   có thể rỗng); `backmatter.build_prompts(back_blocks)` trả về
+   `chunk_prompts: list[str]` (rỗng nếu không có back matter).
+2. **Gộp & thực thi 1 lần**: `pipeline.py` nối `before_prompts + after_prompts
+   + chunk_prompts` thành 1 danh sách duy nhất (nhớ lại ranh giới từng phần
+   bằng độ dài mỗi danh sách con), gọi 1 lần duy nhất
+   `llm_client.convert_chunks_concurrently(all_prompts) -> list[str | None]`
+   (mục cơ chế ở trên), rồi cắt kết quả trả về đúng theo ranh giới đã nhớ.
+3. **Ghép kết quả** (thuần, không I/O): `frontmatter.assemble(title_text,
+   before_results, after_results) -> (markdown, warnings)` áp đúng logic
+   ghép/chèn heading/lỗi-1-phần-bỏ-toàn-bộ đã có (mục 1.1);
+   `backmatter.assemble(chunk_results) -> (markdown, warnings)` tương tự
+   (mục 1.2).
+
+Ngữ nghĩa lỗi (1 chunk lỗi → bỏ toàn bộ front matter hoặc back matter tương
+ứng, không ảnh hưởng phần còn lại, không fail file) **giữ nguyên hoàn toàn**
+— chỉ đổi chỗ thực thi gọi Groq (gộp chung, đồng thời) và cách kết quả được
+truyền qua lại giữa các hàm.
+
+**Cấu hình:**
+
+- Key 1: biến môi trường `GROQ_API_KEY` (giữ nguyên tên cũ, **bắt buộc**,
+  không đổi hành vi hiện có).
+- Key 2: biến môi trường mới `GROQ_API_KEY_2` (**tùy chọn** — nếu không set,
+  dùng lại đường xử lý tuần tự 1 key như trên, không lỗi, không cảnh báo QC
+  nào cả).
+- Cả 2 đọc qua `LLMSettings` (`config.py`, mục 4): thêm field
+  `groq_api_key_2: str | None = Field(default=None, validation_alias="GROQ_API_KEY_2")`.
+- Không hard-code giá trị key ở bất kỳ đâu trong code/spec — chỉ đọc từ
+  `.env` (đã gitignore).
+
+**[Brainstorm 2026-09-17] `CHUNK_TOKEN_LIMIT` giữ nguyên 1500, không tăng
+theo số key:** đã cân nhắc tăng lên ~2000 khi có 2 key (ít request hơn/tài
+liệu) nhưng quyết định giữ nguyên — lý do: kích thước chunk không làm giảm
+**tổng token** phải xử lý qua TPM budget của mỗi key, chỉ đổi cách chia nhỏ
+(chunk lớn hơn → ít request hơn nhưng mỗi request nặng hơn). Cả 2 key **dùng
+chung một bộ hằng số** (`CHUNK_TOKEN_LIMIT=1500`, `TPM_SAFE_LIMIT=7200`,
+`RPM_SAFE_LIMIT=27`) — không tùy chỉnh riêng theo key, vì cả 2 tài khoản
+Groq cùng free tier, cùng hạn ngạch (RPM 30 / RPD 1.000 / TPM 8.000 / TPD
+200.000, xác nhận qua Groq Console). **Nguồn tăng tốc chính là chạy đồng
+thời 2 worker** (xem phân tích ở trên), không phải việc đổi kích thước
+chunk.
+
 ## 2. Input & Output
 
 - **Input**: `data/raw/*.docx` — tên file tiếng Việt có dấu và khoảng trắng.
@@ -318,10 +466,12 @@ giữa các lần gọi, bắt buộc phải **chia nhỏ (chunk) trước khi g
 
   ```markdown
   **CHÍNH PHỦ**
+
   -------
 
   **CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM**
   *Độc lập - Tự do - Hạnh phúc*
+
   ---------------
 
   Số: 293/2025/NĐ-CP
@@ -359,6 +509,11 @@ giữa các lần gọi, bắt buộc phải **chia nhỏ (chunk) trước khi g
   pháp nước Cộng hoà xã hội chủ nghĩa Việt Nam; Quốc hội ban hành Luật Công
   nghiệp công nghệ số."...
   ```
+
+  Dòng trống trước mỗi `-------`/`---------------` trong ví dụ trên là do
+  `patterns.escape_setext_underline()` chèn (mục 1.1) — Groq có thể trả về
+  dòng gạch ngang liền ngay dưới dòng text (không có dòng trống), hàm này
+  đảm bảo luôn tách ra để không bị hiểu nhầm thành setext heading.
 
   "NGHỊ ĐỊNH" (tên loại văn bản) trong ví dụ trên **không** dùng heading
   markdown — chỉ in đậm, như văn bản gốc trình bày. Riêng tên đầy đủ văn bản
@@ -407,10 +562,13 @@ Quy tắc bổ trợ:
 **[Mới]** Cấu hình gọi Groq (`model_name="openai/gpt-oss-120b"`,
 `max_retries=2`, `timeout_seconds=30`, cộng các hằng số rate-limit mục 1.2:
 `chunk_token_limit=1500`, `tpm_limit=8000`, `rpm_limit=30`) trong
-`LLMSettings` (`src/production_legal_qa_rag/config.py`). Đọc key từ biến môi
-trường `GROQ_API_KEY` trong `.env`. Xoá `google-genai` khỏi
-`pyproject.toml` (không dùng nữa), thêm lại `groq`. Không cần `instructor`
-vì không còn structured output ở bất kỳ bước nào trong `formatting/`.
+`LLMSettings` (`src/production_legal_qa_rag/config.py`). Đọc key 1 từ biến
+môi trường `GROQ_API_KEY` (bắt buộc), key 2 từ `GROQ_API_KEY_2` **[Mới
+2026-09-17]** (tùy chọn — dispatch đồng thời 2 key, mục 1.3), cả hai trong
+`.env`.
+Xoá `google-genai` khỏi `pyproject.toml` (không dùng nữa), thêm lại `groq`.
+Không cần `instructor` vì không còn structured output ở bất kỳ bước nào
+trong `formatting/`.
 
 ## 5. Workflow & quản lý trạng thái
 
@@ -431,18 +589,23 @@ tools/format_documents.py (Typer CLI)
   chạy lại toàn bộ là chấp nhận được; nếu corpus tăng lên hàng nghìn file sau
   này, đây là chỗ đầu tiên cần xét lại (không thiết kế trước cho quy mô chưa
   có).
-- **Tuần tự, không multiprocessing** — với 6 file, xử lý tuần tự đủ nhanh và
-  đơn giản hơn hẳn multiprocessing; cũng là điều kiện cần để sliding-window
-  rate limiter (mục 1.2) hoạt động đúng bằng 1 state đơn giản trong tiến
-  trình, không cần khoá/đồng bộ giữa nhiều worker.
+- **Tuần tự theo file, không multiprocessing** — `convert_directory()` vẫn
+  xử lý từng file một, tuần tự, đủ nhanh và đơn giản hơn hẳn multiprocessing
+  ở quy mô 6 file. **[Cập nhật 2026-09-17]** Ngoại lệ có kiểm soát: **trong
+  phạm vi 1 file**, gọi Groq cho front/back matter có thể chạy đồng thời
+  qua 2 thread nếu có `GROQ_API_KEY_2` (mục 1.3) — mỗi thread giữ state
+  rate-limiter riêng, không chia sẻ, nên không cần khoá cho phần đó; đây là
+  concurrency có chủ đích, phạm vi hẹp (chỉ 2 thread cố định trong lúc xử
+  lý 1 file), khác hẳn multiprocessing/đa file đã loại bỏ ở trên.
 - **Lỗi 1 file không chặn các file khác** — bắt exception theo từng file, in
   ra lỗi kèm tên file, tiếp tục file kế tiếp; tổng kết cuối cùng liệt kê file
   nào lỗi.
 - **QC warnings** không bao giờ làm fail file — in summary đếm theo code ở
   cuối lần chạy.
 - **[Mới]** **Groq lỗi/timeout không làm fail file, và không có fallback**
-  — `llm_client.convert_to_markdown` bắt lỗi cho từng chunk, trả `None` sau
-  `max_retries=2` lần thử hoặc `timeout_seconds=30`. Khi 1 chunk lỗi: toàn
+  — `llm_client._convert_one` (gọi từ bên trong `convert_chunks_concurrently`,
+  mục 1.3) bắt lỗi cho từng chunk, trả `None` sau `max_retries=2` lần thử
+  hoặc `timeout_seconds=30`. Khi 1 chunk lỗi: toàn
   bộ front matter hoặc back matter tương ứng bị bỏ qua (không render vào
   output, không ghép phần dở dang — mục 1.2), phát QC warning tương ứng
   (mục 6, mục 7) tại chỗ — không để exception thoát lên tầng
@@ -455,16 +618,16 @@ tools/format_documents.py (Typer CLI)
 
 | Module             | Trách nhiệm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patterns.py`    | Regex nhận diện cấu trúc thân văn bản (Phần/Chương/Mục/Điều/Khoản/Điểm) +`sort_key()` cho số hiệu có hậu tố chữ. Dùng để xác định **biên** front matter (mục 1.1). **Giữ nguyên** regex/hàm strip marker `[n]` khỏi text — vẫn cần chạy trên mọi block thuộc vùng nội dung ở giữa **trước khi** áp regex heading, xem "Lưu ý quan trọng" ở mục 1.1. **[Mới]** `RE_DOC_TYPE_ONLY` (regex khớp trọn dòng cho danh sách tên loại văn bản: LUẬT, BỘ LUẬT, NGHỊ ĐỊNH, NGHỊ QUYẾT, THÔNG TƯ, THÔNG TƯ LIÊN TỊCH, QUYẾT ĐỊNH, PHÁP LỆNH, CHỈ THỊ) — dùng bởi `frontmatter.find_title` (mục 1.1) để định vị dòng loại văn bản; block tên văn bản là block paragraph ngay sau đó, không cần điều kiện bold/viết hoa riêng (đã verify trên corpus thật — 2/6 file có dòng tên không bold).                                                                                                                                                                                                                                                                                                                                                                                               |
+| `patterns.py`    | Regex nhận diện cấu trúc thân văn bản (Phần/Chương/Mục/Điều/Khoản/Điểm) +`sort_key()` cho số hiệu có hậu tố chữ. Dùng để xác định **biên** front matter (mục 1.1). **Giữ nguyên** regex/hàm strip marker `[n]` khỏi text — vẫn cần chạy trên mọi block thuộc vùng nội dung ở giữa **trước khi** áp regex heading, xem "Lưu ý quan trọng" ở mục 1.1. **[Mới]** `RE_DOC_TYPE_ONLY` (regex khớp trọn dòng cho danh sách tên loại văn bản: LUẬT, BỘ LUẬT, NGHỊ ĐỊNH, NGHỊ QUYẾT, THÔNG TƯ, THÔNG TƯ LIÊN TỊCH, QUYẾT ĐỊNH, PHÁP LỆNH, CHỈ THỊ) — dùng bởi `frontmatter.find_title` (mục 1.1) để định vị dòng loại văn bản; block tên văn bản là block paragraph ngay sau đó, không cần điều kiện bold/viết hoa riêng (đã verify trên corpus thật — 2/6 file có dòng tên không bold). **[Mới 2026-09-17]** `escape_setext_underline(markdown) -> str` — chèn dòng trống trước mọi dòng thuần gạch ngang/gạch bằng (`^[-=]{3,}\s*$`) đứng liền kề dòng text, tránh CommonMark hiểu nhầm thành setext heading (mục 1.1, bug phát hiện thực tế trên `Luật bảo hiểm xã hội.md`).                                                                                                                                                                                                                                                                                                                                                                                               |
 | `docx_reader.py` | Đọc`.docx` bằng `python-docx`, trích xuất `Block` (paragraph/table) theo đúng thứ tự xuất hiện, giữ style/bold/nghiêng làm tín hiệu phụ — dùng cho cả heading mapping (mục 3) lẫn serialize block cho Groq (mục 1.1). **[Mới]** Thêm `chunk_blocks_for_llm(blocks, token_limit) -> list[list[Block]]` — dồn block tuần tự thành chunk theo heuristic ước lượng token mục 1.2, ranh giới luôn trùng ranh giới block.                                                                                                                                                                                                                                                                                                                                                     |
 | `tables.py`      | Nhận diện loại bảng theo nội dung cho**phần nội dung ở giữa** (đính kèm, bảng dữ liệu) và render bảng dữ liệu sang markdown/HTML — không đổi. Riêng phân loại bảng **chữ ký** vẫn giữ, dùng để xác định biên back matter (mục 1.1); **bỏ** phân loại "quốc hiệu" — bảng đó giờ nằm trong vùng front matter, Groq xử lý nguyên khối cùng các block khác, không cần tables.py can thiệp riêng.                                                                                                                                                                                                                                                                                                                                                 |
-| `frontmatter.py` | Xác định biên front matter (block trước heading đầu tiên, dùng`patterns.py`). **[Mới]** `find_title(blocks)` — xác định deterministic block tên văn bản: tìm block khớp `RE_DOC_TYPE_ONLY` (dòng loại văn bản) rồi lấy block paragraph ngay sau đó, không cần bold/viết hoa (mục 1.1); nếu tìm thấy, cắt `blocks` thành `before` (gồm cả dòng loại văn bản)/tên văn bản/`after`, convert `before` và `after` **độc lập** qua chunk (`docx_reader.chunk_blocks_for_llm`) + Groq (`llm_client.convert_to_markdown()`, giữ tín hiệu bold/nghiêng khi serialize) rồi chèn `# <nguyên văn>` xen giữa; nếu không tìm thấy → convert nguyên khối `blocks` như cũ, phát `QcWarning` (`frontmatter_title_not_found`). Bất kỳ chunk Groq nào lỗi → bỏ qua toàn bộ phần front matter tương ứng (`before` hoặc `after`), phát `QcWarning` (`llm_frontmatter_conversion_failed`) — không ảnh hưởng dòng heading đã chèn. Không còn schema/field nào (đã bỏ `FrontMatter`, `extract_quoc_hieu`, `_find_ten_van_ban`, `_find_loai_van_ban`, `_find_ngay_hieu_luc`) — `find_title` không phải phục hồi các hàm này, chỉ tìm 1 dòng heading bằng vị trí tương đối so với dòng loại văn bản.                                                                                                                                          |
-| `backmatter.py`  | **[Đổi tên từ `footnotes.py`, thiết kế lại]** Xác định biên back matter (block sau bảng chữ ký cuối cùng, dùng `tables.py`); nếu không còn block nào → không có back matter, dừng, không gọi Groq. Nếu có → chia chunk, gọi `llm_client.convert_to_markdown()` cho từng chunk, nối kết quả theo thứ tự (mục 1.2), trả về text markdown để `pipeline.py` append vào cuối output (ngăn cách `---`, mục 2). Không còn khớp marker `[n]` hay khôi phục inline vào Khoản/Điều — các hàm cũ (`find_region_start`, `parse_region`, `strip_markers`, `strip_all`, `render_blockquote`) đã xoá. Bất kỳ chunk nào lỗi → bỏ qua toàn bộ back matter, phát `QcWarning` (`llm_backmatter_conversion_failed`).                     |
-| `llm_client.py`  | Client gọi Groq API bằng SDK`groq`. Hàm `convert_to_markdown(prompt: str, *, max_retries) -> str \| None` — text generation thuần, không structured output; trả `None` khi hết `max_retries` lần thử hoặc quá `timeout_seconds` (không raise ra ngoài, caller tự quyết bỏ qua phần tương ứng). Đọc `model_name`/`max_retries`/`timeout_seconds`/`groq_api_key` từ `LLMSettings` (`config.py`, mục 4). **[Mới]** Sở hữu **sliding-window rate limiter** (mục 1.2): trước mỗi lệnh gọi, ước lượng token của `prompt` (`len(prompt) // 2.5`), chờ (`time.sleep`) nếu vượt `TPM_SAFE_LIMIT`/`RPM_SAFE_LIMIT`; sau khi gọi thành công, đọc `response.usage.total_tokens` để cập nhật state tracker (thay cho số ước lượng). |
+| `frontmatter.py` | Xác định biên front matter (block trước heading đầu tiên, dùng`patterns.py`). `find_title(blocks)` — xác định deterministic block tên văn bản: tìm block khớp `RE_DOC_TYPE_ONLY` (dòng loại văn bản) rồi lấy block paragraph ngay sau đó, không cần bold/viết hoa (mục 1.1). **[Mới 2026-09-17, sửa lại]** Tách làm 2 hàm thay cho `convert_frontmatter()` cũ (mục 1.3, để gộp chung hàng đợi với back matter): `build_prompts(blocks) -> FrontMatterJobs` (thuần, không gọi Groq) — dùng `find_title` cắt `blocks` thành `before` (gồm cả dòng loại văn bản)/tên văn bản/`after`, mỗi phần chunk qua `docx_reader.chunk_blocks_for_llm` + serialize (`serialize_blocks_for_llm`) thành `before_prompts`/`after_prompts`, trả kèm `title_text`; không tìm thấy title → toàn bộ `blocks` thành 1 danh sách prompt duy nhất, `title_text=None`. `assemble(title_text, before_results, after_results) -> (markdown, warnings)` (thuần, không gọi Groq) — ghép kết quả Groq đã nhận từ `pipeline.py`, áp `patterns.escape_setext_underline()`, chèn `# <nguyên văn title_text>` nếu có; không có title → phát `QcWarning` (`frontmatter_title_not_found`); bất kỳ kết quả nào trong `before_results`/`after_results` là `None` (job lỗi) → bỏ qua toàn bộ phần đó, phát `QcWarning` (`llm_frontmatter_conversion_failed`) — không ảnh hưởng dòng heading. Không còn schema/field nào (đã bỏ `FrontMatter`, `extract_quoc_hieu`, `_find_ten_van_ban`, `_find_loai_van_ban`, `_find_ngay_hieu_luc`).                                                                                                                                          |
+| `backmatter.py`  | **[Đổi tên từ `footnotes.py`, thiết kế lại]** Xác định biên back matter (block sau bảng chữ ký cuối cùng, dùng `tables.py`); nếu không còn block nào → không có back matter, `build_prompts` trả danh sách rỗng, không gọi Groq. **[Mới 2026-09-17, sửa lại]** Tách làm 2 hàm thay cho `convert_backmatter()` cũ (mục 1.3): `build_prompts(blocks) -> list[str]` (thuần, không gọi Groq) — chia chunk (`docx_reader.chunk_blocks_for_llm`) + serialize thành danh sách prompt. `assemble(chunk_results: list[str \| None]) -> (markdown, warnings)` (thuần, không gọi Groq) — nối kết quả Groq đã nhận từ `pipeline.py` theo đúng thứ tự (mục 1.2), áp `patterns.escape_setext_underline()`, trả markdown để `pipeline.py` append vào cuối output (ngăn cách `---`, mục 2); bất kỳ phần tử nào trong `chunk_results` là `None` (job lỗi) → bỏ qua toàn bộ back matter, phát `QcWarning` (`llm_backmatter_conversion_failed`). Không còn khớp marker `[n]` hay khôi phục inline vào Khoản/Điều — các hàm cũ (`find_region_start`, `parse_region`, `strip_markers`, `strip_all`, `render_blockquote`) đã xoá.                     |
+| `llm_client.py`  | Client gọi Groq API bằng SDK`groq`. Hàm nội bộ `_convert_one(client, prompt, rate_limiter, *, max_retries) -> str \| None` — text generation thuần, không structured output; trả `None` khi hết `max_retries` lần thử hoặc quá `timeout_seconds` (không raise ra ngoài). Đọc `model_name`/`max_retries`/`timeout_seconds`/`groq_api_key`/`groq_api_key_2` từ `LLMSettings` (`config.py`, mục 4). Sở hữu **sliding-window rate limiter** (mục 1.2): trước mỗi lệnh gọi, ước lượng token của `prompt` (`len(prompt) // 2.5`), chờ (`time.sleep`) nếu vượt `TPM_SAFE_LIMIT`/`RPM_SAFE_LIMIT`; sau khi gọi thành công, đọc `response.usage.total_tokens` để cập nhật state tracker. **[Mới 2026-09-17, sửa lại]** Hàm public mới `convert_chunks_concurrently(prompts: list[str]) -> list[str \| None]` (mục 1.3) — nếu có `groq_api_key_2`: dựng `queue.Queue` từ `prompts` (giữ chỉ số gốc), spawn đúng 2 `threading.Thread`, mỗi thread gắn chết 1 (client, rate-limiter) độc lập, lấy job tới khi hết hàng đợi, ghi `results[index]` dưới 1 `threading.Lock` nhỏ; join cả 2 thread rồi trả `results` theo đúng thứ tự gốc. Không có `groq_api_key_2`: lặp tuần tự gọi `_convert_one` bằng client 1 cho từng prompt, không spawn thread nào. |
 | `emitter.py`     | Duyệt`Block` theo thứ tự **trong vùng nội dung ở giữa**, strip marker `[n]` khỏi text (dùng hàm ở `patterns.py`, giữ nguyên hành vi cũ), áp heading mapping ở mục 3, sinh markdown thân văn bản. Không còn bước chèn inline **nội dung** chú thích vào giữa thân văn bản (khác với việc strip marker, vẫn giữ).                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `validator.py`   | `validate()` kiểm tra heading-level-skip và các bất thường khác trong nội dung ở giữa, trả về danh sách `QcWarning`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `models.py`      | Pydantic models dùng làm input/output giữa các module trên:`FormattingResult` (markdown: str, warnings: list[QcWarning]), `QcWarning`. **Bỏ** `FrontMatter`, `FrontMatterExtraction`, `BackMatterExtraction` (không còn field có cấu trúc). `QcWarningCode` gồm `llm_frontmatter_conversion_failed`, `llm_backmatter_conversion_failed`, **[Mới]** `frontmatter_title_not_found` (không tìm được block tên văn bản theo heuristic mục 1.1 — front matter vẫn render, không có heading).                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `pipeline.py`    | `convert_docx_to_markdown(path) -> FormattingResult`: gọi `frontmatter.py` lấy front matter markdown (có thể rỗng), lấy nội dung giữa từ `emitter.py` (không đổi), gọi `backmatter.py` lấy back matter markdown (có thể không có), ghép 3 phần theo mục 1.1/2. `convert_directory(raw_dir, out_dir)` — orchestration mức trên, atomic write, gom summary, khởi tạo rate limiter dùng chung (mục 1.2, 5) cho cả lần chạy.                                                                                                                                                                                                                                                                                                                                                            |
+| `pipeline.py`    | `convert_docx_to_markdown(path) -> FormattingResult`: **[Mới 2026-09-17, sửa lại]** gọi `frontmatter.build_prompts()` + `backmatter.build_prompts()` (thuần, không gọi Groq), nối `before_prompts + after_prompts + chunk_prompts` thành 1 danh sách duy nhất (nhớ ranh giới từng phần theo độ dài), gọi **1 lần duy nhất** `llm_client.convert_chunks_concurrently(all_prompts)` (mục 1.3 — 2 worker đồng thời nếu có `groq_api_key_2`, tuần tự nếu không), cắt kết quả theo ranh giới đã nhớ rồi gọi `frontmatter.assemble()`/`backmatter.assemble()`; lấy nội dung giữa từ `emitter.py` (không đổi); ghép 3 phần theo mục 1.1/2. `convert_directory(raw_dir, out_dir)` — orchestration mức trên, atomic write, gom summary, khởi tạo rate limiter dùng chung cho cả lần chạy (mục 1.2, 5) — hàng đợi dispatch (mục 1.3) vẫn theo phạm vi từng file, không gộp qua file khác.                                                                                                                                                                                                                                                                                                                                                            |
 
 `tools/format_documents.py` (ngoài package `formatting/`, theo
 coding-convention) chỉ là Typer CLI mỏng gọi `pipeline.convert_directory()`.
@@ -515,3 +678,17 @@ coding-convention) chỉ là Typer CLI mỏng gọi `pipeline.convert_directory(
   `llm_backmatter_conversion_failed`, `frontmatter_title_not_found`).
 - 1 file lỗi không làm dừng toàn bộ batch; CLI kết thúc với summary rõ ràng
   file nào thành công/lỗi.
+- **[Mới 2026-09-17]** Không còn dòng nào trong front matter/back matter mà
+  1 dòng text bị dòng thuần gạch ngang/gạch bằng đứng liền kề ngay phía
+  dưới (không có dòng trống ở giữa) — kiểm tra thủ công trên toàn bộ 6 file,
+  đặc biệt các file có bảng quốc hiệu dạng "tên cơ quan + đường kẻ trang
+  trí" (`Luật bảo hiểm xã hội.md` là ca phát hiện lỗi ban đầu).
+- **[Mới 2026-09-17]** Khi cả `GROQ_API_KEY` và `GROQ_API_KEY_2` được set:
+  chạy CLI trên toàn bộ corpus, xác nhận cả 2 key đều thực sự được dùng
+  (vd. log/đếm số job mỗi key xử lý trong 1 lần chạy, phải gần bằng nhau
+  do cơ chế "ai rảnh lấy job tiếp theo", mục 1.3) và tổng thời gian chạy
+  giảm rõ rệt so với chỉ dùng 1 key (nhờ 2 request chạy đồng thời thật, không
+  chỉ giảm thời gian `sleep()`) — đặc biệt trên `Luật bảo hiểm y tế.docx`
+  (back matter nhiều chunk nhất, ca đo tốc độ chính). Khi chỉ có
+  `GROQ_API_KEY`: không spawn thread nào, hành vi và tốc độ giữ nguyên như
+  trước khi có tính năng dispatch đồng thời.

@@ -1,14 +1,19 @@
 """Bộ test cho bước formatting (DOCX -> Markdown), theo `formatting_spec.md`.
 
-Thiết kế mới (mục 1.1): front matter/back matter không còn trích field/YAML,
-chỉ xác định biên deterministic rồi chia chunk (mục 1.2) và gọi Groq
-(`llm_client.convert_to_markdown`) convert từng chunk sang markdown thuần.
-Test suite này KHÔNG BAO GIỜ gọi Groq API thật (fixture `_default_llm_stub`
-mock `llm_client.convert_to_markdown` cho toàn bộ session, mặc định trả
-`None`) -- không nên phụ thuộc mạng/API key khi chạy CI.
+Thiết kế mới (mục 1.1, 1.3): front matter/back matter không còn trích
+field/YAML, chỉ xác định biên deterministic rồi chia chunk (mục 1.2), dựng
+prompt thuần (`frontmatter.build_prompts`/`backmatter.build_prompts`, không
+I/O), gọi Groq đúng 1 lần cho toàn bộ file qua
+`llm_client.convert_chunks_concurrently` (điều phối bởi `pipeline.py`, chạy
+đồng thời 2 worker nếu có `GROQ_API_KEY_2`), rồi ghép kết quả thuần
+(`frontmatter.assemble`/`backmatter.assemble`). Test suite này KHÔNG BAO GIỜ
+gọi Groq API thật (fixture `_default_llm_stub` mock
+`llm_client.convert_chunks_concurrently` cho toàn bộ session, mặc định trả
+`None` cho mọi prompt) -- không nên phụ thuộc mạng/API key khi chạy CI.
 
-Cấu trúc theo từng module: models, patterns, docx_reader, tables, emitter,
-validator, frontmatter, backmatter, llm_client, pipeline (integration trên
+Cấu trúc theo từng module: models, patterns (bao gồm bug setext heading, mục
+1.1), docx_reader, tables, emitter, validator, frontmatter, backmatter,
+llm_client (bao gồm dispatch 2 key, mục 1.3), pipeline (integration trên
 `data/raw/*.docx` thật + CLI).
 """
 
@@ -19,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import get_args
 from unittest.mock import Mock
@@ -55,6 +61,7 @@ from production_legal_qa_rag.formatting.patterns import (
     RE_DIEU,
     RE_FOOTNOTE_MARKER,
     RE_KHOAN,
+    escape_setext_underline,
     is_structural,
     normalize_text,
     sort_key,
@@ -93,71 +100,105 @@ def T(text: str) -> Block:
 # ==========================================================================
 # Không bao giờ gọi Groq API thật trong test suite (CI không có
 # GROQ_API_KEY; máy dev có thể có key thật -- không nên phụ thuộc vào việc
-# thiếu key mới an toàn, mock hẳn ở mức `llm_client`).
+# thiếu key mới an toàn, mock hẳn ở mức `llm_client.convert_chunks_concurrently`,
+# điểm gọi Groq DUY NHẤT của `pipeline.py` từ mục 1.3 trở đi).
 # ==========================================================================
 
 # Giữ tham chiếu tới hàm THẬT trước khi fixture dưới đây ghi đè
-# `llm_client.convert_to_markdown` -- các test của "llm_client.py" cần gọi
-# đúng implementation thật (chỉ mock `_client`, không mock `convert_to_markdown`
-# chính nó) để kiểm tra logic try/except/retry thật của nó.
-_REAL_CONVERT_TO_MARKDOWN = llm_client.convert_to_markdown
+# `llm_client.convert_chunks_concurrently` -- các test của "llm_client.py"
+# cần gọi đúng implementation thật (chỉ mock `_client`/`_client_2`, không
+# mock `convert_chunks_concurrently` chính nó) để kiểm tra logic
+# dispatch/thread/thứ tự thật của nó.
+_REAL_CONVERT_CHUNKS_CONCURRENTLY = llm_client.convert_chunks_concurrently
 
-# Giữ tham chiếu tới object `lru_cache` THẬT của `_client`/`_rate_limiter` --
-# một số test monkeypatch trực tiếp `llm_client._client` bằng 1 lambda trần
-# (không có `.cache_clear`), nên fixture dọn dẹp dưới đây phải luôn thao tác
-# trên object gốc này, không đọc lại qua `llm_client._client` (có thể đang bị
-# monkeypatch tại thời điểm teardown chạy, thứ tự teardown giữa các fixture
-# không đảm bảo monkeypatch đã revert trước).
+# Giữ tham chiếu tới object `lru_cache` THẬT của các singleton module-level
+# -- một số test monkeypatch trực tiếp `llm_client._client`/`_client_2` bằng
+# 1 lambda trần (không có `.cache_clear`), nên fixture dọn dẹp dưới đây phải
+# luôn thao tác trên object gốc này, không đọc lại qua `llm_client._client`
+# (có thể đang bị monkeypatch tại thời điểm teardown chạy, thứ tự teardown
+# giữa các fixture không đảm bảo monkeypatch đã revert trước).
 _REAL_CLIENT_FACTORY = llm_client._client
+_REAL_CLIENT_2_FACTORY = llm_client._client_2
 _REAL_RATE_LIMITER_FACTORY = llm_client._rate_limiter
+_REAL_RATE_LIMITER_2_FACTORY = llm_client._rate_limiter_2
 
 
 @pytest.fixture(autouse=True)
 def _default_llm_stub(monkeypatch: pytest.MonkeyPatch):
-    """Mặc định `llm_client.convert_to_markdown` trả `None` (Groq "lỗi")
-    cho MỌI test, trừ khi test tự monkeypatch lại giá trị khác bên trong.
+    """Mặc định `llm_client.convert_chunks_concurrently` trả `None` cho MỌI
+    prompt (Groq "lỗi") ở MỌI test, trừ khi test tự monkeypatch lại giá trị
+    khác bên trong. Test cần gọi implementation THẬT dùng
+    `_REAL_CONVERT_CHUNKS_CONCURRENTLY` (tham chiếu lưu trước khi fixture
+    này chạy) để không bị chính stub này che mất.
     """
-    monkeypatch.setattr(llm_client, "convert_to_markdown", lambda *a, **k: None)
+    monkeypatch.setattr(
+        llm_client,
+        "convert_chunks_concurrently",
+        lambda prompts: [None] * len(prompts),
+    )
 
 
 @pytest.fixture(autouse=True)
 def _reset_llm_client_singletons():
-    """Dọn state của `_client`/`_rate_limiter` (2 `lru_cache` singleton
-    module-level trong `llm_client.py`) trước/sau mỗi test -- không dọn thì
-    entry của sliding-window rate limiter ghi nhận ở 1 test có thể rò rỉ
-    sang test kế tiếp trong cùng phiên pytest, gây `time.sleep` thật ngoài ý
-    muốn khi test không tự mock `time` (mục 1.2 spec).
+    """Dọn state của các singleton `lru_cache` module-level trong
+    `llm_client.py` (`_client`/`_client_2`/`_rate_limiter`/`_rate_limiter_2`)
+    trước/sau mỗi test -- không dọn thì entry của sliding-window rate limiter
+    hay client giả ghi nhận ở 1 test có thể rò rỉ sang test kế tiếp trong
+    cùng phiên pytest, gây `time.sleep` thật ngoài ý muốn khi test không tự
+    mock `time` (mục 1.2 spec), hoặc dùng nhầm client giả của test trước.
     """
     _REAL_CLIENT_FACTORY.cache_clear()
+    _REAL_CLIENT_2_FACTORY.cache_clear()
     _REAL_RATE_LIMITER_FACTORY.cache_clear()
+    _REAL_RATE_LIMITER_2_FACTORY.cache_clear()
     yield
     _REAL_CLIENT_FACTORY.cache_clear()
+    _REAL_CLIENT_2_FACTORY.cache_clear()
     _REAL_RATE_LIMITER_FACTORY.cache_clear()
+    _REAL_RATE_LIMITER_2_FACTORY.cache_clear()
 
 
 def _forbid_llm_calls(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _fail(*_args, **_kwargs):
-        raise AssertionError("llm_client.convert_to_markdown không được gọi ở đây")
+    """Fail nếu `convert_chunks_concurrently` được gọi với ÍT NHẤT 1 prompt
+    thật. Gọi với danh sách RỖNG vẫn hợp lệ -- `pipeline.py` luôn gọi hàm
+    này đúng 1 lần dù front/back matter rỗng (mục 1.3 spec: nối
+    `before_prompts + after_prompts + chunk_prompts`, có thể rỗng cả 3),
+    `convert_chunks_concurrently([])` trả `[]` ngay mà không chạm mạng/API
+    key -- đây không phải "gọi Groq" theo nghĩa cần cấm.
+    """
 
-    monkeypatch.setattr(llm_client, "convert_to_markdown", _fail)
+    def _fail(prompts: list[str]) -> list[str | None]:
+        if prompts:
+            raise AssertionError(
+                "llm_client.convert_chunks_concurrently không được gọi với "
+                "prompt thật ở đây"
+            )
+        return []
+
+    monkeypatch.setattr(llm_client, "convert_chunks_concurrently", _fail)
 
 
-def _sequential_llm(
+def _stub_convert_chunks_concurrently(
     monkeypatch: pytest.MonkeyPatch, values: list[str | None]
 ) -> list[str]:
-    """Trả lần lượt từng giá trị trong `values` cho mỗi lần gọi, đúng thứ tự
-    (front rồi back, theo `pipeline.convert_docx_to_markdown`). Trả về danh
-    sách các prompt đã nhận được, để test kiểm tra số lần gọi.
+    """Trả về đúng `values` cho lần gọi `convert_chunks_concurrently` DUY
+    NHẤT của `pipeline.convert_docx_to_markdown` (mục 1.3 spec -- gộp toàn
+    bộ job front/back matter của 1 file thành 1 lệnh gọi). Trả về danh sách
+    prompt đã nhận được (để test kiểm tra nội dung/số lượng), assert ngay số
+    lượng prompt khớp `values` để test fail rõ ràng nếu ranh giới cắt sai ở
+    `pipeline.py`.
     """
-    iterator = iter(values)
-    calls: list[str] = []
+    captured: list[str] = []
 
-    def fake(prompt: str, *, max_retries: int | None = None) -> str | None:
-        calls.append(prompt)
-        return next(iterator)
+    def fake(prompts: list[str]) -> list[str | None]:
+        captured.extend(prompts)
+        assert len(prompts) == len(values), (
+            f"kỳ vọng {len(values)} prompt nhưng nhận {len(prompts)}: {prompts}"
+        )
+        return values
 
-    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
-    return calls
+    monkeypatch.setattr(llm_client, "convert_chunks_concurrently", fake)
+    return captured
 
 
 # ==========================================================================
@@ -185,9 +226,10 @@ def test_formatting_result_thieu_markdown_bao_loi():
         FormattingResult()  # type: ignore[call-arg]
 
 
-def test_qc_warning_code_gom_du_hai_ma_llm_moi():
+def test_qc_warning_code_gom_du_ba_ma_moi():
     assert "llm_frontmatter_conversion_failed" in KNOWN_WARNING_CODES
     assert "llm_backmatter_conversion_failed" in KNOWN_WARNING_CODES
+    assert "frontmatter_title_not_found" in KNOWN_WARNING_CODES
 
 
 # ==========================================================================
@@ -307,6 +349,56 @@ def test_re_footnote_marker_khop_va_lay_duoc_so():
     match = RE_FOOTNOTE_MARKER.search("Bảo hiểm Xã hội[16]")
     assert match is not None
     assert match.group(1) == "16"
+
+
+# ==========================================================================
+# patterns.py -- escape_setext_underline (formatting_spec.md mục 1.1, "[MỚI
+# 2026-09-17]" -- bug setext heading phát hiện trên `Luật bảo hiểm xã hội.md`).
+# ==========================================================================
+
+
+def test_escape_setext_underline_da_co_dong_trong_khong_doi():
+    markdown = "VĂN PHÒNG QUỐC HỘI\n\n--------"
+    assert escape_setext_underline(markdown) == markdown
+
+
+def test_escape_setext_underline_thieu_dong_trong_chen_them():
+    markdown = "VĂN PHÒNG QUỐC HỘI\n--------"
+    assert escape_setext_underline(markdown) == "VĂN PHÒNG QUỐC HỘI\n\n--------"
+
+
+def test_escape_setext_underline_dau_bang_cung_duoc_xu_ly():
+    markdown = "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n===================="
+    assert (
+        escape_setext_underline(markdown)
+        == "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM\n\n===================="
+    )
+
+
+def test_escape_setext_underline_dong_gach_ngang_dau_van_ban_giu_nguyen():
+    # Dòng gạch ngang là dòng ĐẦU TIÊN (không có dòng nào phía trên để chèn
+    # dòng trống vào giữa) -- giữ nguyên.
+    markdown = "--------\n\nNội dung."
+    assert escape_setext_underline(markdown) == markdown
+
+
+def test_escape_setext_underline_khong_du_3_ky_tu_khong_phai_setext():
+    # "--" chỉ 2 ký tự -- dưới ngưỡng CommonMark, không khớp
+    # RE_SETEXT_UNDERLINE, giữ nguyên dù đứng liền kề dòng text.
+    markdown = "Text\n--"
+    assert escape_setext_underline(markdown) == markdown
+
+
+def test_escape_setext_underline_khong_dung_vao_dong_ke_bang():
+    # Dòng phân cách bảng "| --- | --- |" KHÔNG khớp RE_SETEXT_UNDERLINE (có
+    # ký tự "|"/khoảng trắng xen giữa, không phải thuần "-"/"=").
+    markdown = "Tiêu đề\n| --- | --- |"
+    assert escape_setext_underline(markdown) == markdown
+
+
+def test_escape_setext_underline_nhieu_cho_trong_cung_mot_van_ban():
+    markdown = "A\n---\n\nB\n===\n\nC"
+    assert escape_setext_underline(markdown) == "A\n\n---\n\nB\n\n===\n\nC"
 
 
 # ==========================================================================
@@ -827,123 +919,107 @@ def test_find_title_lay_dong_loai_van_ban_dau_tien_neu_co_nhieu_ung_vien():
     assert frontmatter.find_title(blocks) == 2
 
 
-def test_convert_frontmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch):
-    _forbid_llm_calls(monkeypatch)
-    markdown, warnings = frontmatter.convert_frontmatter([])
-    assert markdown == ""
-    assert warnings == []
-
-
-def test_convert_frontmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
-    # Không có dòng loại văn bản (RE_DOC_TYPE_ONLY) trong input -- find_title
-    # trả None, nên convert_frontmatter luôn thêm cảnh báo
-    # frontmatter_title_not_found dù convert thành công (mục 1.1 spec).
-    monkeypatch.setattr(
-        llm_client, "convert_to_markdown", lambda *a, **k: "**CHÍNH PHỦ**"
-    )
-    markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
-    assert markdown == "**CHÍNH PHỦ**"
-    assert [w.code for w in warnings] == ["frontmatter_title_not_found"]
-
-
-def test_convert_frontmatter_llm_loi_phat_canh_bao():
-    # Fixture `_default_llm_stub` đã trả None mặc định. Không có dòng loại
-    # văn bản trong input -- cả 2 cảnh báo cùng phát ra (mục 1.1 spec).
-    markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ")])
-    assert markdown == ""
-    assert [w.code for w in warnings] == [
-        "llm_frontmatter_conversion_failed",
-        "frontmatter_title_not_found",
-    ]
-
-
-def test_convert_frontmatter_prompt_chua_noi_dung_block(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    captured: dict[str, str] = {}
-
-    def fake(prompt: str, *, max_retries: int | None = None) -> str:
-        captured["prompt"] = prompt
-        return "kết quả"
-
-    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
-    frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
-    assert "**CHÍNH PHỦ**" in captured["prompt"]
-
-
-def test_convert_frontmatter_nhieu_chunk_goi_llm_tung_chunk_va_noi_ket_qua(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # `chunk_token_limit` nhỏ để ép front matter (dù chỉ 2 block nhỏ) tách
-    # thành 2 chunk -- kiểm tra hành vi ghép nhiều chunk (mục 1.2 spec), độc
-    # lập với kích thước thật của front matter trên corpus.
-    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
-    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "Số: 1/2025/NĐ-CP"])
-    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
-
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
-
-    assert len(calls) == 2
-    assert markdown == "**CHÍNH PHỦ**\n\nSố: 1/2025/NĐ-CP"
-    # Không có dòng loại văn bản trong input -- vẫn phát cảnh báo
-    # frontmatter_title_not_found (mục 1.1 spec).
-    assert [w.code for w in warnings] == ["frontmatter_title_not_found"]
-
-
-def test_convert_frontmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
-    _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", None])
-    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
-
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
-
-    assert markdown == ""
-    # Không có dòng loại văn bản trong input -- cả 2 cảnh báo cùng phát ra
-    # (mục 1.1 spec).
-    assert [w.code for w in warnings] == [
-        "llm_frontmatter_conversion_failed",
-        "frontmatter_title_not_found",
-    ]
-
-
 # --------------------------------------------------------------------------
-# convert_frontmatter -- nhánh tìm thấy tên văn bản (find_title trả chỉ số,
-# mục 1.1 spec): chèn heading `# <nguyên văn>` deterministic, before/after
-# convert độc lập qua Groq, không có cảnh báo frontmatter_title_not_found.
+# build_prompts (mục 1.3 spec -- thuần, KHÔNG gọi Groq, chỉ dựng prompt).
 # --------------------------------------------------------------------------
 
 
-def test_convert_frontmatter_tim_thay_ten_van_ban_chen_heading_giua_before_va_after(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "*Căn cứ Hiến pháp...*"])
+def test_frontmatter_build_prompts_rong_tra_ve_jobs_rong():
+    jobs = frontmatter.build_prompts([])
+    assert jobs.title_text is None
+    assert jobs.before_prompts == []
+    assert jobs.after_prompts == []
+
+
+def test_frontmatter_build_prompts_khong_tim_thay_title_toan_bo_vao_before():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
+    jobs = frontmatter.build_prompts(blocks)
+    assert jobs.title_text is None
+    assert len(jobs.before_prompts) == 1
+    assert jobs.after_prompts == []
+    assert "**CHÍNH PHỦ**" in jobs.before_prompts[0]
+    assert "Số: 1/2025/NĐ-CP" in jobs.before_prompts[0]
+
+
+def test_frontmatter_build_prompts_tim_thay_title_tach_before_va_after():
     blocks = [
         P("CHÍNH PHỦ", bold=True),
         P("LUẬT"),
         P("BẢO HIỂM Y TẾ", bold=True),
         P("Căn cứ Hiến pháp..."),
     ]
+    jobs = frontmatter.build_prompts(blocks)
+    assert jobs.title_text == "BẢO HIỂM Y TẾ"
+    assert len(jobs.before_prompts) == 1
+    assert "**CHÍNH PHỦ**" in jobs.before_prompts[0]
+    assert "LUẬT" in jobs.before_prompts[0]  # dòng loại văn bản ở lại `before`
+    assert "BẢO HIỂM Y TẾ" not in jobs.before_prompts[0]  # tên văn bản không vào prompt
+    assert len(jobs.after_prompts) == 1
+    assert "Căn cứ Hiến pháp..." in jobs.after_prompts[0]
 
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
 
-    assert len(calls) == 2
+def test_frontmatter_build_prompts_title_la_block_cuoi_khong_co_after():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True)]
+    jobs = frontmatter.build_prompts(blocks)
+    assert jobs.title_text == "BẢO HIỂM Y TẾ"
+    assert len(jobs.before_prompts) == 1
+    assert jobs.after_prompts == []
+
+
+def test_frontmatter_build_prompts_chia_nhieu_chunk_khi_vuot_gioi_han(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
+    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
+    jobs = frontmatter.build_prompts(blocks)
+    assert jobs.title_text is None
+    assert len(jobs.before_prompts) == 2
+
+
+# --------------------------------------------------------------------------
+# assemble (mục 1.3 spec -- thuần, KHÔNG gọi Groq, ghép kết quả Groq đã nhận
+# từ `pipeline.py`).
+# --------------------------------------------------------------------------
+
+
+def test_frontmatter_assemble_rong_hoan_toan_khong_canh_bao():
+    markdown, warnings = frontmatter.assemble(None, [], [])
+    assert markdown == ""
+    assert warnings == []
+
+
+def test_frontmatter_assemble_khong_tim_thay_title_van_ghep_phat_canh_bao():
+    markdown, warnings = frontmatter.assemble(None, ["**CHÍNH PHỦ**"], [])
+    assert markdown == "**CHÍNH PHỦ**"
+    assert [w.code for w in warnings] == ["frontmatter_title_not_found"]
+
+
+def test_frontmatter_assemble_tim_thay_title_chen_heading_giua_before_va_after():
+    markdown, warnings = frontmatter.assemble(
+        "BẢO HIỂM Y TẾ", ["**CHÍNH PHỦ**"], ["*Căn cứ Hiến pháp...*"]
+    )
     assert markdown == "**CHÍNH PHỦ**\n\n# BẢO HIỂM Y TẾ\n\n*Căn cứ Hiến pháp...*"
     assert warnings == []
 
 
-def test_convert_frontmatter_heading_nguyen_van_khong_qua_groq_du_llm_loi(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # Groq lỗi (mock trả None) cho cả before/after -- dòng heading vẫn được
-    # chèn vì find_title/chèn heading không phụ thuộc kết quả Groq (mục 1.1
-    # spec: "dòng heading vẫn luôn được chèn nếu tìm thấy, kể cả khi
-    # before/after lỗi và bị bỏ qua").
-    blocks = [P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True), P("Căn cứ Hiến pháp...")]
+def test_frontmatter_assemble_before_loi_bo_qua_phan_do_giu_heading():
+    markdown, warnings = frontmatter.assemble("BẢO HIỂM Y TẾ", [None], ["Sau"])
+    assert markdown == "# BẢO HIỂM Y TẾ\n\nSau"
+    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
 
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
 
+def test_frontmatter_assemble_after_loi_bo_qua_phan_do_giu_heading():
+    markdown, warnings = frontmatter.assemble("BẢO HIỂM Y TẾ", ["Trước"], [None])
+    assert markdown == "Trước\n\n# BẢO HIỂM Y TẾ"
+    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
+
+
+def test_frontmatter_assemble_heading_nguyen_van_khong_qua_groq_du_ca_hai_loi():
+    # Groq lỗi cho cả before/after -- dòng heading vẫn được chèn vì
+    # `find_title` (chạy trước, không phụ thuộc kết quả Groq) đã xác định
+    # `title_text` (mục 1.1 spec: "dòng heading vẫn luôn được chèn nếu tìm
+    # thấy, kể cả khi before/after lỗi và bị bỏ qua").
+    markdown, warnings = frontmatter.assemble("BẢO HIỂM Y TẾ", [None], [None])
     assert markdown == "# BẢO HIỂM Y TẾ"
     assert [w.code for w in warnings] == [
         "llm_frontmatter_conversion_failed",
@@ -951,35 +1027,20 @@ def test_convert_frontmatter_heading_nguyen_van_khong_qua_groq_du_llm_loi(
     ]
 
 
-def test_convert_frontmatter_tim_thay_ten_van_ban_dong_loai_van_ban_la_block_dau(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # Dòng loại văn bản là block đầu tiên -- vẫn ở lại trong `before` (không
-    # gộp vào heading, mục 1.1 spec: "block ở type_index vẫn ở lại trong
-    # before"), nên `before` không bao giờ rỗng khi tìm thấy tên văn bản.
-    calls = _sequential_llm(monkeypatch, ["**LUẬT**", "*Căn cứ Hiến pháp...*"])
-    blocks = [P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True), P("Căn cứ Hiến pháp...")]
-
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
-
-    assert len(calls) == 2
-    assert markdown == "**LUẬT**\n\n# BẢO HIỂM Y TẾ\n\n*Căn cứ Hiến pháp...*"
-    assert warnings == []
+def test_frontmatter_assemble_khong_co_title_va_loi_ca_hai_canh_bao():
+    markdown, warnings = frontmatter.assemble(None, [None], [])
+    assert markdown == ""
+    assert [w.code for w in warnings] == [
+        "llm_frontmatter_conversion_failed",
+        "frontmatter_title_not_found",
+    ]
 
 
-def test_convert_frontmatter_tim_thay_ten_van_ban_khong_co_after(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # Dòng tên văn bản là block cuối cùng (after rỗng) -- không gọi Groq cho
-    # after, chỉ gọi cho before.
-    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**"])
-    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True)]
-
-    markdown, warnings = frontmatter.convert_frontmatter(blocks)
-
-    assert len(calls) == 1
-    assert markdown == "**CHÍNH PHỦ**\n\n# BẢO HIỂM Y TẾ"
-    assert warnings == []
+def test_frontmatter_assemble_ap_dung_escape_setext_underline():
+    # Bug setext heading (mục 1.1 spec) -- markdown ghép xong phải qua
+    # `escape_setext_underline` trước khi trả về.
+    markdown, _ = frontmatter.assemble(None, ["Tên cơ quan\n-----"], [])
+    assert markdown == "Tên cơ quan\n\n-----"
 
 
 # ==========================================================================
@@ -1021,75 +1082,65 @@ def test_backmatter_split_backmatter_khong_co_bang_ky():
     assert warnings == []
 
 
-def test_convert_backmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch):
-    _forbid_llm_calls(monkeypatch)
-    markdown, warnings = backmatter.convert_backmatter([])
-    assert markdown == ""
-    assert warnings == []
+# --------------------------------------------------------------------------
+# build_prompts (mục 1.3 spec -- thuần, KHÔNG gọi Groq).
+# --------------------------------------------------------------------------
 
 
-def test_convert_backmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        llm_client, "convert_to_markdown", lambda *a, **k: "[1] Ghi chú sửa đổi."
-    )
-    markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú sửa đổi.")])
-    assert markdown == "[1] Ghi chú sửa đổi."
-    assert warnings == []
+def test_backmatter_build_prompts_rong_tra_ve_danh_sach_rong():
+    assert backmatter.build_prompts([]) == []
 
 
-def test_convert_backmatter_llm_loi_phat_canh_bao():
-    markdown, warnings = backmatter.convert_backmatter([P("[1] Ghi chú.")])
-    assert markdown == ""
-    assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
+def test_backmatter_build_prompts_co_noi_dung():
+    prompts = backmatter.build_prompts([P("[1] Ghi chú sửa đổi.")])
+    assert len(prompts) == 1
+    assert "[1] Ghi chú sửa đổi." in prompts[0]
 
 
-def test_convert_backmatter_prompt_giu_nguyen_marker_khong_bi_strip(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_backmatter_build_prompts_giu_nguyen_marker_khong_bi_strip():
     # Khác với vùng nội dung ở giữa (strip_markers), marker "[n]" ở back
     # matter là số thứ tự chú thích thật (vd. "[1] Luật Công nghiệp...") --
-    # PHẢI giữ nguyên khi gửi cho Groq (formatting_spec.md mục 1.1, "Lưu ý
-    # quan trọng").
-    captured: dict[str, str] = {}
-
-    def fake(prompt: str, *, max_retries: int | None = None) -> str:
-        captured["prompt"] = prompt
-        return "kết quả"
-
-    monkeypatch.setattr(llm_client, "convert_to_markdown", fake)
-    backmatter.convert_backmatter([P("[1] Luật Công nghiệp có hiệu lực từ...")])
-    assert "[1] Luật Công nghiệp có hiệu lực từ..." in captured["prompt"]
+    # PHẢI giữ nguyên khi dựng prompt gửi Groq (formatting_spec.md mục 1.1,
+    # "Lưu ý quan trọng").
+    prompts = backmatter.build_prompts([P("[1] Luật Công nghiệp có hiệu lực từ...")])
+    assert "[1] Luật Công nghiệp có hiệu lực từ..." in prompts[0]
 
 
-def test_convert_backmatter_nhieu_chunk_goi_llm_tung_chunk_va_noi_ket_qua(
+def test_backmatter_build_prompts_chia_nhieu_chunk_khi_vuot_gioi_han(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    # Mô phỏng ca thật (Luật bảo hiểm y tế, back matter ~11.671 token ước
-    # lượng, mục 1.2 spec) bằng `chunk_token_limit` nhỏ -- kiểm tra hành vi
-    # tách nhiều chunk và ghép kết quả theo đúng thứ tự, không phụ thuộc
-    # kích thước thật của back matter trên corpus.
     monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
-    calls = _sequential_llm(monkeypatch, ["[1] Ghi chú một.", "[2] Ghi chú hai."])
     blocks = [P("[1] Ghi chú một."), P("[2] Ghi chú hai.")]
+    prompts = backmatter.build_prompts(blocks)
+    assert len(prompts) == 2
 
-    markdown, warnings = backmatter.convert_backmatter(blocks)
 
-    assert len(calls) == 2
+# --------------------------------------------------------------------------
+# assemble (mục 1.3 spec -- thuần, KHÔNG gọi Groq).
+# --------------------------------------------------------------------------
+
+
+def test_backmatter_assemble_rong_khong_canh_bao():
+    markdown, warnings = backmatter.assemble([])
+    assert markdown == ""
+    assert warnings == []
+
+
+def test_backmatter_assemble_thanh_cong_noi_dung_dung_thu_tu():
+    markdown, warnings = backmatter.assemble(["[1] Ghi chú một.", "[2] Ghi chú hai."])
     assert markdown == "[1] Ghi chú một.\n\n[2] Ghi chú hai."
     assert warnings == []
 
 
-def test_convert_backmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setattr(llm_client, "get_chunk_token_limit", lambda: 1)
-    _sequential_llm(monkeypatch, ["[1] Ghi chú một.", None])
-    blocks = [P("[1] Ghi chú một."), P("[2] Ghi chú hai.")]
-
-    markdown, warnings = backmatter.convert_backmatter(blocks)
-
+def test_backmatter_assemble_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang():
+    markdown, warnings = backmatter.assemble(["[1] Ghi chú một.", None])
     assert markdown == ""
     assert [w.code for w in warnings] == ["llm_backmatter_conversion_failed"]
+
+
+def test_backmatter_assemble_ap_dung_escape_setext_underline():
+    markdown, _ = backmatter.assemble(["Tên cơ quan\n-----"])
+    assert markdown == "Tên cơ quan\n\n-----"
 
 
 # ==========================================================================
@@ -1126,17 +1177,47 @@ def test_client_groq_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
         llm_client._client.cache_clear()
 
 
-def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_client_2_groq_dung_key_2_tu_settings(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "fake-key-1")
+    monkeypatch.setenv("GROQ_API_KEY_2", "fake-key-2-rieng")
+    captured: dict[str, object] = {}
+
+    class FakeGroq:
+        def __init__(self, *, api_key: str, timeout: float, max_retries: int) -> None:
+            captured["api_key"] = api_key
+            captured["timeout"] = timeout
+            captured["max_retries"] = max_retries
+
+    monkeypatch.setattr(llm_client, "Groq", FakeGroq)
+    llm_client._client_2.cache_clear()
+    try:
+        llm_client._client_2()
+        assert captured["api_key"] == "fake-key-2-rieng"
+        assert captured["timeout"] == 30.0
+        assert captured["max_retries"] == 0
+    finally:
+        llm_client._client_2.cache_clear()
+
+
+# --------------------------------------------------------------------------
+# _convert_one -- gọi/retry/rate-limit 1 chunk (mục 5 spec, logic không đổi
+# so với bản `convert_to_markdown` cũ -- chỉ đổi tên + nhận `client`/
+# `rate_limiter` tường minh qua tham số thay vì tự đọc singleton bên trong,
+# để mỗi thread worker (mục 1.3 spec) truyền vào cặp riêng của chính nó).
+# --------------------------------------------------------------------------
+
+
+def test_convert_one_thanh_cong_goi_dung_tham_so(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "  Kết quả markdown  "
     )
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt nội dung")
+    result = llm_client._convert_one(
+        fake_client, "prompt nội dung", limiter, max_retries=2
+    )
 
     assert result == "Kết quả markdown"
     kwargs = fake_client.chat.completions.create.call_args.kwargs
@@ -1144,38 +1225,34 @@ def test_convert_to_markdown_thanh_cong_goi_dung_tham_so(
     assert kwargs["messages"] == [{"role": "user", "content": "prompt nội dung"}]
 
 
-def test_convert_to_markdown_loi_roi_thu_lai_thanh_cong(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_convert_one_loi_roi_thu_lai_thanh_cong(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = [
         RuntimeError("lỗi mạng giả lập"),
         _fake_groq_response("Kết quả sau khi thử lại"),
     ]
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+    result = llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
 
     assert result == "Kết quả sau khi thử lại"
     assert fake_client.chat.completions.create.call_count == 2
 
 
-def test_convert_to_markdown_het_so_lan_thu_tra_ve_none(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_convert_one_het_so_lan_thu_tra_ve_none(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+    result = llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
 
     assert result is None
-    assert fake_client.chat.completions.create.call_count == 2  # max_retries mặc định
+    assert fake_client.chat.completions.create.call_count == 2
 
 
-def test_convert_to_markdown_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
+def test_convert_one_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
@@ -1184,45 +1261,47 @@ def test_convert_to_markdown_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
         _fake_groq_response(""),
         _fake_groq_response("Nội dung thật"),
     ]
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+    result = llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
 
     assert result == "Nội dung thật"
     assert fake_client.chat.completions.create.call_count == 2
 
 
-def test_convert_to_markdown_max_retries_ghi_de_settings(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_convert_one_max_retries_duoc_ton_trong(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt", max_retries=1)
+    result = llm_client._convert_one(fake_client, "prompt", limiter, max_retries=1)
 
     assert result is None
     assert fake_client.chat.completions.create.call_count == 1
 
 
-def test_convert_to_markdown_thieu_groq_api_key_tra_ve_none_khong_raise(
+def test_convert_one_thieu_groq_api_key_tra_ve_none_khong_raise(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()`
-    raise `ValidationError`, `convert_to_markdown` phải bắt và trả `None`,
-    không để lộ exception (mục 5, 7 spec: lỗi Groq không bao giờ chặn
-    pipeline)."""
+    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()` raise
+    `ValidationError` khi đọc `model_name`, `_convert_one` phải bắt và trả
+    `None`, không để lộ exception, không gọi `client` (mục 5, 7 spec: lỗi
+    Groq không bao giờ chặn pipeline)."""
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
+    fake_client = Mock()
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    result = _REAL_CONVERT_TO_MARKDOWN("prompt")
+    result = llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
+
     assert result is None
+    fake_client.chat.completions.create.assert_not_called()
 
 
-def test_convert_to_markdown_cap_nhat_rate_limiter_bang_usage_that(
+def test_convert_one_cap_nhat_rate_limiter_bang_usage_that(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Sau khi gọi thành công, rate limiter phải được cập nhật bằng
@@ -1233,15 +1312,14 @@ def test_convert_to_markdown_cap_nhat_rate_limiter_bang_usage_that(
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "kết quả", total_tokens=4242
     )
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    _REAL_CONVERT_TO_MARKDOWN("prompt")
+    llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
 
-    limiter = llm_client._rate_limiter(8000, 30)
     assert [tokens for _, tokens in limiter._entries] == [4242]
 
 
-def test_convert_to_markdown_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
+def test_convert_one_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
@@ -1249,11 +1327,10 @@ def test_convert_to_markdown_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "kết quả", total_tokens=None
     )
-    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+    limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
 
-    _REAL_CONVERT_TO_MARKDOWN("prompt")
+    llm_client._convert_one(fake_client, "prompt", limiter, max_retries=2)
 
-    limiter = llm_client._rate_limiter(8000, 30)
     assert len(limiter._entries) == 1
 
 
@@ -1357,6 +1434,119 @@ def test_rate_limiter_don_entry_het_han_khoi_cua_so(monkeypatch: pytest.MonkeyPa
 
 
 # ==========================================================================
+# llm_client.py -- convert_chunks_concurrently (formatting_spec.md mục 1.3
+# -- dispatch động 2 API key Groq). Gọi qua `_REAL_CONVERT_CHUNKS_CONCURRENTLY`
+# (tham chiếu hàm THẬT) để không bị `_default_llm_stub` (autouse) che mất.
+# ==========================================================================
+
+
+def test_convert_chunks_concurrently_rong_tra_ve_rong():
+    assert _REAL_CONVERT_CHUNKS_CONCURRENTLY([]) == []
+
+
+def test_convert_chunks_concurrently_thieu_settings_tra_ve_none_het(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+    assert _REAL_CONVERT_CHUNKS_CONCURRENTLY(["p1", "p2"]) == [None, None]
+
+
+def test_convert_chunks_concurrently_khong_co_key2_chay_tuan_tu_khong_spawn_thread(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "only-key-1")
+    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+
+    fake_client = Mock()
+    fake_client.chat.completions.create.return_value = _fake_groq_response("OK")
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client)
+
+    def _client_2_khong_duoc_goi():
+        raise AssertionError("_client_2 không được gọi khi thiếu GROQ_API_KEY_2")
+
+    monkeypatch.setattr(llm_client, "_client_2", _client_2_khong_duoc_goi)
+
+    def _khong_duoc_spawn_thread(*args, **kwargs):
+        raise AssertionError(
+            "threading.Thread không được spawn khi chỉ có 1 key (mục 1.3 spec)"
+        )
+
+    monkeypatch.setattr(llm_client.threading, "Thread", _khong_duoc_spawn_thread)
+
+    results = _REAL_CONVERT_CHUNKS_CONCURRENTLY(["p1", "p2", "p3"])
+
+    assert results == ["OK", "OK", "OK"]
+    assert fake_client.chat.completions.create.call_count == 3
+
+
+def test_convert_chunks_concurrently_co_key2_dung_ca_hai_client(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
+
+    fake_client_1 = Mock()
+    fake_client_1.chat.completions.create.return_value = _fake_groq_response("KQ-1")
+    fake_client_2 = Mock()
+    fake_client_2.chat.completions.create.return_value = _fake_groq_response("KQ-2")
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client_1)
+    monkeypatch.setattr(llm_client, "_client_2", lambda: fake_client_2)
+
+    results = _REAL_CONVERT_CHUNKS_CONCURRENTLY(["p1", "p2", "p3", "p4"])
+
+    assert len(results) == 4
+    assert all(result in ("KQ-1", "KQ-2") for result in results)
+    total_calls = (
+        fake_client_1.chat.completions.create.call_count
+        + fake_client_2.chat.completions.create.call_count
+    )
+    assert total_calls == 4
+    # Cả 2 worker phải thực sự được dùng (mục 7 spec: "xác nhận cả 2 key đều
+    # thực sự được dùng") -- không phải chỉ 1 client xử lý hết do race.
+    assert fake_client_1.chat.completions.create.call_count >= 1
+    assert fake_client_2.chat.completions.create.call_count >= 1
+
+
+def test_convert_chunks_concurrently_giu_dung_thu_tu_goc_du_hoan_thanh_khac_thu_tu(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Job ở chỉ số 0 cố tình xử lý CHẬM hơn (sleep) các job còn lại -- dù nó
+    hoàn thành SAU CÙNG, kết quả cuối cùng vẫn phải nằm đúng vị trí gốc (chỉ
+    số 0), không bị đẩy ra sau theo thứ tự hoàn thành (mục 1.3 spec: "đúng
+    thứ tự gốc -- đánh số theo chỉ số, không theo thứ tự hoàn thành")."""
+    monkeypatch.setenv("GROQ_API_KEY", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
+
+    prompts = ["prompt-cham-SLOW", "prompt-nhanh-1", "prompt-nhanh-2", "prompt-nhanh-3"]
+
+    def _make_side_effect():
+        def _side_effect(*, model: str, messages: list[dict[str, str]]):
+            prompt = messages[0]["content"]
+            if "SLOW" in prompt:
+                time.sleep(0.15)
+            return _fake_groq_response(f"KQ::{prompt}")
+
+        return _side_effect
+
+    fake_client_1 = Mock()
+    fake_client_1.chat.completions.create.side_effect = _make_side_effect()
+    fake_client_2 = Mock()
+    fake_client_2.chat.completions.create.side_effect = _make_side_effect()
+    monkeypatch.setattr(llm_client, "_client", lambda: fake_client_1)
+    monkeypatch.setattr(llm_client, "_client_2", lambda: fake_client_2)
+
+    results = _REAL_CONVERT_CHUNKS_CONCURRENTLY(prompts)
+
+    assert results == [f"KQ::{prompt}" for prompt in prompts]
+
+
+# ==========================================================================
 # pipeline.py -- _compose_markdown (ghép 3 phần)
 # ==========================================================================
 
@@ -1406,7 +1596,9 @@ def _build_docx(path: Path, items: list[tuple[str, object]]) -> None:
 def test_convert_docx_to_markdown_ghep_du_front_middle_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "[1] Ghi chú sửa đổi."])
+    captured = _stub_convert_chunks_concurrently(
+        monkeypatch, ["**CHÍNH PHỦ**", "[1] Ghi chú sửa đổi."]
+    )
     docx_path = tmp_path / "full.docx"
     _build_docx(
         docx_path,
@@ -1430,6 +1622,7 @@ def test_convert_docx_to_markdown_ghep_du_front_middle_back(
         "[1] Ghi chú sửa đổi.\n"
     )
     assert "TM. THỦ TƯỚNG" not in result.markdown
+    assert len(captured) == 2  # 1 chunk front (before) + 1 chunk back matter
     codes = {w.code for w in result.warnings}
     assert "dropped_noi_nhan_table" in codes
     assert "llm_frontmatter_conversion_failed" not in codes
@@ -1439,7 +1632,7 @@ def test_convert_docx_to_markdown_ghep_du_front_middle_back(
 def test_convert_docx_to_markdown_khong_co_back_matter_khong_goi_llm_hai_lan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    calls = _sequential_llm(monkeypatch, ["FRONT_MD"])
+    captured = _stub_convert_chunks_concurrently(monkeypatch, ["FRONT_MD"])
     docx_path = tmp_path / "no_back.docx"
     _build_docx(
         docx_path,
@@ -1455,7 +1648,7 @@ def test_convert_docx_to_markdown_khong_co_back_matter_khong_goi_llm_hai_lan(
     assert result.markdown == (
         "FRONT_MD\n\n#### Điều 1. Phạm vi điều chỉnh\n\n##### Khoản 1\n\nNội dung khoản một.\n"
     )
-    assert len(calls) == 1  # chỉ front matter gọi Groq
+    assert len(captured) == 1  # chỉ 1 prompt front matter, không có back matter
     codes = {w.code for w in result.warnings}
     assert "llm_backmatter_conversion_failed" not in codes
     assert "dropped_noi_nhan_table" not in codes
@@ -1464,7 +1657,7 @@ def test_convert_docx_to_markdown_khong_co_back_matter_khong_goi_llm_hai_lan(
 def test_convert_docx_to_markdown_llm_loi_bo_qua_front_matter_khong_fail(
     tmp_path: Path,
 ):
-    # Fixture `_default_llm_stub` đã trả None mặc định (Groq "lỗi").
+    # Fixture `_default_llm_stub` đã trả None cho mọi prompt mặc định.
     docx_path = tmp_path / "front_fail.docx"
     _build_docx(
         docx_path,
@@ -1487,7 +1680,7 @@ def test_convert_docx_to_markdown_llm_loi_bo_qua_front_matter_khong_fail(
 def test_convert_docx_to_markdown_llm_loi_bo_qua_back_matter_khong_fail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    _sequential_llm(monkeypatch, ["FRONT_MD", None])
+    _stub_convert_chunks_concurrently(monkeypatch, ["FRONT_MD", None])
     docx_path = tmp_path / "back_fail.docx"
     _build_docx(
         docx_path,
@@ -1533,6 +1726,36 @@ def test_convert_docx_to_markdown_khong_co_front_matter_khong_goi_llm(
     assert result.warnings == []
 
 
+def test_convert_docx_to_markdown_goi_convert_chunks_concurrently_dung_1_lan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Mục 1.3 spec: `pipeline.py` gộp toàn bộ job front/back matter của 1
+    file thành 1 lệnh gọi `convert_chunks_concurrently` DUY NHẤT."""
+    call_count = 0
+
+    def fake(prompts: list[str]) -> list[str | None]:
+        nonlocal call_count
+        call_count += 1
+        return [None] * len(prompts)
+
+    monkeypatch.setattr(llm_client, "convert_chunks_concurrently", fake)
+    docx_path = tmp_path / "single_call.docx"
+    _build_docx(
+        docx_path,
+        [
+            ("p_bold", "CHÍNH PHỦ"),
+            ("p", "Điều 1. Phạm vi điều chỉnh"),
+            ("p", "1. Nội dung khoản một."),
+            ("table", [["TM. THỦ TƯỚNG"], ["Nguyễn Văn A"]]),
+            ("p", "[1] Ghi chú sửa đổi."),
+        ],
+    )
+
+    convert_docx_to_markdown(docx_path)
+
+    assert call_count == 1
+
+
 def test_convert_docx_to_markdown_file_rong_bao_loi_ro_rang(tmp_path: Path):
     docx_path = tmp_path / "rong.docx"
     Document().save(docx_path)
@@ -1544,7 +1767,11 @@ def test_convert_docx_to_markdown_file_rong_bao_loi_ro_rang(tmp_path: Path):
 def test_convert_docx_to_markdown_deterministic_khi_llm_on_dinh(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(llm_client, "convert_to_markdown", lambda *a, **k: "FRONT_MD")
+    monkeypatch.setattr(
+        llm_client,
+        "convert_chunks_concurrently",
+        lambda prompts: ["FRONT_MD"] * len(prompts),
+    )
     docx_path = tmp_path / "det.docx"
     _build_docx(
         docx_path,
