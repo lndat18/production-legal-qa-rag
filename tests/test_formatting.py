@@ -1488,13 +1488,31 @@ def test_convert_chunks_concurrently_khong_co_key2_chay_tuan_tu_khong_spawn_thre
 def test_convert_chunks_concurrently_co_key2_dung_ca_hai_client(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    # Dispatch là ĐỘNG (worker nào rảnh trước lấy job tiếp theo trong hàng
+    # đợi dùng chung, không phải round-robin cố định -- xem
+    # `llm_client.convert_chunks_concurrently` docstring). Với mock trả kết
+    # quả tức thì (không sleep), 1 thread có thể rút hết cả 4 job khỏi hàng
+    # đợi trước khi thread kia kịp được hệ điều hành lên lịch chạy -- ĐÚNG
+    # THIẾT KẾ, không phải bug (xem báo cáo bàn giao tester khi xác nhận
+    # test này flaky ~80% cả trên `main`, không liên quan diff chunking).
+    # Thêm 1 khoảng sleep nhỏ (giả lập độ trễ gọi API thật) để cả 2 thread
+    # chắc chắn đã start và mỗi thread rút được >= 1 job trước khi job đầu
+    # tiên của bất kỳ thread nào xử lý xong -- làm test deterministic mà
+    # không cần sửa `llm_client.py` (thiết kế dispatch động vẫn giữ nguyên).
     monkeypatch.setenv("GROQ_API_KEY", "key-1")
     monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
 
+    def _slow_response(content: str):
+        def _side_effect(*_args, **_kwargs):
+            time.sleep(0.05)
+            return _fake_groq_response(content)
+
+        return _side_effect
+
     fake_client_1 = Mock()
-    fake_client_1.chat.completions.create.return_value = _fake_groq_response("KQ-1")
+    fake_client_1.chat.completions.create.side_effect = _slow_response("KQ-1")
     fake_client_2 = Mock()
-    fake_client_2.chat.completions.create.return_value = _fake_groq_response("KQ-2")
+    fake_client_2.chat.completions.create.side_effect = _slow_response("KQ-2")
     monkeypatch.setattr(llm_client, "_client", lambda: fake_client_1)
     monkeypatch.setattr(llm_client, "_client_2", lambda: fake_client_2)
 
