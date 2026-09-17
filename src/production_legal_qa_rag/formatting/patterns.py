@@ -159,6 +159,20 @@ def is_structural(text: str) -> bool:
     )
 
 
+# --- Dòng loại văn bản trong front matter (formatting_spec.md mục 1.1) ----
+
+# Khớp TRỌN DÒNG danh sách tên loại văn bản đơn thuần (không kèm tên riêng),
+# vd. dòng "NGHỊ ĐỊNH" đứng một mình trước dòng tên đầy đủ văn bản. Dùng bởi
+# `frontmatter.find_title` để định vị dòng loại văn bản -- block tên văn bản
+# là block paragraph ngay sau đó (không cần điều kiện bold/viết hoa riêng,
+# đã verify trên corpus thật -- 2/6 file có dòng tên không bold).
+RE_DOC_TYPE_ONLY = re.compile(
+    r"^(?:THÔNG\s+TƯ\s+LIÊN\s+TỊCH|THÔNG\s+TƯ|NGHỊ\s+ĐỊNH|NGHỊ\s+QUYẾT"
+    r"|BỘ\s+LUẬT|QUYẾT\s+ĐỊNH|PHÁP\s+LỆNH|CHỈ\s+THỊ|LUẬT)$",
+    re.IGNORECASE,
+)
+
+
 def sort_key(number: str) -> tuple[int, str]:
     """Khóa so sánh số hiệu dạng "48a".
 

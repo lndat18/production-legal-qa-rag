@@ -34,6 +34,7 @@ QcWarningCode = Literal[
     "orphan_footnote",
     "llm_frontmatter_conversion_failed",
     "llm_backmatter_conversion_failed",
+    "frontmatter_title_not_found",
 ]
 
 
