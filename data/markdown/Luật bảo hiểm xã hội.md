@@ -1,15 +1,12 @@
-VĂN PHÒNG QUỐC HỘI  
---------  
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
-Độc lập - Tự do - Hạnh phúc  
----------------  
+VĂN PHÒNG QUỐC HỘI
 
-Số: 19/VBHN‑VPQH  
-Hà Nội, ngày 12 tháng 02 năm 2026  
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
 
-**LUẬT**  
+Số: 19/VBHN‑VPQH
+Hà Nội, ngày 12 tháng 02 năm 2026
 
-**BẢO HIỂM XÃ HỘI**  
+# **LUẬT BẢO HIỂM XÃ HỘI**
 
 Luật Bảo hiểm xã hội số 41/2024/QH15 ngày 29 tháng 6 năm 2024 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2025, được sửa đổi, bổ sung bởi:
 
