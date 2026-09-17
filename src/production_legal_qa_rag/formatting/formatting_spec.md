@@ -109,38 +109,50 @@ có, không đổi:**
 
   **Heuristic xác định block tên văn bản** (hàm mới `frontmatter.find_title`,
   chạy trên các block front matter đã cắt biên bởi `find_boundary`, mục
-  trên) — quét theo thứ tự block, tìm block **cuối cùng** thỏa đồng thời:
-  - `kind == "paragraph"` và `is_bold` (tín hiệu có sẵn từ `docx_reader.py`).
-  - Toàn bộ ký tự chữ cái trong text đều viết hoa — hàm mới
-    `patterns.is_uppercase_title(text)`, chỉ đếm ký tự chữ cái (bỏ qua số/
-    dấu câu/khoảng trắng), yêu cầu ≥ 2 ký tự chữ cái. Cùng ý tưởng với
-    `_is_uppercase_title` đã validate trên corpus thật ở `loader.py` cũ
-    (git history, xem đầu mục 1) — **không phải cùng cách dùng**: bản cũ
-    dùng nó để nhận diện heading cấu trúc thân văn bản, bản này chỉ dùng
-    trong front matter để tìm dòng tên văn bản.
-  - **Không khớp** regex mới `patterns.RE_DOC_TYPE_ONLY` — khớp **trọn
-    dòng** danh sách tên loại văn bản đơn thuần: "LUẬT", "BỘ LUẬT", "NGHỊ
-    ĐỊNH", "NGHỊ QUYẾT", "THÔNG TƯ", "THÔNG TƯ LIÊN TỊCH", "QUYẾT ĐỊNH",
-    "PHÁP LỆNH", "CHỈ THỊ" — để dòng loại văn bản đứng riêng (vd. dòng
-    "NGHỊ ĐỊNH" một mình) không bị nhận nhầm thành tên văn bản.
+  trên) — **dựa trên cấu trúc thật đã kiểm tra trên toàn bộ 6 file
+  `data/raw/*.docx`**, không phải suy đoán: ngay sau bảng quốc hiệu (block
+  đầu tiên), mọi văn bản trong corpus đều có đúng 1 block riêng là **dòng
+  loại văn bản** (`"LUẬT"`, `"BỘ LUẬT"`, `"NGHỊ ĐỊNH"`...), và **ngay sau
+  đó** là 1 block riêng khác là **tên/nội dung chính**. Hai block này
+  **luôn tách biệt** (không bao giờ gộp sẵn 1 dòng trong DOCX gốc), và
+  block tên/nội dung chính **không phải lúc nào cũng in đậm** — 2/6 file
+  (dạng Nghị định) có block này hoàn toàn không bold. Vì vậy heuristic
+  **không dựa vào bold/viết hoa của chính dòng tên văn bản** (điều kiện đó
+  loại sai 2/6 file nếu áp dụng) — chỉ dựa vào việc định vị được dòng loại
+  văn bản, dùng regex mới `patterns.RE_DOC_TYPE_ONLY` (khớp **trọn dòng**,
+  danh sách hữu hạn: "LUẬT", "BỘ LUẬT", "NGHỊ ĐỊNH", "NGHỊ QUYẾT", "THÔNG
+  TƯ", "THÔNG TƯ LIÊN TỊCH", "QUYẾT ĐỊNH", "PHÁP LỆNH", "CHỈ THỊ"):
 
-  Quét dừng lại (không xét tiếp) tại block đầu tiên không còn thỏa 2 điều
-  kiện đầu (không bold hoặc không toàn chữ hoa) — đó là biên giữa vùng
-  "tiêu đề" (quốc hiệu, loại văn bản, tên văn bản) và nội dung dẫn nhập kế
-  tiếp (đoạn giải thích, danh sách luật sửa đổi, dòng "Căn cứ..."). Trong
-  phạm vi trước biên đó, lấy block cuối cùng thỏa cả 3 điều kiện. Hai dạng
-  đã quan sát trên corpus:
-  - Nghị định/Thông tư: dòng loại văn bản đứng riêng (`"NGHỊ ĐỊNH"` — bold,
-    hoa, khớp `RE_DOC_TYPE_ONLY` → **bỏ qua**), theo sau là dòng tên đầy đủ
-    (`"QUY ĐỊNH MỨC LƯƠNG TỐI THIỂU..."` — bold, hoa, không khớp → **chọn**).
-  - Văn bản hợp nhất (Bộ luật, Luật): loại + tên gộp làm 1 dòng, không có
-    dòng loại văn bản riêng phía trước (`"BỘ LUẬT LAO ĐỘNG"` — bold, hoa,
-    không khớp `RE_DOC_TYPE_ONLY` vì có thêm "LAO ĐỘNG" → **chọn luôn dòng
-    này**).
+  1. Tìm block **đầu tiên** (`kind == "paragraph"`) trong vùng front matter
+     khớp `RE_DOC_TYPE_ONLY` → `type_index`.
+  2. Nếu tìm thấy và `blocks[type_index + 1]` tồn tại, `kind == "paragraph"`,
+     text khác rỗng → đó là block tên văn bản, `find_title` trả về chỉ số
+     `type_index + 1`.
+  3. Nếu không tìm thấy `type_index`, hoặc không có block hợp lệ ngay sau
+     nó → trả `None`.
 
-  **Không tìm thấy block nào thỏa** (văn bản không theo 2 mẫu trên) →
-  không tạo heading, toàn bộ front matter render nguyên khối qua Groq như
-  văn bản thường (hành vi như bản trước 2026-09-17), phát `QcWarning` mới
+  **Xác nhận theo yêu cầu người dùng (2026-09-17)**: heading `#` chỉ chứa
+  **tên/nội dung chính**, **không kèm tiền tố loại văn bản** — block ở
+  `type_index` (`"LUẬT"`/`"BỘ LUẬT"`/`"NGHỊ ĐỊNH"`...) vẫn ở lại trong
+  `before` (render qua Groq như văn bản thường, giữ bold), không gộp vào
+  heading. Áp dụng **đồng nhất** cho mọi loại văn bản — không có nhánh xử
+  lý riêng giữa Luật/Bộ luật và Nghị định/Thông tư. Đã verify trên toàn bộ
+  6 file thật:
+  - `Luật bảo hiểm xã hội.docx`, `Luật bảo hiểm y tế.docx`, `Luật thuế thu
+    nhập cá nhân.docx`: `type_index` là block `"LUẬT"` → heading tương ứng
+    `# BẢO HIỂM XÃ HỘI`, `# BẢO HIỂM Y TẾ`, `# THUẾ THU NHẬP CÁ NHÂN`.
+  - `Văn bản hợp nhất bộ luật lao động.docx`: `type_index` là block
+    `"BỘ LUẬT"` → heading `# LAO ĐỘNG`.
+  - `Quy định mức lương tối thiểu.docx`, `Điều kiện lao động và quan hệ lao
+    động.docx`: `type_index` là block `"NGHỊ ĐỊNH"` → heading tương ứng
+    `# QUY ĐỊNH MỨC LƯƠNG TỐI THIỂU ĐỐI VỚI NGƯỜI LAO ĐỘNG LÀM VIỆC THEO HỢP
+    ĐỒNG LAO ĐỘNG` (khớp nguyên ví dụ mục 2), `# QUY ĐỊNH CHI TIẾT VÀ HƯỚNG
+    DẪN THI HÀNH MỘT SỐ ĐIỀU CỦA BỘ LUẬT LAO ĐỘNG...`.
+
+  **Không tìm thấy** (không có block nào khớp `RE_DOC_TYPE_ONLY` trong
+  front matter, hoặc không có block hợp lệ ngay sau nó) → không tạo
+  heading, toàn bộ front matter render nguyên khối qua Groq như văn bản
+  thường (hành vi như bản trước 2026-09-17), phát `QcWarning` mới
   `frontmatter_title_not_found` (không fail file).
 
   **Ghép output front matter khi tìm thấy tên văn bản**: `frontmatter.py`
@@ -443,10 +455,10 @@ tools/format_documents.py (Typer CLI)
 
 | Module             | Trách nhiệm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patterns.py`    | Regex nhận diện cấu trúc thân văn bản (Phần/Chương/Mục/Điều/Khoản/Điểm) +`sort_key()` cho số hiệu có hậu tố chữ. Dùng để xác định **biên** front matter (mục 1.1). **Giữ nguyên** regex/hàm strip marker `[n]` khỏi text — vẫn cần chạy trên mọi block thuộc vùng nội dung ở giữa **trước khi** áp regex heading, xem "Lưu ý quan trọng" ở mục 1.1. **[Mới]** `RE_DOC_TYPE_ONLY` (regex khớp trọn dòng cho danh sách tên loại văn bản: LUẬT, BỘ LUẬT, NGHỊ ĐỊNH, NGHỊ QUYẾT, THÔNG TƯ, THÔNG TƯ LIÊN TỊCH, QUYẾT ĐỊNH, PHÁP LỆNH, CHỈ THỊ) và `is_uppercase_title(text)` (đếm ký tự chữ cái, kiểm tra toàn chữ hoa) — dùng bởi `frontmatter.find_title` (mục 1.1) để xác định dòng tên văn bản.                                                                                                                                                                                                                                                                                                                                                                                               |
+| `patterns.py`    | Regex nhận diện cấu trúc thân văn bản (Phần/Chương/Mục/Điều/Khoản/Điểm) +`sort_key()` cho số hiệu có hậu tố chữ. Dùng để xác định **biên** front matter (mục 1.1). **Giữ nguyên** regex/hàm strip marker `[n]` khỏi text — vẫn cần chạy trên mọi block thuộc vùng nội dung ở giữa **trước khi** áp regex heading, xem "Lưu ý quan trọng" ở mục 1.1. **[Mới]** `RE_DOC_TYPE_ONLY` (regex khớp trọn dòng cho danh sách tên loại văn bản: LUẬT, BỘ LUẬT, NGHỊ ĐỊNH, NGHỊ QUYẾT, THÔNG TƯ, THÔNG TƯ LIÊN TỊCH, QUYẾT ĐỊNH, PHÁP LỆNH, CHỈ THỊ) — dùng bởi `frontmatter.find_title` (mục 1.1) để định vị dòng loại văn bản; block tên văn bản là block paragraph ngay sau đó, không cần điều kiện bold/viết hoa riêng (đã verify trên corpus thật — 2/6 file có dòng tên không bold).                                                                                                                                                                                                                                                                                                                                                                                               |
 | `docx_reader.py` | Đọc`.docx` bằng `python-docx`, trích xuất `Block` (paragraph/table) theo đúng thứ tự xuất hiện, giữ style/bold/nghiêng làm tín hiệu phụ — dùng cho cả heading mapping (mục 3) lẫn serialize block cho Groq (mục 1.1). **[Mới]** Thêm `chunk_blocks_for_llm(blocks, token_limit) -> list[list[Block]]` — dồn block tuần tự thành chunk theo heuristic ước lượng token mục 1.2, ranh giới luôn trùng ranh giới block.                                                                                                                                                                                                                                                                                                                                                     |
 | `tables.py`      | Nhận diện loại bảng theo nội dung cho**phần nội dung ở giữa** (đính kèm, bảng dữ liệu) và render bảng dữ liệu sang markdown/HTML — không đổi. Riêng phân loại bảng **chữ ký** vẫn giữ, dùng để xác định biên back matter (mục 1.1); **bỏ** phân loại "quốc hiệu" — bảng đó giờ nằm trong vùng front matter, Groq xử lý nguyên khối cùng các block khác, không cần tables.py can thiệp riêng.                                                                                                                                                                                                                                                                                                                                                 |
-| `frontmatter.py` | Xác định biên front matter (block trước heading đầu tiên, dùng`patterns.py`). **[Mới]** `find_title(blocks)` — xác định deterministic block tên văn bản (heuristic bold + toàn chữ hoa + không khớp `RE_DOC_TYPE_ONLY`, mục 1.1); nếu tìm thấy, cắt `blocks` thành `before`/tên văn bản/`after`, convert `before` và `after` **độc lập** qua chunk (`docx_reader.chunk_blocks_for_llm`) + Groq (`llm_client.convert_to_markdown()`, giữ tín hiệu bold/nghiêng khi serialize) rồi chèn `# <nguyên văn>` xen giữa; nếu không tìm thấy → convert nguyên khối `blocks` như cũ, phát `QcWarning` (`frontmatter_title_not_found`). Bất kỳ chunk Groq nào lỗi → bỏ qua toàn bộ phần front matter tương ứng (`before` hoặc `after`), phát `QcWarning` (`llm_frontmatter_conversion_failed`) — không ảnh hưởng dòng heading đã chèn. Không còn schema/field nào (đã bỏ `FrontMatter`, `extract_quoc_hieu`, `_find_ten_van_ban`, `_find_loai_van_ban`, `_find_ngay_hieu_luc`) — `find_title` không phải phục hồi các hàm này, chỉ tìm 1 dòng heading bằng heuristic style/vị trí khác hẳn.                                                                                                                                          |
+| `frontmatter.py` | Xác định biên front matter (block trước heading đầu tiên, dùng`patterns.py`). **[Mới]** `find_title(blocks)` — xác định deterministic block tên văn bản: tìm block khớp `RE_DOC_TYPE_ONLY` (dòng loại văn bản) rồi lấy block paragraph ngay sau đó, không cần bold/viết hoa (mục 1.1); nếu tìm thấy, cắt `blocks` thành `before` (gồm cả dòng loại văn bản)/tên văn bản/`after`, convert `before` và `after` **độc lập** qua chunk (`docx_reader.chunk_blocks_for_llm`) + Groq (`llm_client.convert_to_markdown()`, giữ tín hiệu bold/nghiêng khi serialize) rồi chèn `# <nguyên văn>` xen giữa; nếu không tìm thấy → convert nguyên khối `blocks` như cũ, phát `QcWarning` (`frontmatter_title_not_found`). Bất kỳ chunk Groq nào lỗi → bỏ qua toàn bộ phần front matter tương ứng (`before` hoặc `after`), phát `QcWarning` (`llm_frontmatter_conversion_failed`) — không ảnh hưởng dòng heading đã chèn. Không còn schema/field nào (đã bỏ `FrontMatter`, `extract_quoc_hieu`, `_find_ten_van_ban`, `_find_loai_van_ban`, `_find_ngay_hieu_luc`) — `find_title` không phải phục hồi các hàm này, chỉ tìm 1 dòng heading bằng vị trí tương đối so với dòng loại văn bản.                                                                                                                                          |
 | `backmatter.py`  | **[Đổi tên từ `footnotes.py`, thiết kế lại]** Xác định biên back matter (block sau bảng chữ ký cuối cùng, dùng `tables.py`); nếu không còn block nào → không có back matter, dừng, không gọi Groq. Nếu có → chia chunk, gọi `llm_client.convert_to_markdown()` cho từng chunk, nối kết quả theo thứ tự (mục 1.2), trả về text markdown để `pipeline.py` append vào cuối output (ngăn cách `---`, mục 2). Không còn khớp marker `[n]` hay khôi phục inline vào Khoản/Điều — các hàm cũ (`find_region_start`, `parse_region`, `strip_markers`, `strip_all`, `render_blockquote`) đã xoá. Bất kỳ chunk nào lỗi → bỏ qua toàn bộ back matter, phát `QcWarning` (`llm_backmatter_conversion_failed`).                     |
 | `llm_client.py`  | Client gọi Groq API bằng SDK`groq`. Hàm `convert_to_markdown(prompt: str, *, max_retries) -> str \| None` — text generation thuần, không structured output; trả `None` khi hết `max_retries` lần thử hoặc quá `timeout_seconds` (không raise ra ngoài, caller tự quyết bỏ qua phần tương ứng). Đọc `model_name`/`max_retries`/`timeout_seconds`/`groq_api_key` từ `LLMSettings` (`config.py`, mục 4). **[Mới]** Sở hữu **sliding-window rate limiter** (mục 1.2): trước mỗi lệnh gọi, ước lượng token của `prompt` (`len(prompt) // 2.5`), chờ (`time.sleep`) nếu vượt `TPM_SAFE_LIMIT`/`RPM_SAFE_LIMIT`; sau khi gọi thành công, đọc `response.usage.total_tokens` để cập nhật state tracker (thay cho số ước lượng). |
 | `emitter.py`     | Duyệt`Block` theo thứ tự **trong vùng nội dung ở giữa**, strip marker `[n]` khỏi text (dùng hàm ở `patterns.py`, giữ nguyên hành vi cũ), áp heading mapping ở mục 3, sinh markdown thân văn bản. Không còn bước chèn inline **nội dung** chú thích vào giữa thân văn bản (khác với việc strip marker, vẫn giữ).                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -471,11 +483,14 @@ coding-convention) chỉ là Typer CLI mỏng gọi `pipeline.convert_directory(
   deterministic từ text gốc, không qua Groq — phải byte-for-byte giống hệt
   giữa các lần chạy.
 - Dòng heading `#` tên văn bản phải khớp **nguyên văn** đoạn text gốc trong
-  DOCX (không bị Groq diễn đạt lại, vì không qua Groq — mục 1.1) — kiểm tra
-  thủ công trên 6 file khi implement, đặc biệt 2 ca ranh giới đã biết: loại
-  + tên văn bản tách 2 dòng riêng (Nghị định, Thông tư — dòng loại văn bản
-  không lẫn vào heading) và loại + tên gộp 1 dòng (văn bản hợp nhất, Luật,
-  Bộ luật — không có dòng loại văn bản riêng phía trước).
+  DOCX (không bị Groq diễn đạt lại, vì không qua Groq — mục 1.1), và
+  **không kèm tiền tố loại văn bản** (dòng "LUẬT"/"BỘ LUẬT"/"NGHỊ ĐỊNH"...
+  vẫn ở lại phần văn bản thường phía trước, không lẫn vào heading) — kiểm
+  tra thủ công trên toàn bộ 6 file khi implement, đối chiếu đúng kết quả đã
+  verify trong mục 1.1 (`# BẢO HIỂM XÃ HỘI`, `# LAO ĐỘNG`,
+  `# QUY ĐỊNH MỨC LƯƠNG TỐI THIỂU...`, v.v.) — không phân biệt nhánh xử lý
+  giữa Luật/Bộ luật và Nghị định/Thông tư, cùng 1 heuristic áp dụng đồng
+  nhất.
 - Khi 1 chunk gọi Groq lỗi (hết `max_retries=2` lần thử, timeout
   `timeout_seconds=30s`): bỏ qua **toàn bộ** front matter hoặc back matter
   tương ứng (không render vào output, không ghép phần dở dang), **không
