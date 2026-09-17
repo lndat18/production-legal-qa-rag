@@ -399,14 +399,17 @@ class _FakePineconeClient:
 class _ReadinessPineconeClient(_FakePineconeClient):
     """Fake client có trạng thái tạo index bất đồng bộ theo từng poll."""
 
-    def __init__(self, ready_states: list[bool]) -> None:
+    def __init__(self, ready_states: list[bool | Exception]) -> None:
         super().__init__([])
         self._ready_states = ready_states
         self.describe_calls: list[str] = []
 
     def describe_index(self, name: str) -> SimpleNamespace:
         self.describe_calls.append(name)
-        return SimpleNamespace(status=SimpleNamespace(ready=self._ready_states.pop(0)))
+        ready_state = self._ready_states.pop(0)
+        if isinstance(ready_state, Exception):
+            raise ready_state
+        return SimpleNamespace(status=SimpleNamespace(ready=ready_state))
 
 
 def test_vector_store_tao_index_full_refresh_va_upsert_theo_batch(
@@ -448,6 +451,37 @@ def test_vector_store_cho_index_ready_truoc_khi_delete_hoac_upsert(
     client = _ReadinessPineconeClient([False, True])
     now = [0.0]
     sleep_calls: list[float] = []
+    monkeypatch.setattr(pinecone_client, "get_embedding_dimension", lambda _: 768)
+    monkeypatch.setattr(pinecone_client.time, "monotonic", lambda: now[0])
+
+    def _sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(pinecone_client.time, "sleep", _sleep)
+    store = PineconeVectorStore(
+        _vector_settings(monkeypatch),
+        _embedding_settings(monkeypatch),
+        client,  # type: ignore[arg-type]
+    )
+
+    store.upsert([])
+
+    assert client.describe_calls == ["legal-index", "legal-index"]
+    assert sleep_calls == [1.0]
+    assert [event for event, _ in client.events] == ["create", "Index", "delete"]
+
+
+def test_vector_store_retry_not_found_trong_khi_cho_index_ready(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class _TransientNotFound(Exception):
+        """Mô phỏng 404 control-plane ngay sau create_index."""
+
+    client = _ReadinessPineconeClient([_TransientNotFound(), True])
+    now = [0.0]
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(pinecone_client, "NotFoundException", _TransientNotFound)
     monkeypatch.setattr(pinecone_client, "get_embedding_dimension", lambda _: 768)
     monkeypatch.setattr(pinecone_client.time, "monotonic", lambda: now[0])
 
