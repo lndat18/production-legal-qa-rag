@@ -113,3 +113,39 @@ def test_llm_settings_gia_tri_mac_dinh_theo_spec(monkeypatch: pytest.MonkeyPatch
     assert settings.chunk_token_limit == 1500
     assert settings.tpm_limit == 8000
     assert settings.rpm_limit == 30
+
+
+# ==========================================================================
+# LLMSettings.groq_api_key_2 -- key thứ 2 TÙY CHỌN cho dispatch đồng thời
+# (formatting_spec.md mục 1.3).
+# ==========================================================================
+
+
+def test_llm_settings_groq_api_key_2_mac_dinh_none(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+    settings = LLMSettings()  # type: ignore[call-arg]
+    assert settings.groq_api_key_2 is None
+
+
+def test_llm_settings_groq_api_key_2_doc_tu_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_2", "test-groq-key-2")
+    settings = LLMSettings()  # type: ignore[call-arg]
+    assert settings.groq_api_key_2 == "test-groq-key-2"
+
+
+def test_llm_settings_khong_co_groq_api_key_2_khong_bao_loi(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # groq_api_key_2 là TÙY CHỌN -- thiếu nó không được raise ValidationError
+    # (khác groq_api_key, field bắt buộc).
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
+    monkeypatch.setattr(
+        LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
+    )
+    LLMSettings()  # type: ignore[call-arg] # không raise
