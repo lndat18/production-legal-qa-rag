@@ -1,21 +1,18 @@
-VĂN PHÒNG QUỐC HỘI  
--------  
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
-Độc lập - Tự do - Hạnh phúc  
----------------  
+VĂN PHÒNG QUỐC HỘI
 
-Số: 112/VBHN-VPQH  
-Hà Nội, ngày 20 tháng 5 năm 2026  
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
 
-**LUẬT**  
+Số: 112/VBHN-VPQH
+Hà Nội, ngày 20 tháng 5 năm 2026
 
-**THUẾ THU NHẬP CÁ NHÂN**  
+# **LUẬT THUẾ THU NHẬP CÁ NHÂN**
 
-Luật Thuế thu nhập cá nhân số 109/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026, được sửa đổi, bổ sung bởi:  
+Luật Thuế thu nhập cá nhân số 109/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026, được sửa đổi, bổ sung bởi:
 
-Luật số 09/2026/QH16 ngày 24 tháng 4 năm 2026 của Quốc hội sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực thi hành kể từ ngày 24 tháng 4 năm 2026.  
+Luật số 09/2026/QH16 ngày 24 tháng 4 năm 2026 của Quốc hội sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực thi hành kể từ ngày 24 tháng 4 năm 2026.
 
-*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;*  
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam đã được sửa đổi, bổ sung một số điều theo Nghị quyết số 203/2025/QH15;*
 
 Quốc hội ban hành Luật Thuế thu nhập cá nhân.[1]
 
@@ -354,12 +351,12 @@ Biểu thuế lũy tiến từng phần áp dụng đối với thu nhập tính
 Biểu thuế lũy tiến từng phần được quy định như sau:
 
 | Bậc thuế | Phần thu nhập tính thuế/năm (triệu đồng) | Phần thu nhập tính thuế/tháng (triệu đồng) | Thuế suất (%) |
-| --- | --- | --- | --- |
-| 1 | Đến 120 | Đến 10 | 5 |
-| 2 | Trên 120 đến 360 | Trên 10 đến 30 | 10 |
-| 3 | Trên 360 đến 720 | Trên 30 đến 60 | 20 |
-| 4 | Trên 720 đến 1.200 | Trên 60 đến 100 | 30 |
-| 5 | Trên 1.200 | Trên 100 | 35 |
+| ---------- | ------------------------------------------------ | -------------------------------------------------- | --------------- |
+| 1          | Đến 120                                        | Đến 10                                           | 5               |
+| 2          | Trên 120 đến 360                              | Trên 10 đến 30                                  | 10              |
+| 3          | Trên 360 đến 720                              | Trên 30 đến 60                                  | 20              |
+| 4          | Trên 720 đến 1.200                            | Trên 60 đến 100                                 | 30              |
+| 5          | Trên 1.200                                      | Trên 100                                          | 35              |
 
 #### Điều 10. Giảm trừ gia cảnh
 

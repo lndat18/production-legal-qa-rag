@@ -1,28 +1,25 @@
-VĂN PHÒNG QUỐC HỘI  
---------  
-CỘNG HÒA XÃ HỘI CHỦ NGHĈA VIỆT NAM  
-Độc lập - Tự do - Hạnh phúc  
----------------  
+VĂN PHÒNG QUỐC HỘI
 
-Số: 40/VBHN-VPQH  
-Hà Nội, ngày 16 tháng 3 năm 2026  
+CỘNG HÒA XÃ HỘI CHỦ NGHĈA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
 
-**LUẬT**
+Số: 40/VBHN-VPQH
+Hà Nội, ngày 16 tháng 3 năm 2026
 
-**BẢO HIỂM Y TẾ**
+# **LUẬT BẢO HIỂM Y TẾ**
 
 Luật Bảo hiểm y tế số 25/2008/QH12 ngày 14 tháng 11 năm 2008 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2009, được sửa đổi, bổ sung bởi:
 
-1. Luật số 32/2013/QH13 ngày 19 tháng 6 năm 2013 của Quốc hội sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014;  
-2. Luật số 46/2014/QH13 ngày 13 tháng 6 năm 2014 của Quốc hội sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015;  
-3. Luật Phí và lệ phí số 97/2015/QH13 ngày 25 tháng 11 năm 2015 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2017;  
-4. Luật số 35/2018/QH14 ngày 20 tháng 11 năm 2018 của Quốc hội sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch, có hiệu lực kể từ ngày 01 tháng 01 năm 2019;  
-5. Luật Cư trú số 68/2020/QH14 ngày 13 tháng 11 năm 2020 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2021;  
-6. Luật Lực lượng tham gia bảo vệ an ninh, trật tự ở cơ sở số 30/2023/QH15 ngày 28 tháng 11 năm 2023 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2024;  
-7. Luật số 51/2024/QH15 ngày 27 tháng 11 năm 2024 của Quốc hội sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025;  
-8. Luật Phòng bệnh số 114/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.  
+1. Luật số 32/2013/QH13 ngày 19 tháng 6 năm 2013 của Quốc hội sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014;
+2. Luật số 46/2014/QH13 ngày 13 tháng 6 năm 2014 của Quốc hội sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015;
+3. Luật Phí và lệ phí số 97/2015/QH13 ngày 25 tháng 11 năm 2015 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2017;
+4. Luật số 35/2018/QH14 ngày 20 tháng 11 năm 2018 của Quốc hội sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch, có hiệu lực kể từ ngày 01 tháng 01 năm 2019;
+5. Luật Cư trú số 68/2020/QH14 ngày 13 tháng 11 năm 2020 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2021;
+6. Luật Lực lượng tham gia bảo vệ an ninh, trật tự ở cơ sở số 30/2023/QH15 ngày 28 tháng 11 năm 2023 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2024;
+7. Luật số 51/2024/QH15 ngày 27 tháng 11 năm 2024 của Quốc hội sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025;
+8. Luật Phòng bệnh số 114/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
 
-*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam năm 1992 đã được sửa đổi, bổ sung theo Nghị quyết số 51/2001/QH10;*  
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam năm 1992 đã được sửa đổi, bổ sung theo Nghị quyết số 51/2001/QH10;*
 
 Quốc hội ban hành Luật Bảo hiểm y tế[1].
 
@@ -1568,31 +1565,31 @@ Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định t
 
 [12] Từ “quy hoạch,” được bãi bỏ theo quy định tại điểm đ khoản 1 Điều 30 của Luật số 35/2018/QH14 sửa đổi, bổ sung một số điều của 37 luật có liên quan đến quy hoạch, có hiệu lực kể từ ngày 01 tháng 01 năm 2019.
 
-[13] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[13] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.  
+Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
-[14] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.  
+[14] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 3 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
-[15] Khoản này được bổ sung theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[15] Khoản này được bổ sung theo quy định tại khoản 3 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[16] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[16] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Điều này được sửa đổi, bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Điều này được sửa đổi, bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[17] Khoản này được bổ sung theo quy định tại điểm e khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.  
+[17] Khoản này được bổ sung theo quy định tại điểm e khoản 1 Điều 44 của Luật Phòng bệnh số 114/2025/QH15, có hiệu lực thi hành từ ngày 01 tháng 7 năm 2026.
 
-[18] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[18] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[19] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[19] Điều này được bổ sung theo quy định tại khoản 4 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[20] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[20] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[21] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[21] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[22] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[22] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 5 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[23] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[23] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 [24] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 5 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
@@ -1634,37 +1631,37 @@ Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định t
 
 [37] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[38] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[38] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[39] Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[39] Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[40] Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[40] Khoản này được bổ sung theo quy định tại điểm b khoản 13 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[41] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[41] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[42] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[42] Khoản này được sửa đổi, bổ sung theo quy định tại điểm a khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[43] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[43] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[44] Điểm này được sửa đổi, bổ sung theo quy định tại điểm b khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[44] Điểm này được sửa đổi, bổ sung theo quy định tại điểm b khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[45] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[45] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 10 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm c khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm c khoản 14 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[46] Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 11 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[46] Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 11 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 15 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 15 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[47] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[47] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[48] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[48] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[49] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[49] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 12 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Khoản này được bãi bỏ theo quy định tại điểm d khoản 2 Điều 23 của Luật Phí và lệ phí số 97/2015/QH13, có hiệu lực kể từ ngày 01 tháng 01 năm 2017.  
+Khoản này được bãi bỏ theo quy định tại điểm d khoản 2 Điều 23 của Luật Phí và lệ phí số 97/2015/QH13, có hiệu lực kể từ ngày 01 tháng 01 năm 2017.
 
-[50] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[50] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 [51] Điểm này được bổ sung theo quy định tại khoản 13 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
@@ -1698,27 +1695,27 @@ Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định t
 
 [64] Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 17 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 19 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 19 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[65] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[65] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[66] Điểm này được sửa đổi, bổ sung theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[66] Điểm này được sửa đổi, bổ sung theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[67] Điểm này được sửa đổi, bổ sung theo quy định tại điểm a khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[67] Điểm này được sửa đổi, bổ sung theo quy định tại điểm a khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[68] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[68] Khoản này được sửa đổi, bổ sung theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[69] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[69] Khoản này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 18 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định tại điểm b khoản 20 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[70] Điều này được sửa đổi, bổ sung theo quy định tại khoản 21 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.  
+[70] Điều này được sửa đổi, bổ sung theo quy định tại khoản 21 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
-[71] Điều này được sửa đổi, bổ sung theo quy định tại khoản 22 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.  
+[71] Điều này được sửa đổi, bổ sung theo quy định tại khoản 22 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
-[72] Điều này được sửa đổi, bổ sung theo quy định tại khoản 23 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.  
+[72] Điều này được sửa đổi, bổ sung theo quy định tại khoản 23 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025. Quy định liên quan đến cấp chuyên môn kỹ thuật trong khám bệnh, chữa bệnh, đăng ký khám bệnh, chữa bệnh bảo hiểm y tế ban đầu, chuyển người bệnh giữa các cơ sở khám bệnh, chữa bệnh bảo hiểm y tế, thủ tục khám bệnh, chữa bệnh bảo hiểm y tế có hiệu lực kể từ ngày 01 tháng 01 năm 2025 theo quy định tại khoản 2 Điều 3 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế.
 
-[73] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[73] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 [74] Điều này được sửa đổi, bổ sung theo quy định tại khoản 24 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
@@ -1784,35 +1781,35 @@ Khoản này được sửa đổi, bổ sung lần thứ hai theo quy định t
 
 [102] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[103] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[103] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[104] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[104] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[105] Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[105] Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[106] Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[106] Khoản này được bổ sung theo quy định tại khoản 26 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[107] Khoản này được bổ sung theo quy định tại khoản 32 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[107] Khoản này được bổ sung theo quy định tại khoản 32 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[108] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[108] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[109] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 27 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[109] Khoản này được sửa đổi, bổ sung theo quy định tại khoản 27 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-[110] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[110] Cụm từ “tổ chức bảo hiểm y tế” được thay thế bằng cụm từ “cơ quan bảo hiểm xã hội” theo quy định tại điểm a khoản 35 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[111] Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[111] Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[112] Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+[112] Điều này được bổ sung theo quy định tại khoản 33 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
-[113] Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 28 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.  
+[113] Điều này được sửa đổi, bổ sung lần thứ nhất theo quy định tại khoản 28 Điều 1 của Luật số 46/2014/QH13 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 01 năm 2015.
 
-Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 34 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.  
+Điều này được sửa đổi, bổ sung lần thứ hai theo quy định tại khoản 34 Điều 1 của Luật số 51/2024/QH15 sửa đổi, bổ sung một số điều của Luật Bảo hiểm y tế, có hiệu lực kể từ ngày 01 tháng 7 năm 2025.
 
 [114] Điều 2 của Luật số 32/2013/QH13 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập doanh nghiệp, có hiệu lực kể từ ngày 01 tháng 01 năm 2014 quy định như sau:
 
-“Điều 2  
+“Điều 2
 
-*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2014, trừ quy định tại khoản 2 Điều này.*  
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2014, trừ quy định tại khoản 2 Điều này.*
 
 *2. Quy định về áp dụng thuế suất 20% đối với doanh nghiệp có tổng doanh thu năm không quá hai mươi tỷ đồng tại khoản 6 Điều 1 và quy định về áp dụng thuế suất 10% đối với thu nhập của doanh nghiệp từ thực hiện dự án đầu tư - kinh doanh nhà ở xã hội tại khoản 7 Điều 1 của Luật này được thực hiện từ ngày 01 tháng 7 năm 2013.*”
 

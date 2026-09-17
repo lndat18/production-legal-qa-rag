@@ -1,12 +1,10 @@
-VĂN PHÒNG QUỐC HỘI  
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
-Độc lập - Tự do - Hạnh phúc  
-Số: 18/VBHN‑VPQH  
-Hà Nội, ngày 12 tháng 02 năm 2026  
+VĂN PHÒNG QUỐC HỘI
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+Số: 18/VBHN‑VPQH
+Hà Nội, ngày 12 tháng 02 năm 2026
 
-**BỘ LUẬT**  
-
-**LAO ĐỘNG**  
+# **BỘ LUẬT LAO ĐỘNG**
 
 Bộ luật Lao động số 45/2019/QH14 ngày 20 tháng 11 năm 2019 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2021, được sửa đổi, bổ sung bởi:
 
