@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -16,6 +17,8 @@ from production_legal_qa_rag.embedding.models import (
 )
 
 PINECONE_UPSERT_BATCH_SIZE = 100
+_INDEX_READY_TIMEOUT_SECONDS = 120.0
+_INDEX_READY_POLL_INTERVAL_SECONDS = 1.0
 
 
 class PineconeVectorStore:
@@ -63,7 +66,33 @@ class PineconeVectorStore:
                     region=self._vector_settings.region,
                 ),
             )
+            self._wait_for_index_ready()
         return self._client.Index(self._vector_settings.index_name)
+
+    def _wait_for_index_ready(self) -> None:
+        """Chờ index vừa tạo sẵn sàng trước khi gửi data-plane request.
+
+        Pinecone tạo serverless index bất đồng bộ. Không chờ sẽ khiến lần
+        ``delete`` hoặc ``upsert`` đầu tiên lỗi 403/404 dù ``create_index``
+        đã trả về thành công.
+
+        Raises:
+            TimeoutError: Khi index chưa sẵn sàng trước thời hạn.
+        """
+        describe_index = getattr(self._client, "describe_index", None)
+        if not callable(describe_index):
+            return
+
+        deadline = time.monotonic() + _INDEX_READY_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if _index_is_ready(describe_index(self._vector_settings.index_name)):
+                return
+            time.sleep(_INDEX_READY_POLL_INTERVAL_SECONDS)
+
+        raise TimeoutError(
+            f"Pinecone index {self._vector_settings.index_name!r} chưa ready sau "
+            f"{_INDEX_READY_TIMEOUT_SECONDS:.0f} giây."
+        )
 
     def _index_names(self) -> list[str]:
         indexes = self._client.list_indexes()
@@ -71,6 +100,14 @@ class PineconeVectorStore:
         if callable(names):
             return list(names())
         return [str(index) for index in indexes]
+
+
+def _index_is_ready(index_description: object) -> bool:
+    """Đọc trạng thái ``ready`` từ object hay mapping trả về bởi Pinecone SDK."""
+    status = getattr(index_description, "status", None)
+    if isinstance(status, dict):
+        return status.get("ready") is True
+    return getattr(status, "ready", None) is True
 
 
 def get_embedding_dimension(model_name: str) -> int:
