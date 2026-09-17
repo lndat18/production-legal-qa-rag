@@ -1,8 +1,10 @@
 VĂN PHÒNG QUỐC HỘI  
---------  
+
+--------
 
 CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
 Độc lập - Tự do - Hạnh phúc  
+
 ---------------  
 
 Số: 18/VBHN‑VPQH  
@@ -14,13 +16,13 @@ Hà Nội, ngày 12 tháng 02 năm 2026
 
 Bộ luật Lao động số 45/2019/QH14 ngày 20 tháng 11 năm 2019 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2021, được sửa đổi, bổ sung bởi:
 
-1. Luật Công nghiệp công nghệ số số 71/2025/QH15 ngày 14 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;  
+1. Luật Công nghiệp công nghệ số số 71/2025/QH15 ngày 14 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;
 
-2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;  
+2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;
 
-3. Luật Giáo dục nghề nghiệp số 124/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.  
+3. Luật Giáo dục nghề nghiệp số 124/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
 
-*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*  
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*
 
 Quốc hội ban hành Bộ luật Lao động[1].
 
@@ -3984,24 +3986,24 @@ Quốc hội ban hành Luật Giáo dục nghề nghiệp.”.
 
 [6]6 Điều 50 của Luật Công nghiệp công nghệ số số 71/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
 
-**“Điều 50. Hiệu lực thi hành**
+**“Điều 50. Hiệu lực thi hành**  
 
-*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*
+*1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*  
 
-*2. Các điều 11, 28 và 29 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025.*
+*2. Các điều 11, 28 và 29 của Luật này có hiệu lực thi hành từ ngày 01 tháng 7 năm 2025.*  
 
 3. Trường hợp có quy định khác nhau về cùng một vấn đề giữa Luật này với luật, nghị quyết khác của Quốc hội thì áp dụng quy định của Luật này. Trừ trường hợp văn bản quy phạm pháp luật khác có quy định cơ chế, chính sách ưu đãi hoặc thuận lợi hơn Luật này thì đối tượng được ưu đãi được áp dụng mức ưu đãi có lợi nhất.”.
 
 Khoản 1 Điều 30 của Luật Dân số số 113/2025/QH15, có hiệu lực kể từ ngày 01 tháng 7 năm 2026 quy định như sau:
 
-“Điều 30. Hiệu lực thi hành
+“Điều 30. Hiệu lực thi hành  
 
-*1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*
+*1. Luật này có hiệu lực kể từ ngày 01 tháng 7 năm 2026, trừ trường hợp quy định tại khoản 2 Điều này.*  
 
 3. Pháp lệnh Dân số số 06/2003/PL-UBTVQH11 đã được sửa đổi, bổ sung theo Pháp lệnh số 07/2025/UBTVQH15 hết hiệu lực kể từ ngày Luật này có hiệu lực thi hành.”.
 
 Khoản 1 Điều 44 của Luật Giáo dục nghề nghiệp số 124/2025/QH15, có hiệu lực kể từ ngày 01 tháng 01 năm 2026 quy định như sau:
 
-“Điều 44. Hiệu lực thi hành
+“Điều 44. Hiệu lực thi hành  
 
 1. Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026. Luật Giáo dục nghề nghiệp số 74/2014/QH13 đã được sửa đổi, bổ sung một số điều theo Luật số 97/2015/QH13, Luật số 21/2017/QH14, Luật số 43/2019/QH14 và Luật số 84/2025/QH15 (sau đây gọi là Luật Giáo dục nghề nghiệp số 74/2014/QH13) hết hiệu lực từ ngày Luật này có hiệu lực thi hành, trừ trường hợp quy định tại khoản 2 Điều này và các nội dung liên quan trong Điều 45 Luật này.”.

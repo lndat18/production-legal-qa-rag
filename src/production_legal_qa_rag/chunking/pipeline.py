@@ -15,8 +15,10 @@ from pathlib import Path
 
 from production_legal_qa_rag.chunking.models import Chunk, ChunkingResult
 from production_legal_qa_rag.chunking.parser import parse_markdown
-from production_legal_qa_rag.chunking.splitter import split_khoan
+from production_legal_qa_rag.chunking.splitter import split_implicit_khoan, split_khoan
 from production_legal_qa_rag.config import EmbeddingSettings
+
+_BACKMATTER_SUFFIX = "Chú thích sửa đổi (cuối văn bản)"
 
 
 def _ensure_unique_chunk_ids(chunks: list[Chunk], source_document: str) -> None:
@@ -72,6 +74,20 @@ def convert_markdown_to_chunks(
     tree = parse_markdown(path)
 
     chunks: list[Chunk] = []
+
+    # 2 "Khoản ngầm định cấp văn bản" (mục 4.6) -- cắt riêng bằng
+    # `split_implicit_khoan`, không tính vào `split_khoan_count` (thống kê
+    # đó chỉ đếm Khoản thật, mục 9).
+    if tree.frontmatter_content:
+        chunks.extend(
+            split_implicit_khoan(
+                tree.frontmatter_content,
+                breadcrumb_prefix=tree.source_document,
+                source_document=tree.source_document,
+                max_tokens=max_tokens,
+            )
+        )
+
     split_khoan_count = 0
     for khoan in tree.khoans:
         khoan_chunks = split_khoan(
@@ -80,6 +96,16 @@ def convert_markdown_to_chunks(
         chunks.extend(khoan_chunks)
         if len(khoan_chunks) > 1:
             split_khoan_count += 1
+
+    if tree.backmatter_content:
+        chunks.extend(
+            split_implicit_khoan(
+                tree.backmatter_content,
+                breadcrumb_prefix=f"{tree.source_document} - {_BACKMATTER_SUFFIX}",
+                source_document=tree.source_document,
+                max_tokens=max_tokens,
+            )
+        )
 
     _ensure_unique_chunk_ids(chunks, tree.source_document)
 

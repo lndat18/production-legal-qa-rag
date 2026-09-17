@@ -21,9 +21,7 @@ chính xác của nó trong văn bản gốc.
 - Sinh breadcrumb cho từng chunk; với Khoản có Điểm bị cắt nhỏ, lặp lại câu
   dẫn vào `content` của mọi chunk con để giữ ngữ cảnh (mục 4.5), và giữ lại
   frontmatter (trước heading đầu tiên) lẫn backmatter (chú thích sửa đổi dời
-  cuối file) thành chunk riêng thay vì để lẫn/mất (mục 4.6). **[CẬP NHẬT
-  2026-09-14]** — xem mục 12 "Lịch sử cập nhật" để biết chi tiết những gì
-  thay đổi so với bản spec gốc.
+  cuối file) thành chunk riêng thay vì để lẫn/mất (mục 4.6).
 - Phát hiện Khoản chứa bảng dữ liệu (markdown table do `formatting/tables.py`
   sinh ra), giữ nguyên không cắt, sinh `raw_table`/`standardization_table`
   (mục 5).
@@ -41,7 +39,8 @@ chính xác của nó trong văn bản gốc.
   `formatting/` (nay là markdown thuần do Groq sinh, không tách field cấu
   trúc nào, xem `formatting_spec.md` mục 1.1); chunking chỉ đọc nguyên văn
   đoạn đó (mục 4.6) và trích `source_document` từ heading `#` đầu tiên của
-  file (mục 2), không phân tích thêm.
+  file, ghép với đoạn văn liền kề ngay phía trên nó (mục 2), không phân
+  tích thêm.
 
 ## 2. Input & Output
 
@@ -55,29 +54,26 @@ chính xác của nó trong văn bản gốc.
   (id, vector, metadata), chunking không tự đẩy lên Pinecone.
 - Mỗi `Chunk` gồm các field (`chunking/models.py`):
 
-  | Field                                 | Kiểu          | Ý nghĩa                                                                                                                                                                      |
-  | ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | `chunk_id`                          | `str`        | Deterministic, sinh từ`source_document` + đường dẫn breadcrumb + chỉ số phần (nếu bị cắt).                                                                                |
-  | `source_document`                   | `str`        | Tên văn bản — nguyên văn heading `#` (H1) đầu tiên xuất hiện trong file markdown (nằm trong vùng frontmatter, đứng trước heading cấu trúc Phần/Chương/Điều đầu tiên, mục 4.6) — dùng để phân biệt chunk giữa các văn bản khác nhau.                                                                                   |
-  | `breadcrumb`                        | `str`        | Viện dẫn đầy đủ, metadata hiển thị/lọc —**không đưa vào chuỗi embed**.                                                                                    |
-  | `content`                           | `str`        | Nội dung thuần (nguyên văn tiếng Việt, chưa word-segment) — chuỗi thực sự đem đi embed. Nếu Khoản có bảng, đã nối thêm`standardization_table` (mục 5). |
-  | `token_count`                       | `int`        | Số token của`content` theo tokenizer của embedding model (mục 6).                                                                                                        |
-  | `has_table`                         | `bool`       | Khoản gốc có chứa bảng dữ liệu hay không (mục 5).                                                                                                                     |
-  | `raw_table`                         | `str \| None` | Nguyên văn bảng markdown gốc, chỉ có khi`has_table=True` — gửi cho LLM ở bước generation, không đưa vào chuỗi embed (mục 5).                                |
-  | `standardization_table`             | `str \| None` | Bảng đã chuyển thành text bằng cách nối theo hàng, chỉ có khi`has_table=True` (mục 5).                                                                           |
-  | `is_split`                          | `bool`       | Khoản gốc có bị cắt thành nhiều chunk hay không. Luôn`False` nếu `has_table=True` (mục 5).                                                                      |
-  | `split_index` / `split_total`     | `int \| None` | Vị trí/tổng số phần nếu`is_split=True`.                                                                                                                                |
+  | Field                             | Kiểu          | Ý nghĩa                                                                                                                                                                       |
+  | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | `chunk_id`                        | `str`        | Deterministic, sinh từ `source_document` + đường dẫn breadcrumb + chỉ số phần (nếu bị cắt).                                                                                |
+  | `source_document`                 | `str`        | Tên văn bản đầy đủ — nối **đoạn văn liền kề ngay phía trên** heading `#` (H1) đầu tiên (thường là dòng loại văn bản: "LUẬT", "NGHỊ ĐỊNH"...) với chính heading đó, thành 1 dòng plain text (bỏ markdown `**`/`#`), cách nhau 1 khoảng trắng — vd. `NGHỊ ĐỊNH QUY ĐỊNH CHI TIẾT VÀ HƯỚNG DẪN THI HÀNH...`. Nếu không có đoạn nào đứng ngay trước heading → chỉ lấy heading. Heading nằm trong vùng frontmatter, đứng trước heading cấu trúc Phần/Chương/Điều đầu tiên (mục 4.6) — dùng để phân biệt chunk giữa các văn bản khác nhau. |
+  | `breadcrumb`                      | `str`        | Viện dẫn đầy đủ, metadata hiển thị/lọc — **không đưa vào chuỗi embed**.                                                                                                     |
+  | `content`                         | `str`        | Nội dung thuần (nguyên văn tiếng Việt, chưa word-segment) — chuỗi thực sự đem đi embed. Nếu Khoản có bảng, đã nối thêm `standardization_table` (mục 5).                    |
+  | `token_count`                     | `int`        | Số token của `content` theo tokenizer của embedding model (mục 6).                                                                                                          |
+  | `has_table`                       | `bool`       | Khoản gốc có chứa bảng dữ liệu hay không (mục 5).                                                                                                                           |
+  | `raw_table`                       | `str \| None` | Nguyên văn bảng markdown gốc, chỉ có khi `has_table=True` — gửi cho LLM ở bước generation, không đưa vào chuỗi embed (mục 5).                                              |
+  | `standardization_table`           | `str \| None` | Bảng đã chuyển thành text bằng cách nối theo hàng, chỉ có khi `has_table=True` (mục 5).                                                                                     |
+  | `is_split`                        | `bool`       | Khoản gốc có bị cắt thành nhiều chunk hay không. Luôn `False` nếu `has_table=True` (mục 5).                                                                                 |
+  | `split_index` / `split_total`     | `int \| None` | Vị trí/tổng số phần nếu `is_split=True`.                                                                                                                                    |
 
-  **[ĐÃ XOÁ 2026-09-17]** 4 field `loai_van_ban`/`co_quan_ban_hanh`/
-  `ngay_ban_hanh`/`ngay_hieu_luc` (thêm ở bản cập nhật 2026-09-14) đã bị bỏ —
-  `formatting/` không còn sinh front matter YAML/field cấu trúc nào để đọc
-  (xác nhận với người dùng 2026-09-17, xem `formatting_spec.md` mục 1.1).
-  Thông tin này vẫn tồn tại dưới dạng text nguyên văn trong front matter
-  markdown (đọc được nếu cần, nhưng không tách field), xem mục 12.
-
-  **[ĐÃ XOÁ 2026-09-14]** Field `negation_note` (`str | None`) đã bị xoá khỏi
-  `Chunk` — câu dẫn/câu phủ định giờ luôn nằm sẵn trong `content` (mục 4.5),
-  không cần field riêng để lặp lại.
+  Không có field cấu trúc nào tách riêng từ front matter (`loai_van_ban`,
+  `co_quan_ban_hanh`, `ngay_ban_hanh`, `ngay_hieu_luc`, `so_hieu`...) —
+  `formatting/` không sinh YAML/field cấu trúc nào để đọc (xem
+  `formatting_spec.md` mục 1.1). Thông tin này vẫn tồn tại dưới dạng text
+  nguyên văn trong front matter markdown (đọc được nếu cần, nhưng không tách
+  field). Ngoại lệ duy nhất là `source_document`, xác định deterministic
+  theo mô tả ở trên — không phải field trích xuất theo nghĩa schema.
 
 ## 3. Breadcrumb — cấu trúc viện dẫn
 
@@ -98,28 +94,19 @@ Khi Khoản bị cắt nhỏ (mục 4), breadcrumb của từng chunk con nối 
 - `(phần i/n)` — luôn thêm khi 1 Khoản sinh ra nhiều hơn 1 chunk, kể cả khi
   cắt theo câu (không có nhãn Điểm rõ ràng).
 
-**[CẬP NHẬT 2026-09-14]** Breadcrumb **không** lặp lại câu dẫn/câu phủ định
-của Khoản — câu đó đã luôn có mặt nguyên văn trong `content` của mọi chunk
-con rồi (mục 4.5), nên nhắc lại ở breadcrumb là dư thừa. (Trước đây breadcrumb
-có nối thêm câu phủ định khi phát hiện; nay đã bỏ, xem mục 12.)
+Breadcrumb **không** lặp lại câu dẫn của Khoản — câu đó đã luôn có mặt
+nguyên văn trong `content` của mọi chunk con rồi (mục 4.5), nên nhắc lại ở
+breadcrumb là dư thừa.
 
 Ví dụ breadcrumb 1 chunk con:
 
 ```
-Luật Bảo hiểm xã hội - Chương II - Điều 3 - Khoản 4 - Điểm a, b (phần 1/2)
+LUẬT BẢO HIỂM XÃ HỘI - Chương II - Điều 3 - Khoản 4 - Điểm a, b (phần 1/2)
 ```
 
-**[CẬP NHẬT 2026-09-17]** `source_document` lấy trực tiếp từ heading `#`
-(H1) đầu tiên của file markdown (mục 2) — không còn front matter YAML/field
-cấu trúc nào để đọc (`formatting/` đã bỏ hoàn toàn, xem `formatting_spec.md`
-mục 1.1). Trước đây breadcrumb dùng `{ten_van_ban} ({so_hieu})`, lấy từ 2
-field front matter YAML riêng biệt; nay gộp thành 1 `source_document` duy
-nhất, xem mục 12.
-
-**[MỚI 2026-09-14]** Trường hợp đặc biệt: chunk ứng với frontmatter/backmatter
-(mục 4.6) không có Phần/Chương/Mục/Điều/Khoản nào bao ngoài — xem bảng
-`breadcrumb_prefix` ở mục 4.6 (2 vùng dùng breadcrumb khác nhau để tránh
-trùng `chunk_id`).
+Trường hợp đặc biệt: chunk ứng với frontmatter/backmatter (mục 4.6) không có
+Phần/Chương/Mục/Điều/Khoản nào bao ngoài — xem bảng `breadcrumb_prefix` ở
+mục 4.6 (2 vùng dùng breadcrumb khác nhau để tránh trùng `chunk_id`).
 
 ## 4. Quy tắc cắt Khoản
 
@@ -132,10 +119,6 @@ bảng: tính `token_count` của toàn bộ nội dung Khoản (mục 6). Nếu
 dài hay ngắn (kể cả chỉ 1 câu).
 
 ### 4.2. Tách câu dẫn (đơn vị #0) và danh sách đơn vị cần đóng gói
-
-**[CẬP NHẬT 2026-09-14]** — trước đây mục này chỉ liệt kê "đơn vị #0" như 1
-đơn vị bình thường trong pool ghép chung với các Điểm; nay đơn vị #0 (đổi tên
-thành "câu dẫn") được tách riêng hẳn khỏi pool ngay từ bước này, xem mục 12.
 
 Khi `token_count > MAX_TOKENS`:
 
@@ -151,13 +134,9 @@ Khi `token_count > MAX_TOKENS`:
     thứ tự a, b, c... (không gồm câu dẫn).
 - Nếu Khoản **không có** Điểm gắn nhãn: không có khái niệm câu dẫn — toàn bộ
   nội dung là 1 khối, tách thẳng bằng câu (coi mỗi câu là 1 đơn vị) — bỏ qua
-  tầng Điểm, giữ nguyên như trước.
+  tầng Điểm.
 
 ### 4.3. Thuật toán ghép "cận dưới" (greedy, không overlap ở tầng này)
-
-**[CẬP NHẬT 2026-09-14]** — thêm bước trừ ngân sách cho câu dẫn
-(`budget_hiệu_dụng`) và bước ghép câu dẫn vào mọi chunk con ở cuối thuật
-toán; trước đây thuật toán chạy thẳng trên `MAX_TOKENS` không trừ hao gì.
 
 Nếu Khoản có câu dẫn (mục 4.2), trừ trước số token của câu dẫn ra khỏi ngân
 sách — phần ngân sách còn lại (`budget_hiệu_dụng`) mới dùng để đóng gói các
@@ -208,10 +187,6 @@ tính là overlap giữa các Điểm với nhau).
 
 ### 4.4. Đơn vị vượt ngân sách ngay cả một mình (fallback theo câu)
 
-**[CẬP NHẬT 2026-09-14]** — dùng `budget_hiệu_dụng` (mục 4.3) thay vì
-`MAX_TOKENS` thẳng, và ghép câu dẫn vào chunk câu sinh ra ở tầng fallback này
-(trước đây fallback theo câu không có khái niệm câu dẫn).
-
 Nếu 1 đơn vị (1 Điểm, hoặc đoạn không có Điểm) tự nó đã > `budget_hiệu_dụng`
 (mục 4.3): tách tiếp theo câu, áp dụng lại đúng thuật toán "cận dưới" ở mục
 4.3 nhưng ở cấp câu và trên cùng `budget_hiệu_dụng` đó, và **cho phép overlap
@@ -230,13 +205,6 @@ nào cho bất kỳ Điểm nào) — chấp nhận vượt ngân sách ở chun
 thêm cơ chế cắt câu dẫn riêng (chưa gặp trong corpus thực tế).
 
 ### 4.5. Câu dẫn — lặp lại vào content của mọi chunk con
-
-**[CẬP NHẬT 2026-09-14]** — mục này trước đây tên "Câu phủ định/loại trừ —
-lan truyền vào breadcrumb": chỉ trích câu phủ định (nếu Khoản chứa 1 trong
-các từ khoá loại trừ) và chỉ lặp vào `breadcrumb`/field `negation_note`
-(nay đã xoá, xem mục 2). Nay tổng quát hoá: **mọi** câu dẫn (có phủ định hay
-không) đều lặp vào **`content`** của mọi chunk con — cơ chế `NEGATION_KEYWORDS`
-trong `patterns.py` không còn cần thiết và đã bị xoá. Xem mục 12.
 
 Đây là điểm **quan trọng nhất** của module: khi 1 Khoản có Điểm và bị cắt
 thành nhiều chunk, mỗi chunk con chỉ chứa nội dung (các) Điểm nó bao phủ —
@@ -268,10 +236,6 @@ overlap 1 câu cuối của mục 4.4.
 
 ### 4.6. Phần mở đầu và phần cuối văn bản (frontmatter/backmatter)
 
-**[MỚI 2026-09-14]** — toàn bộ mục 4.6 (frontmatter + backmatter +
-`RecursiveCharacterTextSplitter`) không tồn tại trong bản spec gốc; văn bản
-trước heading đầu tiên bị bỏ qua hoàn toàn, xem mục 12.
-
 Hai vùng nội dung nằm **ngoài** cấu trúc Phần/Chương/Mục/Điều/Khoản, ở hai
 đầu file, đều không được phép mất khi chunk hoá:
 
@@ -283,24 +247,28 @@ Hai vùng nội dung nằm **ngoài** cấu trúc Phần/Chương/Mục/Điều/
   ("BẢO HIỂM XÃ HỘI"), số hiệu và ngày ban hành, các đoạn "Căn cứ Hiến
   pháp...", và câu "Quốc hội ban hành Luật ...". Đây là nội dung thật của
   văn bản; không có front matter YAML/field cấu trúc nào tách riêng
-  (`formatting/` đã bỏ hoàn toàn, xem `formatting_spec.md` mục 1.1).
-  **[CẬP NHẬT 2026-09-17]** Vùng này chứa đúng 1 heading `#` (tên đầy đủ văn
-  bản, `formatting_spec.md` mục 1.1) đứng trước heading cấu trúc Phần/
-  Chương/Điều — `parser.py` phải nhận diện heading cấu trúc bằng regex
-  chuyên biệt để không dừng biên frontmatter nhầm ngay tại dòng tên văn bản.
-  Heading `#` này chính là `source_document` (mục 2).
-- **Backmatter** (phần cuối): vùng chú thích sửa đổi dài bị
-  `formatting/footnotes.py::render_blockquote` dời xuống cuối file thay vì
-  inline tại chỗ (khi chú thích vượt `FOOTNOTE_INLINE_MAX_CHARS`), đánh dấu
-  bằng 1 dòng in đậm không phải heading: `**[n]**` (regex
-  `^\*\*\[\d+\]\*\*$`). Từ dòng `**[n]**` đầu tiên xuất hiện sau heading cuối
-  cùng của file cho tới hết file là vùng backmatter — toàn bộ phần này trích
-  dẫn nguyên văn Điều/Khoản của **luật khác** (vd. Điều 41 Luật Nhà giáo,
-  Điều 63 Luật Thanh tra trong `Luật bảo hiểm xã hội.md` dòng 3456), không
-  phải cấu trúc Điều/Khoản thật của văn bản đang parse — **không** được coi
-  là heading/Khoản mới. Hiện `parser.py` không nhận diện vùng này, khiến nó
-  bị nuốt nhầm vào nội dung Khoản cuối cùng đang mở (vd. lẫn vào Khoản 15
-  Điều 141 `Luật bảo hiểm xã hội.md`) — đây là lỗi cần sửa.
+  (`formatting/` đã bỏ hoàn toàn, xem `formatting_spec.md` mục 1.1). Vùng
+  này chứa đúng 1 heading `#` (tên đầy đủ văn bản, `formatting_spec.md` mục
+  1.1) đứng trước heading cấu trúc Phần/Chương/Điều — `parser.py` phải nhận
+  diện heading cấu trúc bằng regex chuyên biệt để không dừng biên frontmatter
+  nhầm ngay tại dòng tên văn bản. Heading `#` này, nối thêm đoạn văn liền kề
+  ngay phía trên nó trong frontmatter (thường là dòng loại văn bản — "LUẬT",
+  "NGHỊ ĐỊNH"..., xem `formatting_spec.md` mục 1.1), tạo thành
+  `source_document` (mục 2).
+- **Backmatter** (phần cuối): vùng chú thích sửa đổi/trích dẫn luật khác dời
+  xuống cuối file, được `formatting/pipeline.py._compose_markdown` ngăn cách
+  với nội dung chính bằng đúng 1 dòng `---` đứng riêng (`formatting_spec.md`
+  mục 1.1 "Ghép output cuối cùng" + mục 2) — regex `^-{3}$`, khớp khít đúng 3
+  ký tự nên không nhận nhầm dòng gạch ngang trang trí dài hơn còn sót trong
+  frontmatter (vd. "--------"). Dòng `---` đầu tiên xuất hiện sau nội dung
+  Khoản cuối cùng của file là ranh giới: mọi thứ sau đó tới hết file là vùng
+  backmatter — toàn bộ phần này trích dẫn nguyên văn Điều/Khoản của **luật
+  khác** (vd. Điều 41 Luật Nhà giáo, Điều 63 Luật Thanh tra trong
+  `Luật bảo hiểm xã hội.md` dòng 3456), không phải cấu trúc Điều/Khoản thật
+  của văn bản đang parse — **không** được coi là heading/Khoản mới.
+  `parser.py` nhận diện ranh giới này qua `patterns.RE_BACKMATTER_SEPARATOR`,
+  tách backmatter ra khỏi nội dung Khoản cuối cùng đang mở thay vì để lẫn
+  vào đó.
 
 Coi mỗi vùng là **1 Khoản ngầm định cấp văn bản** riêng biệt, không có
 Phần/Chương/Mục/Điều/Khoản bao ngoài:
@@ -352,7 +320,7 @@ Phân biệt với nội dung đứng giữa 2 heading Phần/Chương/Mục mà
 trường hợp đó **vẫn bị bỏ qua** như thiết kế hiện tại của `parser.py`, vì nó
 không phải nội dung pháp lý độc lập và không khớp định nghĩa frontmatter
 (không đứng trước heading đầu tiên của cả file) hay backmatter (không đứng
-sau marker `**[n]**` ở cuối file).
+sau dòng `---` phân cách ở cuối file).
 
 ## 5. Xử lý Khoản chứa bảng
 
@@ -471,10 +439,9 @@ over-engineering).
 Cần thêm dependency mới vào `pyproject.toml`: `pydantic-settings` (hiện chỉ
 có transitive qua `langchain`, cần khai trực tiếp vì `config.py` import thẳng),
 `transformers` (hiện transitive qua `sentence-transformers`, `chunking/tokenizer.py`
-import thẳng `AutoTokenizer`), và **[MỚI 2026-09-14]** `langchain-text-splitters`
-(gói con nhẹ, không kéo theo toàn bộ `langchain` — dùng
-`RecursiveCharacterTextSplitter` cho frontmatter/backmatter, mục 4.6/8). Việc
-gọi Pinecone SDK thật sự
+import thẳng `AutoTokenizer`), và `langchain-text-splitters` (gói con nhẹ,
+không kéo theo toàn bộ `langchain` — dùng `RecursiveCharacterTextSplitter`
+cho frontmatter/backmatter, mục 4.6/8). Việc gọi Pinecone SDK thật sự
 (`pinecone` package) thuộc phạm vi `embedding/`, chunking chỉ cần `config.py`
 khai đúng field.
 
@@ -484,7 +451,7 @@ khai đúng field.
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | Word segmentation tiếng Việt                         | `pyvi` (đã có sẵn trong dependencies)                                                                |
 | Tokenizer đếm token                                  | `transformers.AutoTokenizer` (model PhoBERT-based ở mục 6)                                             |
-| Cắt frontmatter/backmatter (mục 4.6)**[MỚI]** | `langchain-text-splitters` — `RecursiveCharacterTextSplitter`, dùng `length_function=count_tokens` |
+| Cắt frontmatter/backmatter (mục 4.6)                 | `langchain-text-splitters` — `RecursiveCharacterTextSplitter`, dùng `length_function=count_tokens` |
 | Data models trao đổi giữa module                    | `pydantic` v2 `BaseModel`                                                                              |
 | Config tập trung                                      | `pydantic-settings` `BaseSettings`                                                                     |
 | CLI                                                    | `typer`, đặt tại `tools/chunk_documents.py` (ngoài package `chunking/`)                          |
@@ -515,15 +482,15 @@ tools/chunk_documents.py (Typer CLI)
 
 ## 10. Cấu trúc module trong `src/production_legal_qa_rag/chunking/`
 
-| Module                                 | Trách nhiệm                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `patterns.py` **[CẬP NHẬT]** | Regex nhận diện heading markdown (Phần/Chương/Mục/Điều/Khoản), nhãn Điểm (`a)`, `b)`...), dòng bảng markdown (`\|...\|`), dòng marker chú thích dời cuối `**[n]**` (mục 4.6, mới). Đã xoá `NEGATION_KEYWORDS`/`RE_NEGATION` (mục 12).                                                                                                                                                                             |
-| `parser.py` **[CẬP NHẬT]**   | Đọc file markdown, trích`source_document` từ heading `#` đầu tiên trong vùng frontmatter (mục 2, phân biệt với heading cấu trúc Phần/Phụ Lục bằng regex chuyên biệt, mục 4.6), dựng`DocumentTree` — cây breadcrumb tới từng Khoản kèm nội dung thô, gồm cả Khoản ngầm định cấp văn bản cho frontmatter/backmatter (mục 4.6, mới); phát hiện`has_table`/trích `raw_table` cho từng Khoản.                                                                |
-| `tables.py`                          | Chuyển`raw_table` (markdown) thành `standardization_table` (mục 5.3).                                                                                                                                                                                                                                                                                                                                                                         |
-| `tokenizer.py`                       | `count_tokens(text) -> int` — word-segment (pyvi) + đếm bằng `AutoTokenizer` (mục 6).                                                                                                                                                                                                                                                                                                                                                       |
-| `splitter.py` **[CẬP NHẬT]** | Thuật toán cắt Khoản (mục 4): tách câu dẫn, ghép "cận dưới" trên ngân sách hiệu dụng, fallback theo câu có overlap, ghép câu dẫn vào mọi chunk con (mục 4.5, cập nhật — trước đây gán`negation_note`); áp dụng ngoại lệ bảng (mục 5.1) trước khi cắt; với Khoản ngầm định frontmatter/backmatter, cắt bằng `RecursiveCharacterTextSplitter` thay vì thuật toán Điểm/câu (mục 4.6, mới). |
-| `models.py`                          | Pydantic models:`Chunk`, `ChunkingResult`, `DocumentTree` (input/output giữa các module trên).                                                                                                                                                                                                                                                                                                                                              |
-| `pipeline.py`                        | `convert_markdown_to_chunks(path) -> ChunkingResult` và `convert_directory(markdown_dir, out_dir)` — orchestration, atomic write, gom summary.                                                                                                                                                                                                                                                                                                 |
+| Module          | Trách nhiệm                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `patterns.py`   | Regex nhận diện heading markdown (Phần/Chương/Mục/Điều/Khoản), nhãn Điểm (`a)`, `b)`...), dòng bảng markdown (`\|...\|`), dòng phân cách backmatter `---` (mục 4.6).                                                                                                                                                                                                                                                     |
+| `parser.py`     | Đọc file markdown, trích `source_document` từ heading `#` đầu tiên trong vùng frontmatter (mục 2, phân biệt với heading cấu trúc Phần/Phụ Lục bằng regex chuyên biệt, mục 4.6), dựng `DocumentTree` — cây breadcrumb tới từng Khoản kèm nội dung thô, gồm cả Khoản ngầm định cấp văn bản cho frontmatter/backmatter (mục 4.6); phát hiện `has_table`/trích `raw_table` cho từng Khoản.                              |
+| `tables.py`     | Chuyển `raw_table` (markdown) thành `standardization_table` (mục 5.3).                                                                                                                                                                                                                                                                                                                                                   |
+| `tokenizer.py`  | `count_tokens(text) -> int` — word-segment (pyvi) + đếm bằng `AutoTokenizer` (mục 6).                                                                                                                                                                                                                                                                                                                                    |
+| `splitter.py`   | Thuật toán cắt Khoản (mục 4): tách câu dẫn, ghép "cận dưới" trên ngân sách hiệu dụng, fallback theo câu có overlap, ghép câu dẫn vào mọi chunk con (mục 4.5); áp dụng ngoại lệ bảng (mục 5.1) trước khi cắt; với Khoản ngầm định frontmatter/backmatter, cắt bằng `RecursiveCharacterTextSplitter` thay vì thuật toán Điểm/câu (mục 4.6).                                                                             |
+| `models.py`     | Pydantic models: `Chunk`, `ChunkingResult`, `DocumentTree` (input/output giữa các module trên).                                                                                                                                                                                                                                                                                                                          |
+| `pipeline.py`   | `convert_markdown_to_chunks(path) -> ChunkingResult` và `convert_directory(markdown_dir, out_dir)` — orchestration, atomic write, gom summary.                                                                                                                                                                                                                                                                          |
 
 `tools/chunk_documents.py` chỉ là Typer CLI mỏng gọi
 `pipeline.convert_directory()`.
@@ -533,94 +500,60 @@ tools/chunk_documents.py (Typer CLI)
 - Chạy CLI trên toàn bộ `data/markdown/` sinh ra `data/chunks/*.json`, mỗi
   chunk có breadcrumb đầy đủ và `token_count <= MAX_TOKENS` (trừ chunk có
   `has_table=True`, xem mục 5.1).
-- **[CẬP NHẬT 2026-09-14]** Với Khoản có Điểm và có câu dẫn, bị cắt thành
-  nhiều chunk (mục 4.5) — xác nhận thủ công ít nhất 1 ví dụ thật trong corpus
-  (Điều 85 Khoản 1 `Luật bảo hiểm xã hội.md`, hoặc điểm b/c Khoản 4/7 Điều 2
-  cùng file) — mọi chunk con sinh ra từ Khoản đó đều có `content` bắt đầu
-  bằng đúng câu dẫn gốc. (Trước đây tiêu chí này kiểm tra field `negation_note`
-  khớp câu phủ định — nay đã thay thế, xem mục 12.)
+- Với Khoản có Điểm và có câu dẫn, bị cắt thành nhiều chunk (mục 4.5) — xác
+  nhận thủ công ít nhất 1 ví dụ thật trong corpus (Điều 85 Khoản 1 `Luật bảo
+  hiểm xã hội.md`, hoặc điểm b/c Khoản 4/7 Điều 2 cùng file) — mọi chunk con
+  sinh ra từ Khoản đó đều có `content` bắt đầu bằng đúng câu dẫn gốc.
 - Với Điều 3 - Khoản 1 của `data/markdown/Quy định mức lương tối thiểu.md`
   (bảng 4 vùng lương, mục 5) — sinh đúng 1 chunk duy nhất
   (`is_split=False`, `has_table=True`), `raw_table` khớp nguyên văn bảng
   markdown gốc, `standardization_table` có đúng 4 dòng theo mẫu mục 5.3.
-- **[MỚI 2026-09-14, CẬP NHẬT 2026-09-17]** Với mỗi file `data/markdown/*.md`
-  có đoạn mở đầu trước heading cấu trúc đầu tiên (frontmatter, mục 4.6) —
-  sinh đúng 1 (hoặc nhiều, nếu vượt `MAX_TOKENS`) chunk cho đoạn đó,
-  breadcrumb chỉ còn `{source_document}`, nội dung khớp nguyên văn đoạn mở
-  đầu gốc (vd. "LUẬT", "BẢO HIỂM XÃ HỘI", "Căn cứ Hiến pháp...", "Quốc hội
-  ban hành..." trong `Luật bảo hiểm xã hội.md`). Tiêu chí này không tồn tại
-  trong bản spec gốc (đoạn mở đầu trước đây bị bỏ qua hoàn toàn).
-- **[MỚI 2026-09-14, CẬP NHẬT 2026-09-17]** Với `Luật bảo hiểm xã hội.md`
-  (dòng 3456, marker `**[10]**`) — vùng chú thích sửa đổi dời cuối
-  (backmatter, mục 4.6) tách thành chunk riêng, breadcrumb
-  `Luật Bảo hiểm xã hội - Chú thích sửa đổi (cuối văn bản)`, **không** còn
-  lẫn vào `content` của Khoản 15 Điều 141 (Khoản ngầm định gần nhất trước
-  đó).
-- **[MỚI 2026-09-17]** `source_document` của mọi chunk trong 1 file khớp
-  đúng nguyên văn heading `#` đầu tiên trong vùng frontmatter của file đó
-  (mục 2) — xác nhận thủ công trên 6 file hiện có trong `data/markdown/`.
+- Với mỗi file `data/markdown/*.md` có đoạn mở đầu trước heading cấu trúc
+  đầu tiên (frontmatter, mục 4.6) — sinh đúng 1 (hoặc nhiều, nếu vượt
+  `MAX_TOKENS`) chunk cho đoạn đó, breadcrumb chỉ còn `{source_document}`,
+  nội dung khớp nguyên văn đoạn mở đầu gốc (vd. "LUẬT", "BẢO HIỂM XÃ HỘI",
+  "Căn cứ Hiến pháp...", "Quốc hội ban hành..." trong
+  `Luật bảo hiểm xã hội.md`).
+- Với `Luật bảo hiểm xã hội.md` (dòng phân cách `---` ở dòng 3413) — vùng chú
+  thích sửa đổi dời cuối (backmatter, mục 4.6) tách thành chunk riêng,
+  breadcrumb `LUẬT BẢO HIỂM XÃ HỘI - Chú thích sửa đổi (cuối văn bản)`,
+  **không** còn lẫn vào `content` của Khoản 15 Điều 141 (Khoản ngầm định
+  gần nhất trước đó).
+- `source_document` của mọi chunk trong 1 file khớp đúng: đoạn văn liền kề
+  ngay phía trên heading `#` đầu tiên (nếu có, thường là dòng loại văn bản)
+  nối với heading đó, thành 1 dòng plain text (mục 2) — xác nhận thủ công
+  trên 6 file hiện có trong `data/markdown/`, vd.
+  `Điều kiện lao động và quan hệ lao động.md` →
+  `source_document = "NGHỊ ĐỊNH QUY ĐỊNH CHI TIẾT VÀ HƯỚNG DẪN THI HÀNH MỘT
+  SỐ ĐIỀU CỦA BỘ LUẬT LAO ĐỘNG VỀ ĐIỀU KIỆN LAO ĐỘNG VÀ QUAN HỆ LAO ĐỘNG"`.
 - Chạy lại nhiều lần trên cùng input ra `chunk_id` và nội dung giống hệt
   (deterministic).
 - 1 file lỗi không làm dừng toàn bộ batch; CLI kết thúc với summary rõ ràng.
 - `config.py` được các package khác (`chunking/`, và sau này `embedding/`)
   import `EmbeddingSettings`/`VectorDBSettings` thay vì đọc `.env` trực tiếp.
 
-## 12. Lịch sử cập nhật
+## 12. Lịch sử thay đổi quan trọng
 
-Các thay đổi dưới đây được đánh dấu **[MỚI]** (nội dung hoàn toàn không có ở
-bản spec gốc) hoặc **[CẬP NHẬT]** (sửa hành vi đã có) ngay tại vị trí liên
-quan trong các mục ở trên. Mục này tóm tắt lại để xem nhanh, không thay thế
-phần đánh dấu inline.
+Chốt lại các quyết định thiết kế còn hiệu lực, khác so với ý tưởng ban đầu —
+chi tiết quá trình brainstorm đã có trong git history của file này.
 
-**2026-09-14 — brainstorm cùng người dùng, 4 điểm phát hiện khi tự test:**
+- Câu dẫn (đoạn đứng trước danh sách Điểm trong 1 Khoản) luôn được lặp lại
+  nguyên văn vào `content` của mọi chunk con sinh từ Khoản đó (mục 4.2–4.5)
+  — không có field `negation_note` riêng.
+- Frontmatter (đoạn mở đầu văn bản) và backmatter (chú thích sửa đổi dời
+  cuối file) là 2 "Khoản ngầm định cấp văn bản" riêng biệt, cắt bằng
+  `RecursiveCharacterTextSplitter` thay vì thuật toán Điểm/câu (mục 4.6).
+- Không có field cấu trúc nào tách từ front matter (`loai_van_ban`,
+  `so_hieu`, `ngay_ban_hanh`...) trong `Chunk` — `formatting/` không sinh
+  YAML/field nào để đọc lại.
+- `source_document` = đoạn văn liền kề ngay phía trên heading `#` đầu tiên
+  (thường là dòng loại văn bản, vd. "LUẬT") nối với chính heading đó, thành
+  1 dòng plain text (mục 2).
+- Marker phân cách backmatter (mục 4.6) là 1 dòng `---` đứng riêng (do
+  `formatting/pipeline.py._compose_markdown` chèn), **không phải** `**[n]**`
+  như mô tả ban đầu — module `formatting/footnotes.py::render_blockquote`
+  gắn với marker cũ đã bị xoá khỏi `formatting/` từ bản redesign Groq
+  2026-09-16, phát hiện khi implement (`develop-cycle`, PR #14).
 
-1. **Câu dẫn lặp vào `content`** (mục 4.2–4.5, **CẬP NHẬT**): trước đây
-   "đơn vị #0" chỉ là 1 đơn vị bình thường trong pool ghép "cận dưới" — chunk
-   con nào không chứa nó thì mất câu dẫn trong `content`; câu phủ định (nếu
-   có) chỉ được lặp vào `breadcrumb`/field `negation_note`. Nay: câu dẫn tách
-   riêng khỏi pool, luôn lặp lại nguyên văn vào `content` của **mọi** chunk
-   con (không chỉ khi có từ khoá phủ định), ngân sách token tính bù trừ qua
-   `budget_hiệu_dụng`.
-2. **Frontmatter/backmatter** (mục 4.6, **MỚI**): đoạn mở đầu văn bản (trước
-   heading đầu tiên) và vùng chú thích sửa đổi dời cuối file (marker
-   `**[n]**`) trước đây bị bỏ qua/nuốt nhầm vào Khoản khác — nay tách thành
-   Khoản ngầm định cấp văn bản riêng, cắt bằng
-   `RecursiveCharacterTextSplitter` (LangChain) thay vì thuật toán Điểm/câu.
-3. **Bỏ `negation_note`** (mục 2, **ĐÃ XOÁ**): field và cơ chế phát hiện từ
-   khoá phủ định (`NEGATION_KEYWORDS`/`RE_NEGATION` trong `patterns.py`) bị
-   xoá hoàn toàn — thay thế bởi cơ chế câu dẫn tổng quát ở điểm 1.
-4. **4 field front matter mới** (mục 2, **MỚI**): `loai_van_ban`,
-   `co_quan_ban_hanh`, `ngay_ban_hanh`, `ngay_hieu_luc` thêm vào `Chunk`, đọc
-   trực tiếp từ front matter YAML (đã có sẵn từ `formatting/frontmatter.py`).
-
-Code (`parser.py`, `splitter.py`, `models.py`, `patterns.py`) **chưa** được
-cập nhật theo các thay đổi này — đây mới chỉ là cập nhật spec, cần chạy qua
-develop-cycle để implement.
-
-**2026-09-17 — đồng bộ theo thiết kế lại front/back matter của
-`formatting/` (Groq conversion, không còn YAML/field cấu trúc):**
-
-1. **Bỏ 4 field front matter mới** (mục 2, **ĐÃ XOÁ**, đảo ngược điểm 4 của
-   bản 2026-09-14 ở trên): `loai_van_ban`, `co_quan_ban_hanh`,
-   `ngay_ban_hanh`, `ngay_hieu_luc` bị xoá khỏi `Chunk` — `formatting/` đã
-   xác nhận (2026-09-16) bỏ hoàn toàn YAML/field cấu trúc, không còn gì để
-   `chunking/` đọc lại.
-2. **`source_document` đổi nguồn** (mục 2, **CẬP NHẬT**): trước đây đọc
-   `so_hieu` (fallback tên file) từ front matter YAML; nay lấy nguyên văn
-   heading `#` (H1) đầu tiên trong file markdown — chính là tên đầy đủ văn
-   bản. Kéo theo `formatting_spec.md` mục 1.1 phải cho phép 1 ngoại lệ: tên
-   văn bản được phép render bằng heading `#` thật (trước đây cấm heading
-   hoàn toàn trong front matter).
-3. **Breadcrumb bỏ `({so_hieu})`** (mục 3, 4.6, **CẬP NHẬT**): format đổi từ
-   `{ten_van_ban} ({so_hieu}) - ...` thành `{source_document} - ...`; 2 field
-   front matter YAML riêng biệt trước đây nay gộp thành 1 `source_document`
-   duy nhất. `breadcrumb_prefix` của frontmatter/backmatter (mục 4.6) cũng
-   đổi theo tương ứng.
-4. **Phân biệt heading tên văn bản với heading cấu trúc** (mục 4.6, **MỚI**):
-   vì tên văn bản nay cũng là heading `#`, biên frontmatter không còn được
-   xác định bằng "gặp `#` đầu tiên trong file" mà phải dùng regex cấu trúc
-   chuyên biệt cho Phần/Phụ Lục (giữ nguyên logic `formatting/` đã dùng để
-   xác định biên) — nếu không sẽ cắt nhầm ngay tại dòng tên văn bản.
-
-Code (`parser.py`, `models.py`) **chưa** được cập nhật theo các thay đổi
-này — cần chạy qua develop-cycle để implement.
+Code (`parser.py`, `splitter.py`, `models.py`, `patterns.py`) đã được
+implement theo bản spec này (PR #14, branch `feature/chunking`).

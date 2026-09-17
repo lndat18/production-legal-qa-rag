@@ -1,9 +1,14 @@
-CHÍNH PHỦ 
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
+CHÍNH PHỦ  
 
-Số: 145/2020/NĐ-CP
-Hà Nội, ngày 14 tháng 12 năm 2020
+-------  
+
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
+Độc lập - Tự do - Hạnh phúc  
+
+---------------  
+
+Số: 145/2020/NĐ-CP  
+Hà Nội, ngày 14 tháng 12 năm 2020  
 
 **NGHỊ ĐỊNH**
 
@@ -15,7 +20,7 @@ Hà Nội, ngày 14 tháng 12 năm 2020
 
 *Căn cứ Luật Đầu tư ngày 17 tháng 6 năm 2020;*
 
-*Căn cứ Luật Doanh nghiệp ngày 17 tháng 6 năm 2020;*
+*Căn cứ Luật Doanh nghiệp ngày 1 7 tháng 6 năm 2020;*
 
 *Theo đề nghị của Bộ trưởng Bộ Lao động - Thương binh và Xã hội;*
 
@@ -2869,5 +2874,4 @@ Các Bộ trưởng, Thủ trưởng cơ quan ngang Bộ, Thủ trưởng cơ qu
 
 ---
 
-| FILE ĐƯỢC ĐÍNH KÈM THEO VĂN BẢN |
-| --------------------------------------- |
+FILE ĐƯỢC ĐÍNH KÈM THEO VĂN BẢN

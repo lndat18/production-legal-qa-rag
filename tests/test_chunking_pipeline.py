@@ -37,12 +37,11 @@ def _mock_tokenizer(monkeypatch: pytest.MonkeyPatch):
 
 
 def _write_markdown(path: Path, khoan_content: str = "Nội dung khoản 1.") -> None:
+    # Quy ước THẬT của `formatting/`: 1 dòng loại văn bản trước heading `#`
+    # tên văn bản (frontmatter, mục 2), không còn YAML front matter.
     path.write_text(
-        "---\n"
-        'so_hieu: "01/2020/QH"\n'
-        'ten_van_ban: "Văn bản mẫu"\n'
-        "---\n\n"
-        "Tiêu đề văn bản mẫu.\n\n"
+        "**LUẬT**\n\n"
+        "# VĂN BẢN MẪU\n\n"
         "#### Điều 1. Tên điều\n\n"
         "##### Khoản 1\n\n"
         f"{khoan_content}\n",
@@ -61,8 +60,10 @@ def test_convert_markdown_to_chunks_tra_ve_dung_so_khoan_va_chunk(tmp_path: Path
     result = convert_markdown_to_chunks(path)
     assert result.khoan_count == 1
     assert result.split_khoan_count == 0
-    assert len(result.chunks) == 1
-    assert result.chunks[0].content == "Nội dung khoản 1."
+    # 1 chunk frontmatter ("LUẬT VĂN BẢN MẪU") + 1 chunk Khoản 1.
+    assert len(result.chunks) == 2
+    khoan_chunk = next(c for c in result.chunks if c.breadcrumb != "LUẬT VĂN BẢN MẪU")
+    assert khoan_chunk.content == "Nội dung khoản 1."
     assert result.source_path == str(path)
 
 
@@ -78,17 +79,17 @@ def test_convert_markdown_to_chunks_dem_dung_so_khoan_bi_cat(
     result = convert_markdown_to_chunks(path)
     assert result.khoan_count == 1
     assert result.split_khoan_count == 1
-    assert len(result.chunks) > 1
+    khoan_chunks = [c for c in result.chunks if c.breadcrumb != "LUẬT VĂN BẢN MẪU"]
+    assert len(khoan_chunks) > 1
 
 
 def test_convert_markdown_to_chunks_nhan_max_tokens_truyen_vao_khong_doc_env(
     tmp_path: Path, monkeypatch
 ):
-    # Góp ý non-blocking reviewer vòng 3: `convert_directory` load
-    # `EmbeddingSettings()` 1 lần rồi truyền `max_tokens` xuống, thay vì mỗi
-    # file đọc lại `.env`. Ở đây gọi trực tiếp `convert_markdown_to_chunks`
-    # với `max_tokens=3` (khác hẳn env "1000" do fixture set) để xác nhận
-    # tham số truyền vào được ưu tiên, không đọc lại `EmbeddingSettings()`.
+    # `convert_directory` load `EmbeddingSettings()` 1 lần rồi truyền
+    # `max_tokens` xuống, thay vì mỗi file đọc lại `.env`. Ở đây gọi trực
+    # tiếp `convert_markdown_to_chunks` với `max_tokens=3` (khác hẳn env
+    # "1000" do fixture set) để xác nhận tham số truyền vào được ưu tiên.
     path = tmp_path / "a.md"
     _write_markdown(
         path,
@@ -96,7 +97,31 @@ def test_convert_markdown_to_chunks_nhan_max_tokens_truyen_vao_khong_doc_env(
     )
     result = convert_markdown_to_chunks(path, max_tokens=3)
     assert result.split_khoan_count == 1
-    assert len(result.chunks) > 1
+    khoan_chunks = [c for c in result.chunks if c.breadcrumb != "LUẬT VĂN BẢN MẪU"]
+    assert len(khoan_chunks) > 1
+
+
+def test_convert_markdown_to_chunks_frontmatter_backmatter_sinh_chunk_rieng(
+    tmp_path: Path,
+):
+    path = tmp_path / "a.md"
+    path.write_text(
+        "**LUẬT**\n\n"
+        "# VĂN BẢN MẪU\n\n"
+        "#### Điều 1. Tên điều\n\n"
+        "##### Khoản 1\n\n"
+        "Nội dung khoản 1.\n\n"
+        "---\n\n"
+        "[1] Chú thích sửa đổi dời cuối.\n",
+        encoding="utf-8",
+    )
+    result = convert_markdown_to_chunks(path)
+    breadcrumbs = [chunk.breadcrumb for chunk in result.chunks]
+    assert "LUẬT VĂN BẢN MẪU" in breadcrumbs
+    assert "LUẬT VĂN BẢN MẪU - Chú thích sửa đổi (cuối văn bản)" in breadcrumbs
+    # Không tính frontmatter/backmatter vào khoan_count/split_khoan_count
+    # (mục 9: thống kê đó chỉ đếm Khoản thật).
+    assert result.khoan_count == 1
 
 
 # ==========================================================================
@@ -146,15 +171,12 @@ def test_ensure_unique_chunk_ids_raise_khi_id_trung_lap():
 
 
 def _write_markdown_2_heading_loi_cung_dieu(path: Path) -> None:
-    # Nguyên nhân thật gây trùng chunk_id (feedback REVISE vòng 3): 2 heading
-    # cấp 5 không khớp dạng nào đã biết trong cùng 1 Điều -> 2 Khoản ngầm
-    # định cùng breadcrumb_prefix (xem test_chunking_parser.py).
+    # Nguyên nhân thật gây trùng chunk_id: 2 heading cấp 5 không khớp dạng
+    # nào đã biết trong cùng 1 Điều -> 2 Khoản ngầm định cùng
+    # breadcrumb_prefix (xem test_chunking_parser.py).
     path.write_text(
-        "---\n"
-        'so_hieu: "01/2020/QH"\n'
-        'ten_van_ban: "Văn bản mẫu"\n'
-        "---\n\n"
-        "Tiêu đề văn bản mẫu.\n\n"
+        "**LUẬT**\n\n"
+        "# VĂN BẢN MẪU\n\n"
         "#### Điều 1. Điều có heading lỗi\n\n"
         "##### ???\n\n"
         "Nội dung khoản ngầm định thứ nhất.\n\n"

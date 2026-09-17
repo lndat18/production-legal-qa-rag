@@ -1,21 +1,36 @@
-"""Đọc markdown đã có front matter, dựng `DocumentTree` (mục 3, 10).
+"""Đọc markdown output của `formatting/`, dựng `DocumentTree` (mục 2, 4.6, 10).
 
 Duyệt các block Markdown (tách theo dòng trống — đúng cách `formatting/`
-ghép các phần lại bằng ``"\\n\\n".join(...)``) theo thứ tự, quy heading về
-cấp Phần/Phụ Lục -> Chương -> Mục -> Điều -> Khoản theo mapping của
-`formatting_spec.md` mục 3, rồi gom nội dung thân thành từng `KhoanNode`.
+ghép các phần lại) theo thứ tự, quy heading về cấp Phần/Phụ Lục -> Chương ->
+Mục -> Điều -> Khoản theo mapping của `formatting_spec.md` mục 3, rồi gom nội
+dung thân thành từng `KhoanNode`. Trích `source_document` + nội dung 2 "Khoản
+ngầm định cấp văn bản" (frontmatter/backmatter, mục 4.6) trước/sau vùng cấu
+trúc đó.
 
-QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa, xem báo cáo bàn giao):
+Không còn YAML front matter nào để đọc — `formatting/` không sinh YAML/field
+cấu trúc nào (formatting_spec.md mục 1.1); toàn bộ file `.md` là markdown
+thuần, `source_document` được suy ra deterministic từ heading `#` đầu tiên
+trong vùng frontmatter (mục 2), không phải field trích xuất theo schema.
 
+QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa hoặc mô tả không khớp thực tế —
+xem báo cáo bàn giao):
+
+- **Marker backmatter thật khác mô tả `**[n]**`/`footnotes.py::render_blockquote`
+  ở chunking_spec.md mục 4.6**: module `footnotes.py` đó đã bị xoá khỏi
+  `formatting/` từ bản redesign Groq (2026-09-16, xem formatting_spec.md mục
+  1.1) — tài liệu mục 4.6 là mô tả cũ chưa cập nhật theo redesign này. Marker
+  thật, xác nhận trên toàn bộ 6 file `data/markdown/*.md`, là dòng `---` do
+  `formatting/pipeline.py._compose_markdown` chèn để ngăn cách back matter
+  (formatting_spec.md mục 1.1 "Ghép output cuối cùng", mục 2) — dùng
+  `patterns.RE_BACKMATTER_SEPARATOR`, xem docstring ở đó.
 - Điều không có Khoản con (nội dung nằm thẳng dưới heading Điều), hoặc đoạn
   mở đầu đứng trước Khoản đầu tiên của 1 Điều: được gom thành 1 `KhoanNode`
-  với ``khoan_number=None`` ("Khoản ngầm định") thay vì bị bỏ qua, để không
-  mất nội dung thật trong corpus (vd. Điều 46/47, Điều 48a
+  với ``khoan_number=None`` ("Khoản ngầm định cấp Điều") thay vì bị bỏ qua,
+  để không mất nội dung thật trong corpus (vd. Điều 46/47, Điều 48a
   `Luật bảo hiểm y tế.md`). Breadcrumb của Khoản ngầm định dừng ở cấp Điều
   (không có đoạn "- Khoản").
 - Blockquote chú thích sửa đổi (dòng bắt đầu bằng ">") bị loại khỏi nội dung
-  Khoản hoàn toàn — đây là metadata lịch sử sửa đổi
-  (xem `formatting/footnotes.py::render_blockquote`), không phải nội dung
+  Khoản hoàn toàn — đây là metadata lịch sử sửa đổi, không phải nội dung
   pháp lý cần embed.
 - Nội dung nằm trực tiếp dưới heading Phần/Phụ Lục/Chương/Mục MÀ KHÔNG có
   Khoản/Điều nào theo sau (vd. dòng "(Kèm theo Nghị định số...)" ngay dưới
@@ -24,17 +39,12 @@ QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa, xem báo cáo bàn gia
   `formatting/emitter.py::_emit_khoan`) VẪN được coi là 1 Khoản hợp lệ dù
   KHÔNG có Điều bao ngoài (Phụ Lục danh mục địa bàn nằm thẳng dưới `#`, không
   qua Chương/Điều) — nếu không, toàn bộ danh mục địa bàn (dữ liệu thật, có ý
-  nghĩa tra cứu) sẽ bị mất trắng. `formatting/emitter.py` tự nhận nó là đơn
-  vị chunking ("tên tỉnh/thành... cần có trong breadcrumb của chunk con").
-  Phần tiêu đề ngắn được coi là đoạn văn bản đầu tiên của nội dung Khoản
-  (không thêm slot riêng vào breadcrumb, breadcrumb vẫn theo đúng format
-  literal "- Khoản {m}" của mục 3, chỉ thiếu đoạn "- Điều ...").
+  nghĩa tra cứu) sẽ bị mất trắng.
 - Bảng công thức 1 hàng dạng HTML thô (``<table>...</table>``, do
   `formatting/tables.py::_single_row_table_to_html` sinh ra cho các bảng
   công thức như "Tiền lương làm thêm giờ = ... x ...") được coi là bảng
   giống bảng pipe — `has_table=True`, giữ nguyên không cắt (mục 5.1), dù
-  mục 5 của spec chỉ mô tả literal bảng pipe. Xem `tables.py` để biết cách
-  chuẩn hoá riêng cho dạng này.
+  mục 5 của spec chỉ mô tả literal bảng pipe.
 - Khoản lồng trong Khoản (vd. Điều 219 `Văn bản hợp nhất bộ luật lao động.md`
   trích dẫn nguyên văn nhiều Điều/Khoản của luật khác, mà `formatting/` vẫn
   render bằng chính heading cấp 5 ``##### Khoản N`` cho nội dung trích dẫn):
@@ -46,13 +56,7 @@ QUYẾT ĐỊNH THIẾT KẾ (spec không định nghĩa, xem báo cáo bàn gia
   thật của văn bản đang parse. Heading đó được gộp làm văn bản thường vào
   Khoản đang mở (không flush, không đổi `khoan_number`/breadcrumb), để toàn
   bộ đoạn trích dẫn (bao gồm các "Khoản" lồng bên trong nó) nằm chung 1
-  `KhoanNode` với Khoản thật đang chứa nó — vừa giữ đúng "vị trí pháp lý"
-  (breadcrumb trỏ về Khoản thật), vừa tránh `chunk_id` trùng lặp khi nhiều
-  đoạn trích dẫn tự đánh số lại từ "Khoản 1" (mục 1, 2). Không dùng số thứ
-  tự Khoản để phát hiện (vd. "đã thấy nhãn này trong Điều hiện tại") vì số
-  trong đoạn trích dẫn có thể trùng ngẫu nhiên với số Khoản thật kế tiếp
-  (false negative), trong khi ngoặc kép là tín hiệu cấu trúc trực tiếp của
-  chính quy ước soạn thảo tạo ra tình huống này.
+  `KhoanNode` với Khoản thật đang chứa nó.
 """
 
 from __future__ import annotations
@@ -61,10 +65,9 @@ import re
 import warnings
 from pathlib import Path
 
-import yaml
-
 from production_legal_qa_rag.chunking.models import DocumentTree, KhoanNode
 from production_legal_qa_rag.chunking.patterns import (
+    RE_BACKMATTER_SEPARATOR,
     RE_CHUONG,
     RE_DIEU,
     RE_HEADING,
@@ -74,41 +77,86 @@ from production_legal_qa_rag.chunking.patterns import (
     RE_MUC,
     RE_PHAN,
     RE_TABLE_LINE,
+    is_structural_heading,
 )
 
 _RE_BLOCK_SPLIT = re.compile(r"\n{2,}")
+_RE_LEADING_ASTERISKS = re.compile(r"^\*+")
+_RE_TRAILING_ASTERISKS = re.compile(r"\*+$")
 
 
-def _split_front_matter(text: str) -> tuple[dict[str, object], str]:
-    """Tách khối YAML front matter (đã sinh bởi `formatting/frontmatter.py`)."""
-    lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return {}, text
-    for index in range(1, len(lines)):
-        if lines[index].strip() == "---":
-            yaml_block = "\n".join(lines[1:index])
-            body = "\n".join(lines[index + 1 :])
-            data = yaml.safe_load(yaml_block) or {}
-            return (data if isinstance(data, dict) else {}), body
-    return {}, text
-
-
-def _split_blocks(body: str) -> list[str]:
-    """Tách thân markdown thành các block theo dòng trống, đã `strip()`.
-
-    `_split_front_matter` nối phần thân bằng ``"\\n".join(...)``, có thể để
-    lại 1 ký tự "\\n" thừa ở đầu thân (khi không có đoạn mở đầu trước heading
-    đầu tiên). "\\n" đơn lẻ đó không đủ để `_RE_BLOCK_SPLIT` tách ra, nên
-    dính vào block đầu tiên và làm hỏng `RE_HEADING.match` (dùng ``^``, không
-    ``MULTILINE``). `strip()` từng block loại bỏ khoảng trắng thừa này (và
-    mọi khoảng trắng đầu/cuối tương tự) trước khi so khớp heading.
-    """
+def _split_blocks(text: str) -> list[str]:
+    """Tách toàn bộ file markdown thành các block theo dòng trống, đã `strip()`."""
     blocks = []
-    for block in _RE_BLOCK_SPLIT.split(body):
+    for block in _RE_BLOCK_SPLIT.split(text):
         stripped = block.strip()
         if stripped:
             blocks.append(stripped)
     return blocks
+
+
+def _find_structural_start(blocks: list[str]) -> int:
+    """Chỉ số block đầu tiên là heading cấu trúc thật (mục 4.6).
+
+    Trả về ``len(blocks)`` nếu không tìm thấy heading cấu trúc nào (toàn bộ
+    file coi như frontmatter — không xảy ra trên corpus thật, nhưng không
+    crash).
+    """
+    for index, block in enumerate(blocks):
+        match = RE_HEADING.match(block)
+        if match and is_structural_heading(len(match.group(1)), match.group(2).strip()):
+            return index
+    return len(blocks)
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    """Bỏ `**`/`*` bao quanh 1 dòng (vd. `"**LUẬT**"` -> `"LUẬT"`, mục 2)."""
+    stripped = text.strip()
+    stripped = _RE_LEADING_ASTERISKS.sub("", stripped)
+    stripped = _RE_TRAILING_ASTERISKS.sub("", stripped)
+    return stripped.strip()
+
+
+def _extract_frontmatter(blocks: list[str], path: Path) -> tuple[str, str | None]:
+    """Trích `source_document` + nội dung frontmatter từ các block trước
+    heading cấu trúc đầu tiên (mục 2, 4.6).
+
+    `source_document` = đoạn văn liền kề ngay phía trên heading `#` (H1) đầu
+    tiên trong vùng frontmatter, nối với chính heading đó (bỏ `**`/`#`, cách
+    nhau 1 khoảng trắng). Nếu không có đoạn nào đứng ngay trước heading ->
+    chỉ lấy heading. Vì vùng frontmatter (theo định nghĩa `_find_structural_start`)
+    chỉ chứa các heading KHÔNG cấu trúc, 1 heading H1 tìm thấy ở đây chắc
+    chắn là heading tên văn bản (mục 4.6), không phải Phần/Phụ Lục thật.
+    """
+    if not blocks:
+        return path.stem, None
+
+    title_index: int | None = None
+    heading_text: str | None = None
+    for index, block in enumerate(blocks):
+        match = RE_HEADING.match(block)
+        if match and len(match.group(1)) == 1:
+            title_index = index
+            heading_text = match.group(2).strip()
+            break
+
+    if title_index is None or heading_text is None:
+        # Không tìm thấy heading tên văn bản (không xảy ra trên corpus thật,
+        # xem formatting_spec.md mục 1.1 "frontmatter_title_not_found") ->
+        # fallback tên file, giữ nguyên toàn bộ frontmatter làm nội dung.
+        return path.stem, "\n\n".join(blocks)
+
+    if title_index > 0:
+        preceding = _strip_markdown_emphasis(blocks[title_index - 1])
+        source_document = f"{preceding} {heading_text}" if preceding else heading_text
+    else:
+        source_document = heading_text
+
+    content_parts = [
+        heading_text if index == title_index else block
+        for index, block in enumerate(blocks)
+    ]
+    return source_document, "\n\n".join(content_parts)
 
 
 def _phan_segment(text: str) -> str:
@@ -135,38 +183,38 @@ def _dieu_segment(text: str) -> str:
 
 
 def _build_prefix(
-    doc_prefix: str,
+    source_document: str,
     phan: str | None,
     chuong: str | None,
     muc: str | None,
     dieu: str | None,
 ) -> str:
-    parts = [doc_prefix, phan, chuong, muc, dieu]
+    parts = [source_document, phan, chuong, muc, dieu]
     return " - ".join(part for part in parts if part)
 
 
 def parse_markdown(path: str | Path) -> DocumentTree:
-    """Đọc 1 file markdown, dựng `DocumentTree` chứa toàn bộ `KhoanNode`.
+    """Đọc 1 file markdown, dựng `DocumentTree` chứa toàn bộ `KhoanNode` +
+    nội dung 2 "Khoản ngầm định cấp văn bản" (frontmatter/backmatter).
 
     Args:
         path: Đường dẫn tới file `.md` nguồn (output của `formatting/`).
 
     Returns:
-        Cây breadcrumb -> Khoản, sẵn sàng cho `splitter.split_khoan`.
+        Cây breadcrumb -> Khoản, sẵn sàng cho `splitter.split_khoan`/
+        `splitter.split_implicit_khoan`.
     """
     path = Path(path)
-    raw = path.read_text(encoding="utf-8")
-    front_matter, body = _split_front_matter(raw)
+    text = path.read_text(encoding="utf-8")
+    blocks = _split_blocks(text)
 
-    so_hieu = front_matter.get("so_hieu")
-    ten_van_ban = front_matter.get("ten_van_ban")
-    source_document = str(so_hieu) if so_hieu else path.stem
-    if ten_van_ban and so_hieu:
-        doc_prefix = f"{ten_van_ban} ({so_hieu})"
-    else:
-        doc_prefix = str(ten_van_ban) if ten_van_ban else source_document
+    start_index = _find_structural_start(blocks)
+    source_document, frontmatter_content = _extract_frontmatter(
+        blocks[:start_index], path
+    )
 
     khoans: list[KhoanNode] = []
+    backmatter_content: str | None = None
 
     phan: str | None = None
     chuong: str | None = None
@@ -174,7 +222,7 @@ def parse_markdown(path: str | Path) -> DocumentTree:
     dieu: str | None = None
     dieu_seen = False
     khoan_number: str | None = None
-    prefix = doc_prefix
+    prefix = source_document
     paragraphs: list[str] = []
     tables: list[str] = []
     # Độ sâu dấu ngoặc kép trích dẫn "“"/"”" hiện tại -- dùng để phát hiện
@@ -205,18 +253,22 @@ def parse_markdown(path: str | Path) -> DocumentTree:
             )
         )
 
-    for block in _split_blocks(body):
+    found_backmatter = False
+    index = start_index
+    while index < len(blocks):
+        block = blocks[index]
         heading_match = RE_HEADING.match(block)
         if heading_match:
             level = len(heading_match.group(1))
-            text = heading_match.group(2).strip()
+            heading_text = heading_match.group(2).strip()
 
             if level == 5 and quote_depth > 0:
                 # Khoản lồng trong đoạn trích dẫn (xem docstring đầu file):
                 # không phải cấu trúc thật của văn bản đang parse -- gộp làm
                 # văn bản thường vào Khoản thật đang mở, không flush, không
                 # đổi khoan_number/breadcrumb.
-                paragraphs.append(text)
+                paragraphs.append(heading_text)
+                index += 1
                 continue
 
             flush()
@@ -226,27 +278,29 @@ def parse_markdown(path: str | Path) -> DocumentTree:
                 quote_depth = 0
 
             if level == 1:
-                phan = _phan_segment(text)
+                phan = _phan_segment(heading_text)
                 chuong = muc = dieu = None
                 dieu_seen = False
                 khoan_number = None
             elif level == 2:
-                chuong = _chuong_segment(text)
+                chuong = _chuong_segment(heading_text)
                 muc = dieu = None
                 dieu_seen = False
                 khoan_number = None
             elif level == 3:
-                muc = _muc_segment(text)
+                muc = _muc_segment(heading_text)
                 dieu = None
                 dieu_seen = False
                 khoan_number = None
             elif level == 4:
-                dieu = _dieu_segment(text)
+                dieu = _dieu_segment(heading_text)
                 dieu_seen = True
                 khoan_number = None
             elif level == 5:
-                label_match = RE_KHOAN_LABEL.match(text)
-                merged_match = None if label_match else RE_KHOAN_MERGED.match(text)
+                label_match = RE_KHOAN_LABEL.match(heading_text)
+                merged_match = (
+                    None if label_match else RE_KHOAN_MERGED.match(heading_text)
+                )
                 if label_match:
                     khoan_number = label_match.group(1)
                 elif merged_match:
@@ -259,30 +313,44 @@ def parse_markdown(path: str | Path) -> DocumentTree:
                     # cùng 1 Điều (dữ liệu hỏng/OCR), 2 Khoản ngầm định sẽ
                     # cùng breadcrumb_prefix -> cùng chunk_id; invariant check
                     # chung ở `pipeline.py::_ensure_unique_chunk_ids` sẽ raise
-                    # và chặn riêng file đó (không âm thầm ghi đè), thay vì
-                    # chặn ở đây ngay từ ca đầu (vốn vô hại 1 mình).
+                    # và chặn riêng file đó, thay vì âm thầm ghi đè.
                     khoan_number = None
 
-            prefix = _build_prefix(doc_prefix, phan, chuong, muc, dieu)
+            prefix = _build_prefix(source_document, phan, chuong, muc, dieu)
+            index += 1
             continue
 
-        stripped = block.strip()
-        quote_depth = max(quote_depth + stripped.count("“") - stripped.count("”"), 0)
-        if stripped.startswith(">"):
+        # Marker backmatter thật (mục 4.6, xem docstring đầu file): 1 dòng
+        # "---" đứng riêng do formatting/pipeline.py chèn, luôn xuất hiện sau
+        # heading cuối cùng của file (nếu có backmatter). Chốt nốt Khoản đang
+        # mở rồi dừng vòng lặp cấu trúc — toàn bộ phần còn lại là backmatter.
+        if RE_BACKMATTER_SEPARATOR.match(block):
+            flush()
+            remaining = blocks[index + 1 :]
+            backmatter_content = "\n\n".join(remaining) if remaining else None
+            found_backmatter = True
+            break
+
+        quote_depth = max(quote_depth + block.count("“") - block.count("”"), 0)
+        if block.startswith(">"):
+            index += 1
             continue  # blockquote chú thích sửa đổi — không phải nội dung Khoản
-        if RE_TABLE_LINE.match(stripped) or RE_HTML_TABLE_LINE.match(stripped):
+        if RE_TABLE_LINE.match(block) or RE_HTML_TABLE_LINE.match(block):
             tables.append(block)
+            index += 1
             continue
         paragraphs.append(block)
+        index += 1
 
-    flush()
+    if not found_backmatter:
+        flush()
 
     if quote_depth != 0:
         # Cơ chế quote_depth (xem docstring đầu file) chỉ an toàn trên corpus
         # hiện tại vì đã xác nhận thủ công ngoặc kép cân bằng ở cả 6 file
         # `data/markdown/*.md`. Cảnh báo runtime ở đây để phát hiện SỚM văn
         # bản mới có ngoặc kép không cân (thay vì âm thầm nuốt mất 1 Khoản
-        # thật, xem test_HAN_CHE_... trong test_chunking_parser.py).
+        # thật).
         warnings.warn(
             f"{path}: ngoặc kép trích dẫn không cân (quote_depth={quote_depth} "
             "cuối file) -- có thể đã bỏ sót nội dung Khoản thật, xem "
@@ -290,4 +358,9 @@ def parse_markdown(path: str | Path) -> DocumentTree:
             stacklevel=2,
         )
 
-    return DocumentTree(source_document=source_document, khoans=khoans)
+    return DocumentTree(
+        source_document=source_document,
+        frontmatter_content=frontmatter_content,
+        backmatter_content=backmatter_content,
+        khoans=khoans,
+    )

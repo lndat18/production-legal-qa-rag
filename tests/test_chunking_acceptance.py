@@ -3,8 +3,11 @@ toàn bộ `data/markdown/*.md`, dùng tokenizer PhoBERT thật (không mock).
 
 Đánh dấu `slow` (nạp model thật, chạy trên toàn bộ corpus) -- CI job `checks`
 bỏ qua (`pytest -m "not slow"`); tester chạy riêng làm bằng chứng xác nhận
-thủ công yêu cầu ở mục 11 trước khi merge (đọc báo cáo tester để biết kết quả
-chạy, không phụ thuộc CI job `checks` chạy lại các test này mỗi lần).
+thủ công yêu cầu ở mục 11 trước khi merge.
+
+Các giá trị literal đối chiếu trong file này đã được xác nhận thủ công bằng
+cách chạy `tools/chunk_documents.py` thật trên `data/markdown/` (kết quả ghi
+trong `data/chunks/*.json`, đã commit) trước khi viết test.
 """
 
 from __future__ import annotations
@@ -30,8 +33,15 @@ def _require_corpus() -> None:
         pytest.skip("data/markdown/*.md không tồn tại")
 
 
+def _require_file(name: str) -> Path:
+    path = MARKDOWN_DIR / name
+    if not path.exists():
+        pytest.skip(f"{path} không tồn tại")
+    return path
+
+
 # ==========================================================================
-# "mọi chunk có token_count <= MAX_TOKENS trừ chunk has_table=True"
+# "mọi chunk có token_count <= MAX_TOKENS trừ chunk has_table=True" (mục 11)
 # ==========================================================================
 
 
@@ -60,61 +70,44 @@ def test_toan_bo_corpus_breadcrumb_khong_rong():
 
 
 # ==========================================================================
-# Ví dụ thật negation_note (mục 4.5, mục 11)
+# Câu dẫn lặp lại vào content của mọi chunk con khi Khoản có Điểm bị cắt
+# (mục 4.5, mục 11) -- ví dụ thật: Điều 2 Khoản 1 `Luật bảo hiểm xã hội.md`.
 # ==========================================================================
 
 
-def test_negation_note_luat_bao_hiem_y_te_dong_58():
-    path = MARKDOWN_DIR / "Luật bảo hiểm y tế.md"
-    if not path.exists():
-        pytest.skip(f"{path} không tồn tại")
+def test_cau_dan_lap_lai_dieu_2_khoan_1_luat_bao_hiem_xa_hoi():
+    path = _require_file("Luật bảo hiểm xã hội.md")
     result = convert_markdown_to_chunks(path)
     matches = [
         chunk
         for chunk in result.chunks
-        if chunk.breadcrumb.endswith(
-            "Điều 1. Phạm vi điều chỉnh và đối tượng áp dụng - Khoản 3"
+        if chunk.breadcrumb.startswith(
+            "LUẬT BẢO HIỂM XÃ HỘI - Chương I - Điều 2. Đối tượng tham gia bảo hiểm "
+            "xã hội bắt buộc và bảo hiểm xã hội tự nguyện - Khoản 1"
         )
     ]
-    assert len(matches) == 1
-    chunk = matches[0]
-    assert chunk.is_split is False
-    assert (
-        chunk.negation_note
-        == "Luật này không áp dụng đối với bảo hiểm y tế mang tính kinh doanh."
+    assert len(matches) > 1, "Điều 2 Khoản 1 phải bị cắt thành nhiều chunk con"
+    preamble = (
+        "Người lao động là công dân Việt Nam thuộc đối tượng tham gia bảo hiểm "
+        "xã hội bắt buộc bao gồm:"
     )
-
-
-def test_negation_note_luat_bao_hiem_xa_hoi_dieu_2_khoan_7():
-    path = MARKDOWN_DIR / "Luật bảo hiểm xã hội.md"
-    if not path.exists():
-        pytest.skip(f"{path} không tồn tại")
-    result = convert_markdown_to_chunks(path)
-    matches = [
-        chunk
-        for chunk in result.chunks
-        if "Điều 2." in chunk.breadcrumb
-        and chunk.breadcrumb.rstrip().split(" - ")[-1].startswith("Khoản 7")
-    ]
-    assert len(matches) >= 1
-    negation_sentence = (
-        "Trường hợp không thuộc đối tượng tham gia bảo hiểm xã hội bắt buộc bao gồm:"
-    )
-    # Mục 4.5: MỌI chunk con sinh ra từ Khoản 7 đều có negation_note khớp câu
-    # gốc (kể cả khi Khoản không bị cắt -- developer note #2).
     for chunk in matches:
-        assert chunk.negation_note == negation_sentence
+        assert chunk.is_split is True
+        assert chunk.content.startswith(preamble), (
+            f"{chunk.breadcrumb!r} không bắt đầu bằng câu dẫn gốc"
+        )
+        assert "Điểm" in chunk.breadcrumb
+        assert "(phần" in chunk.breadcrumb
 
 
 # ==========================================================================
 # Điều 3 - Khoản 1 (bảng 4 vùng lương) `Quy định mức lương tối thiểu.md`
+# (mục 5, mục 11)
 # ==========================================================================
 
 
 def test_bang_luong_toi_thieu_dieu_3_khoan_1():
-    path = MARKDOWN_DIR / "Quy định mức lương tối thiểu.md"
-    if not path.exists():
-        pytest.skip(f"{path} không tồn tại")
+    path = _require_file("Quy định mức lương tối thiểu.md")
     result = convert_markdown_to_chunks(path)
     matches = [
         chunk
@@ -147,6 +140,88 @@ def test_bang_luong_toi_thieu_dieu_3_khoan_1():
         "Vùng I - Mức lương tối thiểu tháng(Đơn vị: đồng/tháng): 5.310.000 "
         "- Mức lương tối thiểu giờ(Đơn vị: đồng/giờ): 25.500"
     )
+    # content = văn bản tường thuật + standardization_table (mục 5.4) --
+    # không chứa cú pháp pipe-table thô.
+    assert "|" not in chunk.content
+    assert chunk.standardization_table in chunk.content
+
+
+# ==========================================================================
+# Frontmatter/backmatter `Luật bảo hiểm xã hội.md` (mục 4.6, mục 11)
+# ==========================================================================
+
+
+def test_frontmatter_luat_bao_hiem_xa_hoi_sinh_chunk_rieng():
+    path = _require_file("Luật bảo hiểm xã hội.md")
+    result = convert_markdown_to_chunks(path)
+    frontmatter_chunks = [
+        chunk
+        for chunk in result.chunks
+        if chunk.breadcrumb == "LUẬT BẢO HIỂM XÃ HỘI"
+        or chunk.breadcrumb.startswith("LUẬT BẢO HIỂM XÃ HỘI (phần")
+    ]
+    assert len(frontmatter_chunks) >= 1
+    joined_content = "\n".join(chunk.content for chunk in frontmatter_chunks)
+    assert "LUẬT" in joined_content
+    assert "BẢO HIỂM XÃ HỘI" in joined_content
+    assert "Quốc hội ban hành" in joined_content or "được sửa đổi" in joined_content
+
+
+def test_backmatter_luat_bao_hiem_xa_hoi_tach_rieng_khong_lan_khoan_15():
+    path = _require_file("Luật bảo hiểm xã hội.md")
+    result = convert_markdown_to_chunks(path)
+
+    backmatter_chunks = [
+        chunk
+        for chunk in result.chunks
+        if chunk.breadcrumb.startswith(
+            "LUẬT BẢO HIỂM XÃ HỘI - Chú thích sửa đổi (cuối văn bản)"
+        )
+    ]
+    assert len(backmatter_chunks) >= 1
+    joined_backmatter = "\n".join(chunk.content for chunk in backmatter_chunks)
+    assert "Điều 41. Hiệu lực thi hành" in joined_backmatter
+
+    khoan_15 = [
+        chunk
+        for chunk in result.chunks
+        if chunk.breadcrumb
+        == "LUẬT BẢO HIỂM XÃ HỘI - Chương XI - Điều 141. Quy định chuyển tiếp - Khoản 15"
+    ]
+    assert len(khoan_15) == 1
+    assert khoan_15[0].content == "Chính phủ quy định chi tiết Điều này."
+    assert "Điều 41" not in khoan_15[0].content
+    assert "Luật Nhà giáo" not in khoan_15[0].content
+
+
+# ==========================================================================
+# source_document đúng trên toàn bộ 6 file (mục 2, mục 11)
+# ==========================================================================
+
+
+def test_source_document_dung_tren_toan_bo_6_file():
+    _require_corpus()
+    expected = {
+        "Luật bảo hiểm xã hội.md": "LUẬT BẢO HIỂM XÃ HỘI",
+        "Luật bảo hiểm y tế.md": "LUẬT BẢO HIỂM Y TẾ",
+        "Luật thuế thu nhập cá nhân.md": "LUẬT THUẾ THU NHẬP CÁ NHÂN",
+        "Quy định mức lương tối thiểu.md": (
+            "NGHỊ ĐỊNH QUY ĐỊNH MỨC LƯƠNG TỐI THIỂU ĐỐI VỚI NGƯỜI LAO ĐỘNG LÀM "
+            "VIỆC THEO HỢP ĐỒNG LAO ĐỘNG"
+        ),
+        "Văn bản hợp nhất bộ luật lao động.md": "BỘ LUẬT LAO ĐỘNG",
+        "Điều kiện lao động và quan hệ lao động.md": (
+            "NGHỊ ĐỊNH QUY ĐỊNH CHI TIẾT VÀ HƯỚNG DẪN THI HÀNH MỘT SỐ ĐIỀU CỦA BỘ "
+            "LUẬT LAO ĐỘNG VỀ ĐIỀU KIỆN LAO ĐỘNG VÀ QUAN HỆ LAO ĐỘNG"
+        ),
+    }
+    for name, expected_source_document in expected.items():
+        path = _require_file(name)
+        result = convert_markdown_to_chunks(path)
+        source_documents = {chunk.source_document for chunk in result.chunks}
+        assert source_documents == {expected_source_document}, (
+            f"{name}: source_document sai -- {source_documents}"
+        )
 
 
 # ==========================================================================
@@ -204,3 +279,38 @@ def test_convert_directory_tren_toan_bo_corpus_that_co_summary(tmp_path: Path, c
     captured = capsys.readouterr()
     assert f"Thành công        : {len(MARKDOWN_FILES)}" in captured.out
     assert "Thất bại          : 1" in captured.out
+
+
+def test_convert_directory_khop_dung_output_da_commit_san():
+    """`data/chunks/*.json` đã commit sẵn (kết quả chạy CLI thật) phải khớp
+    CHÍNH XÁC kết quả chạy lại `convert_directory` trên `data/markdown/` --
+    khoá lại tính deterministic + tránh output đã commit bị lệch code."""
+    _require_corpus()
+    import json
+
+    from production_legal_qa_rag.chunking.pipeline import convert_directory
+
+    chunks_dir = PROJECT_ROOT / "data" / "chunks"
+    if not chunks_dir.exists():
+        pytest.skip("data/chunks/ không tồn tại")
+
+    out_dir = Path(__file__).resolve().parents[0] / "_tmp_chunks_check"
+    import shutil
+
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    try:
+        convert_directory(MARKDOWN_DIR, out_dir)
+        for path in MARKDOWN_FILES:
+            expected_path = chunks_dir / f"{path.stem}.json"
+            if not expected_path.exists():
+                continue
+            expected = json.loads(expected_path.read_text(encoding="utf-8"))
+            actual = json.loads(
+                (out_dir / f"{path.stem}.json").read_text(encoding="utf-8")
+            )
+            assert actual == expected, (
+                f"{path.name}: output lệch data/chunks/ đã commit"
+            )
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
