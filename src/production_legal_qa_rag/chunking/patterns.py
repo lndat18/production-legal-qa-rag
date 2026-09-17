@@ -1,5 +1,5 @@
-"""Regex nhận diện cấu trúc heading Markdown, nhãn Điểm, dòng bảng và từ khoá
-phủ định/loại trừ dùng để cắt Khoản (chunking_spec.md mục 3, 4, 5, 10).
+"""Regex nhận diện cấu trúc heading Markdown, nhãn Điểm, dòng bảng và tách câu
+dùng để cắt Khoản (chunking_spec.md mục 3, 4, 5, 10).
 
 Heading mapping (Phần/Phụ Lục -> `#`, Chương -> `##`, Mục -> `###`,
 Điều -> `####`, Khoản -> `#####`) do `formatting/` sinh ra theo
@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 
 # ==========================================================================
-# HEADING
+# HEADING CẤU TRÚC (Phần/Phụ Lục/Chương/Mục/Điều/Khoản)
 # ==========================================================================
 
 RE_HEADING = re.compile(r"^(#{1,5})\s+(.*)$")
@@ -23,6 +23,7 @@ ROMAN = r"[IVXLCDM]+"
 # nào, nhưng vẫn hỗ trợ để tổng quát theo formatting/patterns.py.
 ORDINAL_WORD = r"nhất|hai|ba|tư|bốn|năm|sáu|bảy|tám|chín|mười"
 
+RE_PHU_LUC = re.compile(r"^PHỤ\s+LỤC\b", re.IGNORECASE)
 RE_PHAN = re.compile(
     rf"^Phần\s+(?:thứ\s+)?({ROMAN}|\d+|{ORDINAL_WORD})\b", re.IGNORECASE
 )
@@ -42,6 +43,35 @@ RE_KHOAN_MERGED = re.compile(r"^(\d+[a-zđ]?)\.\s+(.*)$")
 # là ranh giới Điểm ở đây (quyết định thiết kế, xem báo cáo bàn giao).
 RE_DIEM = re.compile(r"^([a-zđư])\)\s+(.*)$")
 
+
+def is_structural_heading(level: int, text: str) -> bool:
+    """Heading (đã bỏ `#`) có phải nhãn cấu trúc Phần/Phụ Lục/Chương/Mục/
+    Điều/Khoản thật sự hay không, theo đúng cấp (`level`) của nó.
+
+    Dùng để phân biệt heading `#` (H1) của **tên văn bản** trong frontmatter
+    (chunking_spec.md mục 2, 4.6) — không khớp `RE_PHU_LUC`/`RE_PHAN` — với
+    heading `#` thật của Phần/Phụ Lục cấu trúc. `parser.py` dùng hàm này để
+    xác định biên frontmatter: block heading **đầu tiên** mà hàm này trả về
+    `True` mới là điểm bắt đầu cấu trúc Phần/Chương/Mục/Điều/Khoản thật của
+    văn bản (mục 4.6) — không phải "gặp `#` bất kỳ đầu tiên".
+    """
+    if level == 1:
+        return bool(RE_PHU_LUC.match(text) or RE_PHAN.match(text))
+    if level == 2:
+        return bool(RE_CHUONG.match(text))
+    if level == 3:
+        return bool(RE_MUC.match(text))
+    if level == 4:
+        return bool(RE_DIEU.match(text))
+    if level == 5:
+        return bool(RE_KHOAN_LABEL.match(text) or RE_KHOAN_MERGED.match(text))
+    return False
+
+
+# ==========================================================================
+# BẢNG
+# ==========================================================================
+
 # Dòng bắt đầu bằng "|" — bảng markdown GFM do formatting/tables.py sinh ra.
 RE_TABLE_LINE = re.compile(r"^\s*\|")
 
@@ -52,23 +82,24 @@ RE_TABLE_LINE = re.compile(r"^\s*\|")
 # nguyên tương tự bảng pipe (quyết định thiết kế, xem báo cáo bàn giao).
 RE_HTML_TABLE_LINE = re.compile(r"^\s*<table\b", re.IGNORECASE)
 
+
 # ==========================================================================
-# TỪ KHOÁ PHỦ ĐỊNH/LOẠI TRỪ (mục 4.5)
+# MARKER TÁCH BACKMATTER (mục 4.6)
 # ==========================================================================
 
-NEGATION_KEYWORDS: tuple[str, ...] = (
-    "ngoại trừ",
-    "loại trừ",
-    "không áp dụng",
-    "không thuộc",
-    "không bao gồm",
-    "trừ",
-)
+# formatting/pipeline.py._compose_markdown ngăn cách back matter (nếu có)
+# bằng đúng 1 dòng "---" đứng riêng (formatting_spec.md mục 1.1 "Ghép output
+# cuối cùng" + mục 2, xác nhận trên toàn bộ 6 file data/markdown/*.md thật —
+# mỗi file có ĐÚNG 1 dòng "^---$", luôn nằm ngay sau nội dung Khoản cuối
+# cùng). Đây là marker thật parser.py dùng để tách backmatter — khác mô tả
+# `**[n]**`/`footnotes.py::render_blockquote` trong chunking_spec.md mục 4.6
+# (tài liệu cũ từ thiết kế footnotes.py trước đây, module này đã bị xoá khỏi
+# `formatting/` từ bản redesign Groq 2026-09-16, xem báo cáo bàn giao
+# developer). Không neo `\s*$` lỏng lẻo: dòng gạch ngang trang trí trong
+# frontmatter dài hơn 3 ký tự (vd. "--------", "---------------") sẽ không
+# khớp regex 3 ký tự đúng khít này.
+RE_BACKMATTER_SEPARATOR = re.compile(r"^-{3}$")
 
-RE_NEGATION = re.compile(
-    "|".join(rf"\b{re.escape(keyword)}\b" for keyword in NEGATION_KEYWORDS),
-    re.IGNORECASE,
-)
 
 # ==========================================================================
 # TÁCH CÂU (mục 4.4)
