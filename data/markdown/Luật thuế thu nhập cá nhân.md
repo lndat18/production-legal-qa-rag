@@ -1,12 +1,17 @@
-VĂN PHÒNG QUỐC HỘI
+VĂN PHÒNG QUỐC HỘI  
+-------  
 
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
+Độc lập - Tự do - Hạnh phúc  
+---------------  
 
-Số: 112/VBHN-VPQH
-Hà Nội, ngày 20 tháng 5 năm 2026
+Số: 112/VBHN-VPQH  
 
-# **LUẬT THUẾ THU NHẬP CÁ NHÂN**
+Hà Nội, ngày 20 tháng 5 năm 2026  
+
+**LUẬT**
+
+# THUẾ THU NHẬP CÁ NHÂN
 
 Luật Thuế thu nhập cá nhân số 109/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026, được sửa đổi, bổ sung bởi:
 
@@ -351,12 +356,12 @@ Biểu thuế lũy tiến từng phần áp dụng đối với thu nhập tính
 Biểu thuế lũy tiến từng phần được quy định như sau:
 
 | Bậc thuế | Phần thu nhập tính thuế/năm (triệu đồng) | Phần thu nhập tính thuế/tháng (triệu đồng) | Thuế suất (%) |
-| ---------- | ------------------------------------------------ | -------------------------------------------------- | --------------- |
-| 1          | Đến 120                                        | Đến 10                                           | 5               |
-| 2          | Trên 120 đến 360                              | Trên 10 đến 30                                  | 10              |
-| 3          | Trên 360 đến 720                              | Trên 30 đến 60                                  | 20              |
-| 4          | Trên 720 đến 1.200                            | Trên 60 đến 100                                 | 30              |
-| 5          | Trên 1.200                                      | Trên 100                                          | 35              |
+| --- | --- | --- | --- |
+| 1 | Đến 120 | Đến 10 | 5 |
+| 2 | Trên 120 đến 360 | Trên 10 đến 30 | 10 |
+| 3 | Trên 360 đến 720 | Trên 30 đến 60 | 20 |
+| 4 | Trên 720 đến 1.200 | Trên 60 đến 100 | 30 |
+| 5 | Trên 1.200 | Trên 100 | 35 |
 
 #### Điều 10. Giảm trừ gia cảnh
 
@@ -690,8 +695,8 @@ Trường hợp có quy định khác nhau về ưu đãi thuế giữa Luật n
 
 [3] Điều 5 của Luật số 09/2026/QH16 sửa đổi, bổ sung một số điều của Luật Thuế thu nhập cá nhân, Luật Thuế giá trị gia tăng, Luật Thuế thu nhập doanh nghiệp và Luật Thuế tiêu thụ đặc biệt, có hiệu lực kể từ ngày 24 tháng 4 năm 2026 quy định như sau:
 
-***“Điều 5. Hiệu lực thi hành***
+***“Điều 5. Hiệu lực thi hành***  
 
-*1. Luật này có hiệu lực thi hành từ ngày được thông qua, trừ quy định tại khoản 2 Điều này.*
+*1. Luật này có hiệu lực thi hành từ ngày được thông qua, trừ quy định tại khoản 2 Điều này.*  
 
 *2. Quy định tại các điều 1, 2 và 3 của Luật này có hiệu lực thi hành từ ngày 01 tháng 01 năm 2026.”.*

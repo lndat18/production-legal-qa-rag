@@ -767,6 +767,66 @@ def test_frontmatter_find_boundary_chi_xet_paragraph():
     assert frontmatter.find_boundary(blocks) == len(blocks)
 
 
+# --------------------------------------------------------------------------
+# find_title (mục 1.1 spec, heuristic sửa lại lần 2 -- vị trí tương đối so
+# với dòng loại văn bản, không dựa bold/viết hoa của chính dòng tên văn bản).
+# --------------------------------------------------------------------------
+
+
+def test_find_title_tim_thay_ngay_sau_dong_loai_van_ban():
+    blocks = [
+        P("CHÍNH PHỦ", bold=True),
+        P("LUẬT"),
+        P("BẢO HIỂM Y TẾ", bold=True),
+        P("Căn cứ Hiến pháp..."),
+    ]
+    assert frontmatter.find_title(blocks) == 2
+
+
+def test_find_title_dong_ten_khong_bold_van_tim_thay():
+    # 2/6 file thật (dạng Nghị định) có dòng tên văn bản hoàn toàn không
+    # bold -- heuristic không được loại nó vì thiếu bold (mục 1.1 spec).
+    blocks = [
+        P("CHÍNH PHỦ", bold=True),
+        P("NGHỊ ĐỊNH"),
+        P("Quy định mức lương tối thiểu..."),
+    ]
+    assert frontmatter.find_title(blocks) == 2
+
+
+def test_find_title_khong_co_dong_loai_van_ban_tra_ve_none():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("Số: 1/2025/NĐ-CP")]
+    assert frontmatter.find_title(blocks) is None
+
+
+def test_find_title_dong_loai_van_ban_la_block_cuoi_khong_co_block_sau_tra_ve_none():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT")]
+    assert frontmatter.find_title(blocks) is None
+
+
+def test_find_title_block_ngay_sau_la_bang_khong_phai_paragraph_tra_ve_none():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT"), T("Bảng không phải tên văn bản.")]
+    assert frontmatter.find_title(blocks) is None
+
+
+def test_find_title_block_ngay_sau_rong_tra_ve_none():
+    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT"), P("")]
+    assert frontmatter.find_title(blocks) is None
+
+
+def test_find_title_lay_dong_loai_van_ban_dau_tien_neu_co_nhieu_ung_vien():
+    # Chỉ có nghĩa khi văn bản trích dẫn "LUẬT" trong 1 dòng dẫn nhập khác --
+    # find_title lấy khớp ĐẦU TIÊN, không phải khớp cuối cùng.
+    blocks = [
+        P("CHÍNH PHỦ", bold=True),
+        P("LUẬT"),
+        P("BẢO HIỂM Y TẾ", bold=True),
+        P("NGHỊ ĐỊNH"),
+        P("Không liên quan."),
+    ]
+    assert frontmatter.find_title(blocks) == 2
+
+
 def test_convert_frontmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch):
     _forbid_llm_calls(monkeypatch)
     markdown, warnings = frontmatter.convert_frontmatter([])
@@ -775,19 +835,26 @@ def test_convert_frontmatter_rong_khong_goi_llm(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_convert_frontmatter_thanh_cong(monkeypatch: pytest.MonkeyPatch):
+    # Không có dòng loại văn bản (RE_DOC_TYPE_ONLY) trong input -- find_title
+    # trả None, nên convert_frontmatter luôn thêm cảnh báo
+    # frontmatter_title_not_found dù convert thành công (mục 1.1 spec).
     monkeypatch.setattr(
         llm_client, "convert_to_markdown", lambda *a, **k: "**CHÍNH PHỦ**"
     )
     markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ", bold=True)])
     assert markdown == "**CHÍNH PHỦ**"
-    assert warnings == []
+    assert [w.code for w in warnings] == ["frontmatter_title_not_found"]
 
 
 def test_convert_frontmatter_llm_loi_phat_canh_bao():
-    # Fixture `_default_llm_stub` đã trả None mặc định.
+    # Fixture `_default_llm_stub` đã trả None mặc định. Không có dòng loại
+    # văn bản trong input -- cả 2 cảnh báo cùng phát ra (mục 1.1 spec).
     markdown, warnings = frontmatter.convert_frontmatter([P("CHÍNH PHỦ")])
     assert markdown == ""
-    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
+    assert [w.code for w in warnings] == [
+        "llm_frontmatter_conversion_failed",
+        "frontmatter_title_not_found",
+    ]
 
 
 def test_convert_frontmatter_prompt_chua_noi_dung_block(
@@ -818,7 +885,9 @@ def test_convert_frontmatter_nhieu_chunk_goi_llm_tung_chunk_va_noi_ket_qua(
 
     assert len(calls) == 2
     assert markdown == "**CHÍNH PHỦ**\n\nSố: 1/2025/NĐ-CP"
-    assert warnings == []
+    # Không có dòng loại văn bản trong input -- vẫn phát cảnh báo
+    # frontmatter_title_not_found (mục 1.1 spec).
+    assert [w.code for w in warnings] == ["frontmatter_title_not_found"]
 
 
 def test_convert_frontmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
@@ -831,7 +900,86 @@ def test_convert_frontmatter_mot_chunk_loi_bo_qua_toan_bo_khong_ghep_do_dang(
     markdown, warnings = frontmatter.convert_frontmatter(blocks)
 
     assert markdown == ""
-    assert [w.code for w in warnings] == ["llm_frontmatter_conversion_failed"]
+    # Không có dòng loại văn bản trong input -- cả 2 cảnh báo cùng phát ra
+    # (mục 1.1 spec).
+    assert [w.code for w in warnings] == [
+        "llm_frontmatter_conversion_failed",
+        "frontmatter_title_not_found",
+    ]
+
+
+# --------------------------------------------------------------------------
+# convert_frontmatter -- nhánh tìm thấy tên văn bản (find_title trả chỉ số,
+# mục 1.1 spec): chèn heading `# <nguyên văn>` deterministic, before/after
+# convert độc lập qua Groq, không có cảnh báo frontmatter_title_not_found.
+# --------------------------------------------------------------------------
+
+
+def test_convert_frontmatter_tim_thay_ten_van_ban_chen_heading_giua_before_va_after(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**", "*Căn cứ Hiến pháp...*"])
+    blocks = [
+        P("CHÍNH PHỦ", bold=True),
+        P("LUẬT"),
+        P("BẢO HIỂM Y TẾ", bold=True),
+        P("Căn cứ Hiến pháp..."),
+    ]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert len(calls) == 2
+    assert markdown == "**CHÍNH PHỦ**\n\n# BẢO HIỂM Y TẾ\n\n*Căn cứ Hiến pháp...*"
+    assert warnings == []
+
+
+def test_convert_frontmatter_heading_nguyen_van_khong_qua_groq_du_llm_loi(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Groq lỗi (mock trả None) cho cả before/after -- dòng heading vẫn được
+    # chèn vì find_title/chèn heading không phụ thuộc kết quả Groq (mục 1.1
+    # spec: "dòng heading vẫn luôn được chèn nếu tìm thấy, kể cả khi
+    # before/after lỗi và bị bỏ qua").
+    blocks = [P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True), P("Căn cứ Hiến pháp...")]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert markdown == "# BẢO HIỂM Y TẾ"
+    assert [w.code for w in warnings] == [
+        "llm_frontmatter_conversion_failed",
+        "llm_frontmatter_conversion_failed",
+    ]
+
+
+def test_convert_frontmatter_tim_thay_ten_van_ban_dong_loai_van_ban_la_block_dau(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Dòng loại văn bản là block đầu tiên -- vẫn ở lại trong `before` (không
+    # gộp vào heading, mục 1.1 spec: "block ở type_index vẫn ở lại trong
+    # before"), nên `before` không bao giờ rỗng khi tìm thấy tên văn bản.
+    calls = _sequential_llm(monkeypatch, ["**LUẬT**", "*Căn cứ Hiến pháp...*"])
+    blocks = [P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True), P("Căn cứ Hiến pháp...")]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert len(calls) == 2
+    assert markdown == "**LUẬT**\n\n# BẢO HIỂM Y TẾ\n\n*Căn cứ Hiến pháp...*"
+    assert warnings == []
+
+
+def test_convert_frontmatter_tim_thay_ten_van_ban_khong_co_after(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Dòng tên văn bản là block cuối cùng (after rỗng) -- không gọi Groq cho
+    # after, chỉ gọi cho before.
+    calls = _sequential_llm(monkeypatch, ["**CHÍNH PHỦ**"])
+    blocks = [P("CHÍNH PHỦ", bold=True), P("LUẬT"), P("BẢO HIỂM Y TẾ", bold=True)]
+
+    markdown, warnings = frontmatter.convert_frontmatter(blocks)
+
+    assert len(calls) == 1
+    assert markdown == "**CHÍNH PHỦ**\n\n# BẢO HIỂM Y TẾ"
+    assert warnings == []
 
 
 # ==========================================================================
@@ -1427,10 +1575,12 @@ def _heading_lines(markdown: str) -> list[str]:
 def test_convert_heading_khop_voi_tham_chieu_data_markdown(path: Path):
     """Mục 7 spec: heading mapping cho phần nội dung ở giữa phải khớp với
     `data/markdown/*.md` (tham chiếu, không phải golden-file chính thức).
-    Front/back matter do Groq sinh không so khớp -- ở đây LLM bị mock trả
-    `None`, nên chỉ heading của vùng nội dung ở giữa được so sánh (front/back
-    matter không chứa heading nào, mục 1.1 spec, nên không ảnh hưởng danh
-    sách heading)."""
+    Ở đây LLM bị mock trả `None`, nên phần front/back matter do Groq sinh
+    luôn rỗng -- ngoại lệ là dòng heading `# <tên văn bản>` (mục 1.1 spec):
+    được `frontmatter.find_title` chèn deterministic, không qua Groq, nên
+    vẫn xuất hiện kể cả khi mock trả `None`. Vì vậy `data/markdown/*.md`
+    tham chiếu phải được regenerate với thiết kế heading mới (dòng tên văn
+    bản không kèm tiền tố loại văn bản, không bold) để khớp."""
     reference_path = REFERENCE_MD_DIR / f"{path.stem}.md"
     if not reference_path.exists():
         pytest.skip(f"Không có tham chiếu cho {path.stem}")

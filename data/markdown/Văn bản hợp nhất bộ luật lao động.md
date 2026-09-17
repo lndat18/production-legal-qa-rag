@@ -1,18 +1,26 @@
-VĂN PHÒNG QUỐC HỘI
-CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-Độc lập - Tự do - Hạnh phúc
-Số: 18/VBHN‑VPQH
-Hà Nội, ngày 12 tháng 02 năm 2026
+VĂN PHÒNG QUỐC HỘI  
+--------  
 
-# **BỘ LUẬT LAO ĐỘNG**
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM  
+Độc lập - Tự do - Hạnh phúc  
+---------------  
+
+Số: 18/VBHN‑VPQH  
+Hà Nội, ngày 12 tháng 02 năm 2026  
+
+**BỘ LUẬT**
+
+# LAO ĐỘNG
 
 Bộ luật Lao động số 45/2019/QH14 ngày 20 tháng 11 năm 2019 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2021, được sửa đổi, bổ sung bởi:
 
-1. Luật Công nghiệp công nghệ số số 71/2025/QH15 ngày 14 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;
-2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;
-3. Luật Giáo dục nghề nghiệp số 124/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.
+1. Luật Công nghiệp công nghệ số số 71/2025/QH15 ngày 14 tháng 6 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026;  
 
-*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*
+2. Luật Dân số số 113/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 7 năm 2026;  
+
+3. Luật Giáo dục nghề nghiệp số 124/2025/QH15 ngày 10 tháng 12 năm 2025 của Quốc hội, có hiệu lực kể từ ngày 01 tháng 01 năm 2026.  
+
+*Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;*  
 
 Quốc hội ban hành Bộ luật Lao động[1].
 
