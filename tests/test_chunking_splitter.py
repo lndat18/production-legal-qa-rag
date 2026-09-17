@@ -1,9 +1,12 @@
-"""Unit + integration test cho `chunking/splitter.py` (chunking_spec.md mục 4, 5).
+"""Unit + integration test cho `chunking/splitter.py` (chunking_spec.md mục 4, 5, 4.6).
 
 `count_tokens` được monkeypatch bằng bộ đếm giả (đếm từ theo khoảng trắng)
 để test thuật toán cắt độc lập với việc nạp model PhoBERT thật (nhanh, không
 cần mạng) -- việc đếm token THẬT (word-segment PhoBERT) được xác nhận riêng
 ở `tests/test_chunking_tokenizer.py` (đánh dấu `slow`).
+
+Không còn `negation_note` -- câu dẫn được lặp lại trực tiếp vào ĐẦU `content`
+của mọi chunk con (mục 4.5), không phải field riêng như thiết kế cũ.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from production_legal_qa_rag.chunking.splitter import (
     _pack_units,
     _split_into_points,
     _Unit,
+    split_implicit_khoan,
     split_khoan,
 )
 
@@ -89,17 +93,21 @@ def test_split_into_points_danh_sach_gach_dau_dong_khong_phai_diem():
 
 def test_pack_units_khong_vuot_ngan_sach_va_ghep_toi_da():
     units = [
-        _Unit(kind="unit0", label=None, text="p0 p0"),  # 2 tokens
+        _Unit(kind="point", label="p0", text="p0 p0"),  # 2 tokens
         _Unit(kind="point", label="a", text="a1 a2 a3"),  # 3 tokens
         _Unit(kind="point", label="b", text="b1 b2 b3"),  # 3 tokens
         _Unit(kind="point", label="c", text="c1 c2 c3 c4"),  # 4 tokens
         _Unit(kind="point", label="d", text="d1"),  # 1 token
     ]
-    groups = _pack_units(units, max_tokens=5)
+    groups = _pack_units(units, 5)
 
     # Không nhóm nào vượt ngân sách.
     assert all(_fake_count_tokens(group.text) <= 5 for group in groups)
-    assert [group.point_labels for group in groups] == [["a"], ["b"], ["c", "d"]]
+    assert [group.point_labels for group in groups] == [
+        ["p0", "a"],
+        ["b"],
+        ["c", "d"],
+    ]
     assert groups[0].text == "p0 p0\n\na1 a2 a3"
     assert groups[1].text == "b1 b2 b3"
     assert groups[2].text == "c1 c2 c3 c4\n\nd1"
@@ -107,7 +115,7 @@ def test_pack_units_khong_vuot_ngan_sach_va_ghep_toi_da():
 
 def test_pack_units_don_vi_don_le_vua_khop_ngan_sach_khong_bi_tach():
     units = [_Unit(kind="point", label="a", text="a1 a2 a3 a4 a5")]
-    groups = _pack_units(units, max_tokens=5)
+    groups = _pack_units(units, 5)
     assert len(groups) == 1
     assert groups[0].text == "a1 a2 a3 a4 a5"
 
@@ -117,7 +125,7 @@ def test_pack_units_khong_overlap_giua_cac_nhom_tang_diem():
         _Unit(kind="point", label="a", text="a1 a2 a3"),
         _Unit(kind="point", label="b", text="b1 b2 b3"),
     ]
-    groups = _pack_units(units, max_tokens=3)
+    groups = _pack_units(units, 3)
     all_words = " ".join(group.text for group in groups).split()
     # Mỗi từ chỉ xuất hiện đúng 1 lần -- không overlap ở tầng Điểm (mục 4.3).
     assert sorted(all_words) == sorted(["a1", "a2", "a3", "b1", "b2", "b3"])
@@ -130,7 +138,7 @@ def test_pack_units_khong_overlap_giua_cac_nhom_tang_diem():
 
 def test_explode_oversized_fallback_cau_co_overlap_1_cau_cuoi():
     unit = _Unit(kind="point", label="a", text="S1. S2. S3.")
-    groups = _explode_oversized(unit, max_tokens=2)
+    groups = _explode_oversized(unit, 2)
 
     assert [group.text for group in groups] == ["S1. S2.", "S2. S3."]
     # Câu "S2." lặp lại ở cuối chunk trước và đầu chunk sau (overlap 1 câu).
@@ -140,7 +148,7 @@ def test_explode_oversized_fallback_cau_co_overlap_1_cau_cuoi():
 
 def test_explode_oversized_khong_vuot_ngan_sach_sau_khi_tach():
     unit = _Unit(kind="point", label="a", text="S1. S2. S3.")
-    groups = _explode_oversized(unit, max_tokens=2)
+    groups = _explode_oversized(unit, 2)
     assert all(_fake_count_tokens(group.text) <= 2 for group in groups)
 
 
@@ -148,7 +156,7 @@ def test_explode_oversized_tang_2_tach_theo_dau_phay_khi_khong_co_dau_cau():
     # Không có "." hay ";" -> tầng câu (tier 0) không tách được (len==1) ->
     # rơi xuống tầng mệnh đề theo dấu phẩy (tier 1, `split_finer`).
     unit = _Unit(kind="sentence", label=None, text="c1, c2, c3")
-    groups = _explode_oversized(unit, max_tokens=1)
+    groups = _explode_oversized(unit, 1)
     texts = [group.text for group in groups]
     assert texts == ["c1", "c2", "c3"]
 
@@ -157,7 +165,7 @@ def test_explode_oversized_het_tang_van_giu_nguyen_vuot_ngan_sach():
     # Không dấu câu, không dấu phẩy -> hết tầng tách, chấp nhận giữ nguyên
     # vượt ngân sách (không có "tầng dưới" nào được spec định nghĩa).
     unit = _Unit(kind="sentence", label=None, text="mot_tu_rat_dai_khong_the_tach")
-    groups = _explode_oversized(unit, max_tokens=0)
+    groups = _explode_oversized(unit, 0)
     assert len(groups) == 1
     assert groups[0].text == "mot_tu_rat_dai_khong_the_tach"
 
@@ -182,40 +190,37 @@ def test_khoan_base_breadcrumb_khong_co_khoan_number():
 
 
 def test_compose_split_breadcrumb_khong_doi_neu_chi_1_chunk():
-    result = _compose_split_breadcrumb("base", ["a"], 1, 1, "câu phủ định")
+    result = _compose_split_breadcrumb("base", ["a"], 1, 1)
     assert result == "base"
 
 
 def test_compose_split_breadcrumb_1_diem():
-    result = _compose_split_breadcrumb("base", ["a"], 1, 2, None)
+    result = _compose_split_breadcrumb("base", ["a"], 1, 2)
     assert result == "base - Điểm a (phần 1/2)"
 
 
 def test_compose_split_breadcrumb_nhieu_diem_gop():
-    result = _compose_split_breadcrumb("base", ["a", "b"], 1, 2, None)
+    result = _compose_split_breadcrumb("base", ["a", "b"], 1, 2)
     assert result == "base - Điểm a, b (phần 1/2)"
 
 
 def test_compose_split_breadcrumb_khong_co_diem_tach_theo_cau():
-    result = _compose_split_breadcrumb("base", [], 2, 3, None)
+    result = _compose_split_breadcrumb("base", [], 2, 3)
     assert result == "base (phần 2/3)"
 
 
-def test_compose_split_breadcrumb_kem_cau_phu_dinh():
-    result = _compose_split_breadcrumb("base", ["a"], 1, 2, "Câu phủ định.")
-    assert result == "base - Điểm a (phần 1/2) - Câu phủ định."
-
-
 def test_make_chunk_id_deterministic():
-    id1 = _make_chunk_id("41/2024/QH15", "breadcrumb A")
-    id2 = _make_chunk_id("41/2024/QH15", "breadcrumb A")
+    id1 = _make_chunk_id("LUẬT BẢO HIỂM XÃ HỘI", "breadcrumb A")
+    id2 = _make_chunk_id("LUẬT BẢO HIỂM XÃ HỘI", "breadcrumb A")
     assert id1 == id2
-    assert id1 == hashlib.sha256(b"41/2024/QH15::breadcrumb A").hexdigest()
+    assert (
+        id1 == hashlib.sha256("LUẬT BẢO HIỂM XÃ HỘI::breadcrumb A".encode()).hexdigest()
+    )
 
 
 def test_make_chunk_id_khac_nhau_khi_breadcrumb_khac():
-    id1 = _make_chunk_id("41/2024/QH15", "breadcrumb A")
-    id2 = _make_chunk_id("41/2024/QH15", "breadcrumb B")
+    id1 = _make_chunk_id("doc", "breadcrumb A")
+    id2 = _make_chunk_id("doc", "breadcrumb B")
     assert id1 != id2
 
 
@@ -246,62 +251,50 @@ def test_split_khoan_giu_nguyen_khi_khong_vuot_ngan_sach():
     assert chunk.content == "Một câu ngắn."
 
 
-def test_split_khoan_negation_note_gan_ngay_ca_khi_khong_bi_cat():
-    # Developer note #2: negation_note tính cho MỌI Khoản, kể cả không bị
-    # cắt -- ví dụ thật "Luật bảo hiểm y tế.md" dòng 58 (Khoản 3 Điều 1).
-    khoan = KhoanNode(
-        breadcrumb_prefix="Văn bản - Điều 1",
-        khoan_number="3",
-        content="Luật này không áp dụng đối với bảo hiểm y tế mang tính kinh doanh.",
-    )
-    chunks = split_khoan(khoan, source_document="doc", max_tokens=100)
-    assert len(chunks) == 1
-    assert chunks[0].is_split is False
-    assert chunks[0].negation_note == (
-        "Luật này không áp dụng đối với bảo hiểm y tế mang tính kinh doanh."
-    )
-    # Breadcrumb KHÔNG đổi khi Khoản không thực sự bị cắt (mục 3: "Khi Khoản
-    # bị cắt nhỏ...").
-    assert chunks[0].breadcrumb == "Văn bản - Điều 1 - Khoản 3"
-
-
-def test_split_khoan_cat_theo_diem_va_lan_truyen_negation_note_toi_moi_chunk():
+def test_split_khoan_cat_theo_diem_va_lap_lai_cau_dan_toi_moi_chunk():
+    # Ví dụ tinh thần Điều 85 Khoản 1 `Luật bảo hiểm xã hội.md` (mục 4.5,
+    # mục 11): câu dẫn được lặp lại NGUYÊN VĂN vào đầu content của MỌI chunk
+    # con, kể cả chunk không chứa đơn vị #0 gốc. Số liệu chọn sao cho câu dẫn
+    # (2 token) + budget_hiệu_dụng (5 token, sau khi trừ câu dẫn khỏi
+    # max_tokens=7) đủ chỗ cho từng Điểm (3 token) riêng lẻ, không rơi vào
+    # trường hợp hiếm "câu dẫn+Điểm đầu vượt ngân sách" của mục 4.4.
     khoan = KhoanNode(
         breadcrumb_prefix="Văn bản - Điều 9",
         khoan_number="4",
-        content=(
-            "Áp dụng trừ các trường hợp đặc biệt sau đây\n\n"
-            "a) a1 a2 a3 a4 a5 a6 a7\n\n"
-            "b) b1 b2 b3 b4 b5 b6 b7\n\n"
-            "c) c1 c2 c3"
-        ),
+        content=("Câu dẫn\n\na) a1 a2 a3\n\nb) b1 b2 b3\n\nc) c1 c2 c3"),
     )
-    chunks = split_khoan(khoan, source_document="doc", max_tokens=10)
+    chunks = split_khoan(khoan, source_document="doc", max_tokens=7)
 
     assert len(chunks) == 3
-    negation_sentence = "Áp dụng trừ các trường hợp đặc biệt sau đây"
-    # Mục 4.5: negation_note lặp lại ở MỌI chunk con, kể cả chunk không chứa
-    # đơn vị #0 (câu phủ định).
+    preamble = "Câu dẫn"
     for chunk in chunks:
-        assert chunk.negation_note == negation_sentence
+        assert chunk.content.startswith(preamble)
         assert chunk.is_split is True
+        assert chunk.token_count <= 7
 
     assert chunks[0].split_index == 1
     assert chunks[0].split_total == 3
-    assert (
-        chunks[0].breadcrumb
-        == f"Văn bản - Điều 9 - Khoản 4 (phần 1/3) - {negation_sentence}"
-    )
-    assert "a1" not in chunks[0].content  # chunk 1 chỉ có đơn vị #0
+    assert chunks[0].breadcrumb == "Văn bản - Điều 9 - Khoản 4 - Điểm a (phần 1/3)"
+    assert "a1" in chunks[0].content
 
-    assert chunks[1].breadcrumb == (
-        f"Văn bản - Điều 9 - Khoản 4 - Điểm a (phần 2/3) - {negation_sentence}"
+    assert chunks[1].breadcrumb == "Văn bản - Điều 9 - Khoản 4 - Điểm b (phần 2/3)"
+    assert chunks[2].breadcrumb == "Văn bản - Điều 9 - Khoản 4 - Điểm c (phần 3/3)"
+
+
+def test_split_khoan_cau_dan_lap_lai_ke_ca_chi_1_chunk_con(monkeypatch):
+    # mục 4.3: "kể cả chunk con chỉ có đúng 1 chunk duy nhất (Khoản bị cắt
+    # nhưng chỉ sinh ra 1 chunk, hiếm gặp)" -- ở đây ép budget để 1 Điểm duy
+    # nhất tự nó không tách được thành > 1 group.
+    khoan = KhoanNode(
+        breadcrumb_prefix="Văn bản - Điều 9",
+        khoan_number="4",
+        content="Câu dẫn dài\n\na) noi dung diem a",
     )
-    assert chunks[2].breadcrumb == (
-        f"Văn bản - Điều 9 - Khoản 4 - Điểm b, c (phần 3/3) - {negation_sentence}"
-    )
-    for chunk in chunks:
-        assert chunk.token_count <= 10
+    # full content vượt max_tokens=3 nhưng chỉ có 1 Điểm -> 1 group duy nhất.
+    chunks = split_khoan(khoan, source_document="doc", max_tokens=3)
+    assert len(chunks) == 1
+    assert chunks[0].content.startswith("Câu dẫn dài")
+    assert chunks[0].is_split is False
 
 
 def test_split_khoan_cat_theo_cau_khong_co_nhan_diem():
@@ -328,24 +321,21 @@ def test_split_khoan_cat_theo_cau_khong_co_nhan_diem():
         assert chunk.token_count <= 8
 
 
-def test_split_khoan_khong_bao_gio_vuot_qua_max_tokens_sau_khi_cat(monkeypatch):
+def test_split_khoan_khong_bao_gio_vuot_qua_max_tokens_sau_khi_cat():
+    # Số liệu chọn sao cho câu dẫn nhỏ (2 token) so với max_tokens=6 (budget
+    # hiệu dụng=4), mỗi Điểm cũng đủ nhỏ để tự nó nằm gọn trong budget --
+    # tình huống bình thường của mục 4.3 (không rơi vào trường hợp hiếm mục
+    # 4.4 "câu dẫn tự nó đã gần/vượt max_tokens").
     khoan = KhoanNode(
         breadcrumb_prefix="Văn bản - Điều 9",
         khoan_number="4",
-        content=(
-            "Đoạn mở đầu dài dòng nhiều từ để chắc chắn vượt ngân sách token "
-            "ngay từ đầu vòng lặp cắt Khoản.\n\n"
-            "a) Nội dung điểm a cũng khá dài để kiểm tra thuật toán cận dưới hoạt động đúng cách.\n\n"
-            "b) Điểm b ngắn.\n\n"
-            "c) Điểm c cũng ngắn."
-        ),
+        content="Mở đầu\n\na) a1 a2 a3\n\nb) b1 b2 b3 b4\n\nc) c1 c2",
     )
     chunks = split_khoan(khoan, source_document="doc", max_tokens=6)
     assert len(chunks) > 1
     for chunk in chunks:
-        assert chunk.token_count <= 6 or chunk.token_count == _fake_count_tokens(
-            chunk.content
-        )
+        assert chunk.token_count <= 6
+        assert chunk.content.startswith("Mở đầu")
 
 
 # ==========================================================================
@@ -396,3 +386,72 @@ def test_split_khoan_co_bang_khong_co_van_ban_tuong_thuat():
     chunks = split_khoan(khoan, source_document="doc", max_tokens=100)
     assert len(chunks) == 1
     assert chunks[0].content == chunks[0].standardization_table
+
+
+# ==========================================================================
+# split_implicit_khoan -- frontmatter/backmatter (mục 4.6)
+# ==========================================================================
+
+
+def test_split_implicit_khoan_giu_nguyen_khi_khong_vuot_ngan_sach():
+    chunks = split_implicit_khoan(
+        "Nội dung mở đầu ngắn.",
+        breadcrumb_prefix="LUẬT VĂN BẢN MẪU",
+        source_document="LUẬT VĂN BẢN MẪU",
+        max_tokens=100,
+    )
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert chunk.is_split is False
+    assert chunk.breadcrumb == "LUẬT VĂN BẢN MẪU"
+    assert chunk.content == "Nội dung mở đầu ngắn."
+
+
+def test_split_implicit_khoan_cat_khi_vuot_ngan_sach_them_phan_i_n():
+    content = " ".join(f"từ{i}" for i in range(1, 30))
+    chunks = split_implicit_khoan(
+        content,
+        breadcrumb_prefix="LUẬT VĂN BẢN MẪU",
+        source_document="LUẬT VĂN BẢN MẪU",
+        max_tokens=5,
+    )
+    assert len(chunks) > 1
+    total = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        assert chunk.is_split is True
+        assert chunk.split_index == index
+        assert chunk.split_total == total
+        assert chunk.breadcrumb == f"LUẬT VĂN BẢN MẪU (phần {index}/{total})"
+        # Không nhãn Điểm nào (mục 4.6: không có cấu trúc Điểm).
+        assert "Điểm" not in chunk.breadcrumb
+
+
+def test_split_implicit_khoan_breadcrumb_prefix_khac_nhau_frontmatter_backmatter():
+    # mục 4.6: 2 vùng dùng breadcrumb khác nhau để tránh trùng chunk_id.
+    front = split_implicit_khoan(
+        "Nội dung.",
+        breadcrumb_prefix="LUẬT VĂN BẢN MẪU",
+        source_document="LUẬT VĂN BẢN MẪU",
+        max_tokens=100,
+    )
+    back = split_implicit_khoan(
+        "Nội dung.",
+        breadcrumb_prefix="LUẬT VĂN BẢN MẪU - Chú thích sửa đổi (cuối văn bản)",
+        source_document="LUẬT VĂN BẢN MẪU",
+        max_tokens=100,
+    )
+    assert front[0].chunk_id != back[0].chunk_id
+    assert back[0].breadcrumb == "LUẬT VĂN BẢN MẪU - Chú thích sửa đổi (cuối văn bản)"
+
+
+def test_split_implicit_khoan_khong_overlap_giua_cac_phan():
+    content = " ".join(f"từ{i}" for i in range(1, 30))
+    chunks = split_implicit_khoan(
+        content,
+        breadcrumb_prefix="doc",
+        source_document="doc",
+        max_tokens=5,
+    )
+    all_words = " ".join(chunk.content for chunk in chunks).split()
+    # chunk_overlap=0 (mục 4.6) -- không lặp lại nội dung giữa các phần.
+    assert sorted(all_words) == sorted(content.split())

@@ -1,14 +1,19 @@
 """Unit test cho `chunking/patterns.py` (chunking_spec.md mục 3, 4, 5, 10).
 
 Regex nhận diện heading Markdown (Phần/Chương/Mục/Điều/Khoản), nhãn Điểm,
-dòng bảng markdown/HTML, từ khoá phủ định và các hàm tách câu/mệnh đề dùng ở
+dòng bảng markdown/HTML, marker backmatter và các hàm tách câu/mệnh đề dùng ở
 tầng fallback (mục 4.4).
+
+Không còn `NEGATION_KEYWORDS`/`RE_NEGATION` -- quyết định thiết kế mục 12 của
+spec đã bỏ field `negation_note` riêng (câu dẫn luôn được lặp lại nguyên văn,
+không phân biệt có từ khoá phủ định hay không, mục 4.5), nên `patterns.py`
+hiện tại không còn các định nghĩa đó.
 """
 
 from __future__ import annotations
 
 from production_legal_qa_rag.chunking.patterns import (
-    NEGATION_KEYWORDS,
+    RE_BACKMATTER_SEPARATOR,
     RE_CHUONG,
     RE_DIEM,
     RE_DIEU,
@@ -17,9 +22,10 @@ from production_legal_qa_rag.chunking.patterns import (
     RE_KHOAN_LABEL,
     RE_KHOAN_MERGED,
     RE_MUC,
-    RE_NEGATION,
     RE_PHAN,
+    RE_PHU_LUC,
     RE_TABLE_LINE,
+    is_structural_heading,
     split_finer,
     split_sentences,
 )
@@ -46,8 +52,12 @@ def test_re_heading_toi_da_5_dau_thang():
     assert match.group(1) == "#####"
 
 
+def test_re_heading_6_dau_thang_khong_khop_gioi_han_5_cap():
+    assert RE_HEADING.match("###### Không phải cấp hợp lệ") is None
+
+
 # ==========================================================================
-# RE_PHAN / RE_CHUONG / RE_MUC / RE_DIEU
+# RE_PHAN / RE_CHUONG / RE_MUC / RE_DIEU / RE_PHU_LUC
 # ==========================================================================
 
 
@@ -70,10 +80,14 @@ def test_re_phan_bat_so_thu_tu_tieng_viet():
 
 
 def test_re_phan_khong_khop_phu_luc():
-    # Tiêu đề Phụ Lục dùng chữ "PHỤ LỤC", không phải "Phần" -> không khớp
-    # (parser.py xử lý bằng cách giữ nguyên text làm đoạn Phần, mục "quyết
-    # định thiết kế" trong parser.py docstring).
+    # Tiêu đề Phụ Lục dùng "PHỤ LỤC" -- có regex riêng (RE_PHU_LUC), không
+    # khớp RE_PHAN.
     assert RE_PHAN.match("PHỤ LỤC — DANH MỤC ĐỊA BÀN") is None
+
+
+def test_re_phu_luc_khop_khong_phan_biet_hoa_thuong():
+    assert RE_PHU_LUC.match("Phụ lục I — Danh mục") is not None
+    assert RE_PHU_LUC.match("PHỤ LỤC") is not None
 
 
 def test_re_dieu_bat_so_va_ten_dieu():
@@ -136,8 +150,7 @@ def test_re_diem_khop_chu_dac_biet_tieng_viet():
 
 def test_re_diem_khong_khop_danh_sach_gach_dau_dong():
     # Danh sách "-" trong Phụ Lục KHÔNG được coi là ranh giới Điểm (quyết định
-    # thiết kế của developer, phù hợp mục 3/10: spec chỉ định nghĩa nhãn
-    # a)/b)/c..., không nhắc "-").
+    # thiết kế, xem parser.py docstring).
     assert RE_DIEM.match("- Vùng I gồm các phường...") is None
 
 
@@ -172,44 +185,73 @@ def test_re_html_table_line_khong_khop_van_ban_thuong():
 
 
 # ==========================================================================
-# NEGATION_KEYWORDS / RE_NEGATION (mục 4.5)
+# RE_BACKMATTER_SEPARATOR (mục 4.6) -- marker THẬT: dòng "---" 3 ký tự đúng
+# khít, khác mô tả "**[n]**" trong chunking_spec.md (đã lỗi thời, xem
+# patterns.py docstring / báo cáo bàn giao developer).
 # ==========================================================================
 
 
-def test_negation_keywords_dung_danh_sach_literal_cua_spec():
-    assert set(NEGATION_KEYWORDS) == {
-        "trừ",
-        "ngoại trừ",
-        "loại trừ",
-        "không áp dụng",
-        "không thuộc",
-        "không bao gồm",
-    }
+def test_re_backmatter_separator_khop_dung_3_gach_ngang():
+    assert RE_BACKMATTER_SEPARATOR.match("---") is not None
 
 
-def test_re_negation_khop_cau_co_khong_ap_dung():
-    match = RE_NEGATION.search(
-        "Luật này không áp dụng đối với bảo hiểm y tế mang tính kinh doanh."
-    )
-    assert match is not None
-    assert match.group(0).lower() == "không áp dụng"
+def test_re_backmatter_separator_khong_khop_gach_ngang_trang_tri_dai_hon():
+    # Dòng gạch ngang trang trí trong frontmatter (vd. "--------",
+    # "---------------") không phải marker backmatter thật.
+    assert RE_BACKMATTER_SEPARATOR.match("--------") is None
+    assert RE_BACKMATTER_SEPARATOR.match("---------------") is None
 
 
-def test_re_negation_khop_khong_phan_biet_hoa_thuong():
-    assert RE_NEGATION.search("KHÔNG ÁP DỤNG đối với trường hợp X.") is not None
+def test_re_backmatter_separator_khong_khop_it_hon_3_gach_ngang():
+    assert RE_BACKMATTER_SEPARATOR.match("--") is None
 
 
-def test_re_negation_khong_khop_van_ban_khong_co_tu_khoa():
-    assert RE_NEGATION.search("Người sử dụng lao động phải trả lương đầy đủ.") is None
+def test_re_backmatter_separator_khong_khop_van_ban_thuong():
+    assert RE_BACKMATTER_SEPARATOR.match("Đây là một câu văn bản.") is None
 
 
-def test_re_negation_tru_don_le_gay_false_positive_da_biet_truoc():
-    """`"trừ"` trần trụi (đúng theo danh sách literal mục 4.5) khớp cả vào
-    "khấu trừ"/"trừ đi" — false positive đã được developer báo cáo trước, giữ
-    nguyên theo đúng yêu cầu spec (không phải bug cần sửa, xem báo cáo bàn
-    giao của developer, điểm 9)."""
-    assert RE_NEGATION.search("Mức khấu trừ thuế thu nhập cá nhân.") is not None
-    assert RE_NEGATION.search("Số tiền trừ đi các khoản chi phí.") is not None
+# ==========================================================================
+# is_structural_heading (mục 4.6) -- phân biệt heading tên văn bản (H1
+# frontmatter) với heading cấu trúc Phần/Phụ Lục/Chương/Mục/Điều/Khoản thật.
+# ==========================================================================
+
+
+def test_is_structural_heading_level_1_phu_luc_la_cau_truc():
+    assert is_structural_heading(1, "PHỤ LỤC — DANH MỤC ĐỊA BÀN") is True
+
+
+def test_is_structural_heading_level_1_phan_la_cau_truc():
+    assert is_structural_heading(1, "Phần thứ nhất") is True
+
+
+def test_is_structural_heading_level_1_ten_van_ban_khong_phai_cau_truc():
+    # Heading "#" tên văn bản trong frontmatter (vd. "BẢO HIỂM XÃ HỘI") không
+    # khớp Phần/Phụ Lục -> không phải heading cấu trúc.
+    assert is_structural_heading(1, "BẢO HIỂM XÃ HỘI") is False
+
+
+def test_is_structural_heading_level_2_chuong_la_cau_truc():
+    assert is_structural_heading(2, "Chương I") is True
+
+
+def test_is_structural_heading_level_2_khong_khop_khong_phai_cau_truc():
+    assert is_structural_heading(2, "Tiêu đề bất kỳ") is False
+
+
+def test_is_structural_heading_level_4_dieu_la_cau_truc():
+    assert is_structural_heading(4, "Điều 1. Phạm vi điều chỉnh") is True
+
+
+def test_is_structural_heading_level_5_khoan_label_la_cau_truc():
+    assert is_structural_heading(5, "Khoản 1") is True
+
+
+def test_is_structural_heading_level_5_khoan_merged_la_cau_truc():
+    assert is_structural_heading(5, "1. Thành phố Hà Nội") is True
+
+
+def test_is_structural_heading_level_ngoai_pham_vi_khong_phai_cau_truc():
+    assert is_structural_heading(6, "Bất kỳ") is False
 
 
 # ==========================================================================
