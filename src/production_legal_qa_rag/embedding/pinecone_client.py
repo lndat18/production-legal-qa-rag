@@ -44,7 +44,7 @@ class PineconeVectorStore:
             embedded_chunks: Toàn bộ checkpoint cần đưa lên index.
         """
         index = self._get_or_create_index()
-        index.delete(delete_all=True)
+        self._delete_all_vectors(index)
 
         records = [to_pinecone_record(chunk) for chunk in embedded_chunks]
         for batch in _batched(records, PINECONE_UPSERT_BATCH_SIZE):
@@ -54,6 +54,14 @@ class PineconeVectorStore:
                     for record in batch
                 ]
             )
+
+    def _delete_all_vectors(self, index: Any) -> None:
+        """Xoá vector cũ; namespace mặc định trống được xem là đã sạch."""
+        try:
+            index.delete(delete_all=True)
+        except NotFoundException as error:
+            if "namespace not found" not in str(error).casefold():
+                raise
 
     def _get_or_create_index(self) -> Any:
         if self._vector_settings.index_name not in self._index_names():
