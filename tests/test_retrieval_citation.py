@@ -144,3 +144,70 @@ def test_extras_khong_co_metadata_tren_dense_bi_bo():
     result = asyncio.run(pipe.retrieve(CITED, use_mmr=False))
     assert "c50" not in [c.chunk_id for c in result]
     assert "bc-c50\nnd-c50" not in rr.calls[0][1]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Điều 3 và Điều 5 quy định gì",
+        "Điều 36. Quy định về gì?",
+        "(Điều 36)",
+        "theo Điều 36, người lao động",
+        "điều 3, điều kiện lao động",
+    ],
+)
+def test_has_citation_ranh_gioi_va_nhieu_dieu(query: str):
+    assert has_citation(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "ĐIỀU KIỆN lao động",
+        "Điều kiện 3 người",
+        "Điều lệ công ty",
+        "điều  kiện 5",
+        "Điều",
+        "Điều ba",
+    ],
+)
+def test_has_citation_am_ranh_gioi(query: str):
+    assert not has_citation(query)
+
+
+def test_citation_extras_it_hon_top_k_va_rong():
+    hits = [SearchHit(chunk_id="s0", score=1.0), SearchHit(chunk_id="s1", score=0.5)]
+    extras = citation_extras(hits)
+    assert [c.chunk_id for c in extras] == ["s0", "s1"]
+    assert [c.rrf_score for c in extras] == [1.0, 0.5]
+    assert citation_extras([]) == []
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_groq_loi_va_reranker_loi_fallback_van_co_extras(use_mmr: bool):
+    pipe, _, _, embedder = _pipe(CITED, hyde=None, reranker="fail")
+    result = asyncio.run(pipe.retrieve(CITED, use_mmr=use_mmr))
+    assert embedder.calls == [[CITED]]  # chỉ nhánh B
+    assert len(result) == 5
+    assert all(c.rerank_score is None for c in result)
+    if not use_mmr:  # MMR bật: xen kẽ B/E cắt ở 5 nên c50 (hạng 5 của E) có thể rớt
+        assert "c50" in [c.chunk_id for c in result]
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_cau_khong_vien_dan_so_sparse_query_va_fetch_nhu_truoc(use_mmr: bool):
+    pipe, dense, _, _ = _pipe(UNCITED)
+    asyncio.run(pipe.retrieve(UNCITED, use_mmr=use_mmr))
+    assert len(pipe._sparse_index.texts) == 2  # type: ignore[attr-defined]
+    # MMR bật: c50 chỉ ở sparse nên fetch trước MMR; MMR tắt: c50 bị cắt khỏi
+    # nhánh nên union đủ metadata, không fetch.
+    assert len(dense.fetch_calls) == (1 if use_mmr else 0)
+
+
+def test_cau_vien_dan_hai_dieu_van_chi_1_lan_extras():
+    query = "Điều 3 và Điều 5 quy định gì"
+    pipe, _, rr, _ = _pipe(query)
+    asyncio.run(pipe.retrieve(query, use_mmr=False))
+    passages = rr.calls[0][1]
+    assert len(passages) == len(set(passages))  # union không trùng
+    assert "bc-c50\nnd-c50" in passages
