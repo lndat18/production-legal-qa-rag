@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 
 _RETRYABLE_STATUS_CODES = frozenset({502, 503, 504})
 _BACKOFF_SECONDS = 0.5
+# Read timeout mỗi request = max(timeout_seconds, số passage × hằng số này).
+# Đo trên CPU ~1s/passage; 2.5s là biên an toàn ~2,5 lần (mục 9). Chỉ là mức
+# chờ tối đa nên không làm chậm khi server nhanh; hạ xuống khi có GPU.
+RERANK_SECONDS_PER_PASSAGE = 2.5
 _RUNBOOK_HINT = "Kiểm tra Studio/tmux/ngrok theo runbook retrieval_spec.md mục 9.1."
 
 
@@ -74,7 +78,22 @@ class RerankerClient:
             except _NonRetryableRerankError as error:
                 logger.error("Reranker lỗi cấu hình/payload, không retry: %s", error)
                 return None
-            except (httpx.TransportError, _RetryableStatusError) as error:
+            except httpx.ReadTimeout:
+                # Không retry: server có thể vẫn đang tính request này, gửi lại
+                # toàn bộ passage chỉ làm hàng đợi phình thêm.
+                logger.warning(
+                    "Reranker chậm với %d passage (read timeout %.0fs), dùng "
+                    "fallback. Có thể do CPU/quá tải; các yêu cầu trước có thể "
+                    "còn trong hàng đợi, kiểm tra CPU/Studio.",
+                    len(passages),
+                    self._read_timeout_seconds(len(passages)),
+                )
+                return None
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                _RetryableStatusError,
+            ) as error:
                 logger.warning(
                     "Reranker lỗi tạm thời ở lần thử %d/%d: %r",
                     attempt + 1,
@@ -84,6 +103,15 @@ class RerankerClient:
                 studio_hint = _RUNBOOK_HINT
                 if attempt < self._settings.max_retries:
                     await asyncio.sleep(_BACKOFF_SECONDS * (2**attempt))
+            except httpx.TransportError as error:
+                # WriteTimeout, ReadError, ...: không thuộc nhóm chắc chắn chưa
+                # xử lý request nên không retry.
+                logger.warning(
+                    "Reranker lỗi truyền tải %r, không retry, dùng fallback. %s",
+                    error,
+                    _RUNBOOK_HINT,
+                )
+                return None
             except Exception:
                 # Lỗi ngoài httpx thường là lỗi lập trình: kèm traceback, không
                 # gợi ý kiểm tra Studio.
@@ -100,11 +128,24 @@ class RerankerClient:
         logger.warning("Reranker hết retry, dùng fallback. %s", studio_hint)
         return None
 
+    def _read_timeout_seconds(self, passage_count: int) -> float:
+        """`timeout_seconds` là sàn; union lớn được chờ tỉ lệ số passage."""
+        return max(
+            float(self._settings.timeout_seconds),
+            RERANK_SECONDS_PER_PASSAGE * passage_count,
+        )
+
     async def _request_scores(self, query: str, passages: list[str]) -> list[float]:
+        # Timeout theo từng request để không phải tạo client mới mỗi lần.
+        timeout = httpx.Timeout(
+            self._read_timeout_seconds(len(passages)),
+            connect=float(self._settings.connect_timeout_seconds),
+        )
         response = await self._client.get().post(
             self._settings.endpoint_url,
             headers={"X-API-Key": self._settings.api_key},
             json={"query": query, "passages": passages},
+            timeout=timeout,
         )
         status = response.status_code
         if status in _RETRYABLE_STATUS_CODES:

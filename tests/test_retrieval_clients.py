@@ -118,9 +118,11 @@ def test_rerank_het_retry_tra_none(env: None, status: int):
 
 @pytest.mark.parametrize(
     "error",
-    [httpx.ConnectError("x"), httpx.ReadTimeout("x"), httpx.ConnectTimeout("x")],
+    [httpx.ConnectError("x"), httpx.ConnectTimeout("x")],
 )
-def test_rerank_retry_khi_loi_ket_noi_hoac_timeout(env: None, error: Exception):
+def test_rerank_retry_khi_connect_error_hoac_connect_timeout(
+    env: None, error: Exception
+):
     def handler(request: httpx.Request, n: int) -> httpx.Response:
         if n < 2:
             raise error
@@ -129,6 +131,60 @@ def test_rerank_retry_khi_loi_ket_noi_hoac_timeout(env: None, error: Exception):
     scores, calls = _rerank(handler)
     assert scores == [1.0, 2.0]
     assert calls == [2]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ReadTimeout("x"),
+        httpx.WriteTimeout("x"),
+        httpx.ReadError("x"),
+        httpx.RemoteProtocolError("x"),
+    ],
+)
+def test_rerank_read_timeout_va_transport_error_khac_khong_retry(
+    env: None, error: Exception
+):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        raise error
+
+    scores, calls = _rerank(handler)
+    assert scores is None
+    assert calls == [1]
+
+
+def test_rerank_read_timeout_log_so_passage_va_timeout_khong_goi_y_tunnel(
+    env: None, caplog: pytest.LogCaptureFixture
+):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        raise httpx.ReadTimeout("x")
+
+    passages = [f"p{i}" for i in range(36)]
+    with caplog.at_level("WARNING", logger=reranker_client.logger.name):
+        _rerank(handler, passages)
+    assert "36 passage" in caplog.text
+    assert "read timeout 90s" in caplog.text
+    assert "hàng đợi" in caplog.text
+    assert "ngrok" not in caplog.text and "tunnel" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("n_passages", "expected_read"),
+    [(2, 30.0), (12, 30.0), (13, 32.5), (36, 90.0)],
+)
+def test_rerank_read_timeout_ti_le_so_passage_voi_san_30s(
+    env: None, n_passages: int, expected_read: float
+):
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        seen.append(request.extensions["timeout"])
+        return httpx.Response(200, json={"scores": [1.0] * n_passages})
+
+    scores, _ = _rerank(handler, [f"p{i}" for i in range(n_passages)])
+    assert scores == [1.0] * n_passages
+    assert seen[0]["read"] == expected_read
+    assert seen[0]["connect"] == 5.0  # connect timeout giữ nguyên
 
 
 def test_rerank_loi_ket_noi_lien_tuc_tra_none(env: None):
