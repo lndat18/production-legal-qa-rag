@@ -10,7 +10,7 @@ cho tính năng chưa được thiết kế (tránh over-engineering).
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -76,6 +76,36 @@ class LLMSettings(BaseSettings):
     chunk_token_limit: int = 1500
     tpm_limit: int = 8000
     rpm_limit: int = 30
+
+
+class GuardrailSettings(BaseSettings):
+    """Cấu hình Groq riêng cho bước kiểm tra an toàn đầu vào."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = "openai/gpt-oss-safeguard-20b"
+    max_retries: int = 2
+    timeout_seconds: int = 30
+
+
+class GenerationSettings(BaseSettings):
+    """Cấu hình Groq cho bước sinh câu trả lời có stream.
+
+    Ưu tiên ``GROQ_API_KEY_2`` để tách ngân sách rate limit khỏi HyDE và
+    guardrail; khi không đặt key thứ hai, dùng lại ``GROQ_API_KEY``.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True
+    )
+
+    api_key: str = Field(
+        validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY")
+    )
+    model_name: str = "openai/gpt-oss-120b"
+    max_retries: int = 2
+    timeout_seconds: int = 60
 
 
 class RerankerSettings(BaseSettings):
