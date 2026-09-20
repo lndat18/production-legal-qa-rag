@@ -326,3 +326,78 @@ def test_pipeline_cau_khong_vien_dan_khong_them_luot_sparse():
     asyncio.run(pipe.retrieve(query, use_mmr=False))
     assert len(sparse.texts) == 2
     assert _passage_ids(rr) <= set(DENSE) | set(_ids_of("b", 12))
+
+
+# ------------------------------------------------------------- bổ sung
+
+
+def test_vuot_tran_chi_3_dieu_dau_va_phan_du_bi_bo_khoi_sub_query():
+    query = "Điều 3, 5, 7 và 9 quy định gì"
+    numbers = extract_citation_numbers(query)
+    assert numbers == [3, 5, 7]
+    for number, sub_query in zip(
+        numbers, build_article_queries(query, numbers), strict=True
+    ):
+        assert f"{number}" in sub_query
+        others = {3, 5, 7, 9} - {number}
+        assert not any(f" {o} " in f" {sub_query} " for o in others)
+    # Ngân sách chia theo số Điều đã cắt trần (3), không theo số Điều nhắc tới (4).
+    hits = {n: [SearchHit(chunk_id=f"{n}-{i}") for i in range(20)] for n in numbers}
+    extras = citation_extras(numbers, [], hits)
+    assert len(extras) == 3 * (CITATION_EXTRAS_BUDGET // 3)
+    assert not any(c.chunk_id.startswith("9-") for c in extras)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Điều " + "3, " * 5000 + "quy định gì",
+        "điều" * 20000,
+        "Điều 3 " + "và " * 20000,
+        "Điều 3 " + "và 5 " * 20000,
+        "điều thứ " * 20000,
+        ("Điều 1" + "0" * 50 + " ") * 2000,
+        "Điều 3" + "," * 50000,
+    ],
+)
+def test_regex_khong_bung_no_voi_chuoi_rat_dai(query: str):
+    import time
+
+    start = time.perf_counter()
+    numbers = extract_citation_numbers(query)
+    build_article_queries(query, numbers)
+    assert time.perf_counter() - start < 2.0
+    assert len(numbers) <= MAX_CITATION_ARTICLES
+
+
+def test_luot_phu_khong_nuot_cancelled_error():
+    class CancellingSparse(SparseByText):
+        async def query(self, text: str, top_k: int = 20) -> list[SearchHit]:
+            if text in TWO_SUBQUERIES:
+                raise asyncio.CancelledError
+            return await super().query(text, top_k)
+
+    pipe, _, _ = _multi_pipe(TWO, TWO_SUBQUERIES)
+    pipe._sparse_index = CancellingSparse(  # type: ignore[assignment]
+        pipe._sparse_index.by_text,  # type: ignore[attr-defined]
+        frozenset(),
+    )
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(pipe.retrieve(TWO, use_mmr=False))
+
+
+def test_n1_hoi_quy_khong_them_luot_sparse_va_extras_top_k_nhanh_b():
+    query = "Điều 3 khoản 1 quy định gì"
+    pipe, sparse, rr = _multi_pipe(query, [])
+    asyncio.run(pipe.retrieve(query, use_mmr=False))
+    assert len(sparse.texts) == 2  # A + B, không có lượt phụ
+    assert set(_ids_of("b", CITATION_SPARSE_TOP_K)) <= _passage_ids(rr)
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_cau_khong_vien_dan_so_luot_fetch_nhu_truoc(use_mmr: bool):
+    query = "người lao động nghỉ phép bao nhiêu ngày"
+    pipe, _, _ = _multi_pipe(query, [])
+    asyncio.run(pipe.retrieve(query, use_mmr=use_mmr))
+    dense = pipe._dense_search
+    assert len(dense.fetch_calls) <= (2 if use_mmr else 1)  # type: ignore[attr-defined]
