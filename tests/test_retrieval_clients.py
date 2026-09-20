@@ -28,7 +28,11 @@ from production_legal_qa_rag.retrieval import (
 )
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
 from production_legal_qa_rag.retrieval.dense_search import DenseSearch
-from production_legal_qa_rag.retrieval.hyde import HYDE_PROMPT, HydeGenerator
+from production_legal_qa_rag.retrieval.hyde import (
+    HYDE_SYSTEM_PROMPT,
+    HYDE_USER_TEMPLATE,
+    HydeGenerator,
+)
 from production_legal_qa_rag.retrieval.models import Candidate, RetrievalError
 from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
 from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
@@ -218,12 +222,14 @@ def test_rerank_response_khong_phai_json_tra_none(env: None):
 class _FakeGroq:
     def __init__(self, content: str | None = None, error: Exception | None = None):
         self.prompts: list[str] = []
+        self.calls: list[dict[str, Any]] = []
         self._content = content
         self._error = error
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     async def _create(self, **kwargs: Any) -> Any:
-        self.prompts.append(kwargs["messages"][0]["content"])
+        self.calls.append(kwargs)
+        self.prompts.append(kwargs["messages"][-1]["content"])
         if self._error:
             raise self._error
         message = SimpleNamespace(content=self._content)
@@ -248,13 +254,43 @@ def test_hyde_groq_loi_tra_none(env: None):
     assert _hyde(_FakeGroq(error=RuntimeError("boom"))) is None
 
 
-def test_hyde_prompt_cam_neu_so_dieu_khoan_va_chua_cau_hoi(env: None):
+def test_hyde_system_prompt_chua_cac_quy_tac_cam(env: None):
+    for phrase in (
+        "TUYỆT ĐỐI không nêu số Điều, Khoản, Điểm, Chương, Mục",
+        "tên hay số hiệu văn",
+        "năm ban hành",
+        "Không markdown",
+    ):
+        assert phrase.replace("\n", " ") in " ".join(HYDE_SYSTEM_PROMPT.split())
+
+
+def test_hyde_messages_system_roi_user_chua_cau_hoi(env: None):
     fake = _FakeGroq("x")
     _hyde(fake, "Nghỉ phép mấy ngày?")
-    prompt = fake.prompts[0]
-    assert "Nghỉ phép mấy ngày?" in prompt
-    assert "KHÔNG nêu số Điều" in HYDE_PROMPT
-    assert "số Khoản" in prompt
+    messages = fake.calls[0]["messages"]
+    assert [m["role"] for m in messages] == ["system", "user"]
+    assert messages[0]["content"] == HYDE_SYSTEM_PROMPT
+    assert messages[1]["content"] == "Câu hỏi: Nghỉ phép mấy ngày?"
+    assert "Nghỉ phép" not in messages[0]["content"]
+
+
+def test_hyde_truyen_dung_tham_so_groq(env: None):
+    fake = _FakeGroq("x")
+    _hyde(fake)
+    call = fake.calls[0]
+    assert call["reasoning_effort"] == "low"
+    assert call["temperature"] == 0.2
+    assert call["max_completion_tokens"] == 2048
+    assert call["model"] == LLMSettings().model_name
+
+
+def test_hyde_query_chua_ngoac_nhon_khong_hong(env: None):
+    fake = _FakeGroq("kết quả")
+    query = "Điều {36} khoản {0} và {query} }{ quy định gì?"
+    assert _hyde(fake, query) == "kết quả"
+    assert fake.calls[0]["messages"][1]["content"] == HYDE_USER_TEMPLATE.format(
+        query=query
+    )
 
 
 # ---------------------------------------------------------------- embedder

@@ -125,11 +125,103 @@ mức tiêu thụ so với 2 request riêng. Spec này không xử lý thêm v�
   theo văn phong luật — bằng Groq, **tái dùng `LLMSettings` hiện có trong
   `config.py`** (model `openai/gpt-oss-120b`): không thêm provider/model
   riêng cho query-time.
-- Prompt thiết kế riêng cho domain pháp luật Việt Nam — nguyên văn chốt khi
-  implement. **Luật bắt buộc trong prompt (chốt 2026-09-19)**: chỉ viết nội
+- Prompt thiết kế riêng cho domain pháp luật Việt Nam — **nguyên văn chốt
+  2026-09-20 (theo lý thuyết, chưa đo bằng RAGAS; xem mục 16 điểm 1)** bên dưới.
+  **Luật bắt buộc trong prompt (chốt 2026-09-19)**: chỉ viết nội
   dung quy định, **không nêu số Điều/Khoản hay tên văn bản cụ thể**. Lý do:
   sparse của nhánh A search trên `breadcrumb` (chứa số Điều/Khoản); nếu LLM bịa
   viện dẫn sai sẽ kéo các chunk khớp số sai vào nhánh A.
+
+**Prompt (tách system/user; hằng số trong `retrieval/hyde.py`):**
+
+Tách system/user vì phần quy tắc cố định nằm ở system (model tuân thủ ổn định
+hơn, và câu hỏi người dùng nằm riêng ở user nên khó "ghi đè" quy tắc bằng nội
+dung câu hỏi).
+
+```
+[system]
+Bạn là chuyên gia pháp luật Việt Nam. Nhiệm vụ: với mỗi câu hỏi của người dùng,
+viết một đoạn văn giả định như thể trích từ văn bản quy phạm pháp luật Việt Nam
+đang trả lời câu hỏi đó. Đoạn văn này chỉ dùng để tìm kiếm điều luật tương tự,
+không phải câu trả lời cho người dùng.
+
+Phạm vi pháp luật thường gặp: lao động và quan hệ lao động, bảo hiểm xã hội,
+bảo hiểm y tế, thuế thu nhập cá nhân, tiền lương và mức lương tối thiểu.
+
+Quy tắc:
+1. Viết bằng văn phong văn bản quy phạm pháp luật (câu khẳng định, mang tính quy
+   định: "được", "có quyền", "có trách nhiệm", "phải", "không được"...), dùng
+   thuật ngữ pháp lý đúng lĩnh vực của câu hỏi (ví dụ: người lao động, người sử
+   dụng lao động, người tham gia bảo hiểm, đóng và hưởng bảo hiểm, người nộp
+   thuế, thu nhập chịu thuế, mức lương tối thiểu). Chỉ dùng thuật ngữ hợp với
+   chủ đề câu hỏi, không nhồi thuật ngữ của lĩnh vực khác.
+2. Độ dài: 3 đến 4 câu, khoảng 60-100 từ.
+3. TUYỆT ĐỐI không nêu số Điều, Khoản, Điểm, Chương, Mục, tên hay số hiệu văn
+   bản, năm ban hành — kể cả khi câu hỏi có nhắc tới.
+4. Không nêu con số, mức tiền, tỉ lệ, thời hạn cụ thể, trừ khi bạn chắc chắn
+   đúng; nếu không chắc, diễn đạt bằng từ chung ("mức tối thiểu theo quy định",
+   "trong thời hạn theo quy định").
+5. Câu hỏi mơ hồ, quá ngắn hoặc ngoài các lĩnh vực trên: vẫn viết một đoạn theo
+   văn phong quy định về chủ đề pháp lý gần nhất mà câu hỏi gợi ra. Không từ
+   chối, không hỏi lại.
+6. Câu hỏi chỉ hỏi theo số Điều/Khoản mà không nêu chủ đề (ví dụ "Điều 36 khoản
+   2 quy định gì?"): không đoán hay bịa chủ đề; viết một đoạn ngắn, chung chung
+   về việc quy định các quyền, nghĩa vụ và trách nhiệm của các bên liên quan.
+7. Đầu ra: chỉ một đoạn văn thuần tiếng Việt. Không markdown, không gạch đầu
+   dòng, không tiêu đề, không lời mở đầu hay kết luận, không giải thích thêm.
+
+[user]
+Câu hỏi: {query}
+```
+
+Lý do từng quy tắc:
+
+- **Trung lập lĩnh vực (1)**: corpus có 6 văn bản thuộc 5 lĩnh vực; prompt cũ
+  chỉ gợi thuật ngữ lao động sẽ kéo vector/BM25 của nhánh A nghiêng về Bộ luật
+  Lao động ngay cả với câu hỏi về thuế hay BHYT. Prompt mới liệt kê thuật ngữ
+  đa lĩnh vực và dặn chỉ dùng thuật ngữ hợp chủ đề.
+- **Độ dài 3-4 câu, ~60-100 từ (2)**: chunk tối đa 236 token (~1-2 Khoản). Hypo
+  quá dài làm loãng vector dense (nhiều ý) và kéo thêm từ khoá không liên quan
+  vào BM25; quá ngắn thiếu từ khoá để sparse/dense bám. 60-100 từ tiếng Việt
+  (~100-200 token) nằm trong cỡ một chunk, chứa được 1-2 ý chính.
+- **Cấm viện dẫn/tên văn bản/số hiệu/năm (3)**: giữ luật 2026-09-19 (sparse
+  nhánh A search trên `breadcrumb + content`, chứa số Điều/Khoản và tên văn
+  bản). Mở rộng thêm Chương/Mục/số hiệu/năm vì các token này cũng có trong
+  breadcrumb và sẽ khớp nhầm.
+- **Con số/mức/thời hạn (4)**: mặc định không nêu, chỉ nêu khi chắc chắn. Con
+  số bịa sai (vd. sai tỉ lệ đóng bảo hiểm) tạo token nhiễu trong sparse và
+  không giúp dense; HyDE chỉ cần đúng chủ đề và thuật ngữ, còn giá trị thật do
+  chunk cung cấp. Không cấm tuyệt đối vì số chắc chắn (vd. "12 tháng") đôi khi
+  là từ khoá khớp tốt.
+- **Câu mơ hồ/ngoài phạm vi (5)**: từ chối hoặc hỏi lại làm hypo rỗng/vô nghĩa
+  và nhánh A bị bỏ; sinh đoạn về chủ đề gần nhất giữ nhánh A hoạt động, còn
+  nhánh B (câu gốc) và reranker là lưới an toàn nếu chủ đề đoán lệch.
+- **Câu chỉ hỏi theo số Điều (6)**: phần viện dẫn đã do đường extras (mục 8.1)
+  xử lý qua sparse nhánh B; HyDE không có căn cứ để biết chủ đề nên bịa chủ đề
+  sẽ kéo nhánh A sang chunk sai. Đoạn chung chung là lựa chọn ít gây hại nhất
+  (đóng góp trung tính cho nhánh A thay vì gây nhiễu).
+- **Đầu ra thuần đoạn văn (7)**: markdown/gạch đầu dòng/tiêu đề/lời dẫn thêm
+  token không thuộc văn phong luật vào embedding và BM25.
+
+**Tham số gọi Groq (chốt 2026-09-20, hằng số nội bộ `retrieval/hyde.py`):**
+
+| Tham số | Giá trị | Lý do |
+| --- | --- | --- |
+| `reasoning_effort` | `"low"` | Tác vụ viết một đoạn ngắn không cần suy luận sâu; giảm latency (Groq là bước đầu, nằm trên đường găng) và giảm rủi ro model dùng hết token cho reasoning dẫn tới output rỗng |
+| `temperature` | `0.2` | Thấp để hypo ổn định giữa các lần gọi, kết quả retrieval tái lập được; không đặt 0 vì gpt-oss khuyến nghị tránh greedy hoàn toàn (dễ lặp) |
+| `max_completion_tokens` | `2048` (giữ nguyên) | Output mục tiêu ~100-200 token; phần còn lại là dư cho reasoning. Chỉ trả tiền/latency theo token thực dùng nên giữ mức dư lớn là rẻ, còn giảm thấp làm tăng nguy cơ output rỗng |
+
+- Developer **phải xác nhận** SDK `groq` đang cài và API Groq chấp nhận từng
+  tham số trên cho `openai/gpt-oss-120b`. Tham số nào không được hỗ trợ thì
+  **bỏ tham số đó** thay vì làm hỏng lời gọi, và ghi lại (comment trong
+  `hyde.py` + cập nhật bảng này).
+- **Đã xác nhận (2026-09-20)**: SDK `groq` 1.7.0 có đủ 3 tham số và API Groq chấp nhận
+  cả `reasoning_effort="low"`, `temperature=0.2`, `max_completion_tokens=2048` cho
+  `openai/gpt-oss-120b` (3 lời gọi thật đều trả output không rỗng, ~1s/lời gọi).
+- Các tham số là hằng số nội bộ `retrieval/hyde.py`, **không** vào
+  `LLMSettings`: chỉ HyDE dùng và chúng gắn với prompt này; `LLMSettings` dùng
+  chung cho mọi tác vụ LLM (nhất quán mục 12). Nếu sau này có tác vụ LLM thứ
+  hai cần tham số riêng thì mới xét lại.
 - `hypothetical_document` chỉ dùng cho **nhánh A** (embed + sparse query).
   MMR và rerank dùng câu hỏi gốc (mục 7, 9).
 - Kiểm tra output: `hypothetical_document` rỗng (vd. model reasoning dùng hết
@@ -698,6 +790,11 @@ agent) cho `reranker_client.py`.
 - Vector query được embed qua cùng tiền xử lý `pyvi` như lúc index (test:
   câu hỏi trùng nguyên văn `content` 1 chunk phải trả về chunk đó ở top dense).
 - Giả lập Groq lỗi và reranker lỗi (timeout, 401) → hành vi đúng mục 10 và mục 9, `retrieve()` không crash.
+- Test HyDE (fake client Groq): system prompt chứa các quy tắc cấm (không nêu
+  số Điều/Khoản/Điểm/Chương/Mục, tên/số hiệu văn bản, năm ban hành); câu hỏi đi
+  vào message `user`; lời gọi truyền đúng `reasoning_effort="low"`,
+  `temperature=0.2`, `max_completion_tokens=2048` (hoặc giá trị đã điều chỉnh
+  theo xác nhận SDK, mục 4); output rỗng vẫn coi là lỗi → `None` (không đổi).
 - Test: mỗi passage gửi tới reranker bắt đầu bằng `breadcrumb`, rồi xuống dòng
   (`"\n"`), rồi `content` (mục 9); `RetrievedChunk.content` trả ra vẫn là
   `content` nguyên gốc không kèm breadcrumb. Retry/lỗi/fallback không đổi so
@@ -721,7 +818,13 @@ hướng A+C — `has_citation` regex + luôn thêm top `CITATION_SPARSE_TOP_K=1
 sparse của nhánh B vào union (mục 8.1); k tăng từ 5 lên 10 cùng ngày, cần
 tinh chỉnh lại bằng RAGAS/latency khi có GPU.
 
-1. Nguyên văn prompt HyDE — chốt khi implement (mục 4).
+1. **[ĐÃ CHỐT 2026-09-20 — theo lý thuyết, chưa đo]** Nguyên văn prompt HyDE và
+   tham số Groq (mục 4): tách system/user, trung lập lĩnh vực, 3-4 câu
+   (~60-100 từ), cấm viện dẫn/tên văn bản/số hiệu/năm, hạn chế con số cụ thể,
+   không từ chối câu mơ hồ, câu chỉ hỏi theo số Điều thì sinh đoạn chung;
+   `reasoning_effort="low"`, `temperature=0.2`, `max_completion_tokens=2048`.
+   Chốt bằng lập luận, **không dùng RAGAS ở phase này**; cần đo lại ở phase
+   đánh giá: hiệu quả nhánh A có/không có HyDE, temperature, độ dài đoạn.
 2. Xác minh tmux/`on_start.sh` có giúp Studio khỏi sleep không (mục 9.1).
 3. MMR bật hay tắt làm mặc định production — quyết định sau khi đánh giá bằng
    RAGAS (mục 7). Các hằng số khởi điểm (`DENSE_TOP_N=20`, `SPARSE_TOP_N=20`,
@@ -756,3 +859,5 @@ tinh chỉnh lại bằng RAGAS/latency khi có GPU.
    cần tinh chỉnh lại bằng RAGAS/latency khi có GPU.
 8. Recall còn lỡ ~15% ở k=10 (~20% ở k=5) chưa điều tra nguyên nhân (nghi ngờ câu trùng
    Điều/Khoản giữa nhiều văn bản, hoặc nhiễu sparse).
+9. Có nên bỏ HyDE (tiết kiệm 1 lượt Groq) khi câu hỏi chỉ thuần viện dẫn, không
+   nêu chủ đề — chỉ ghi nhận, chưa làm; xét cùng đánh giá hiệu quả nhánh A.
