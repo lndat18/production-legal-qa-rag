@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 import pytest
 from test_retrieval_pipeline import (
@@ -44,7 +45,11 @@ from production_legal_qa_rag.retrieval.models import RetrievalError, SearchHit
         ("Điều 3 tới 9", [3, 9]),
         ("Điều 3 và Điều 3", [3]),
         ("Điều 3 khoản 1 và Điều 5 khoản 2", [3, 5]),
-        ("điều 5 tháng", [5]),  # giới hạn đã biết: vẫn khớp
+        (
+            "Điều 36 người lao động được quyền gì",
+            [36],
+        ),  # "người" không là đơn vị loại trừ
+        ("Điều 3 và 5 người lao động", [3, 5]),
     ],
 )
 def test_extract_citation_numbers_duong(query: str, expected: list[int]):
@@ -55,7 +60,6 @@ def test_extract_citation_numbers_duong(query: str, expected: list[int]):
 @pytest.mark.parametrize(
     ("query", "expected"),
     [
-        ("Điều 3 và 5 người được hưởng", [3]),
         ("Điều 3 và 5 tháng", [3]),
         ("Điều 3, 5 ngày", [3]),
         ("Điều 3 và 12 %", [3]),
@@ -71,6 +75,11 @@ def test_extract_citation_numbers_so_noi_la_dai_luong(query: str, expected: list
 @pytest.mark.parametrize(
     "query",
     [
+        "điều 5 tháng",
+        "Điều 3 ngày",
+        "điều 2 lần",
+        "Điều 10 %",
+        "Điều 36 năm 2020",
         "điều kiện lao động là gì",
         "điều khoản hợp đồng",
         "điều hành công ty",
@@ -186,8 +195,11 @@ class SparseByText(FakeSparse):
         self.fail_texts = fail_texts
         self.top_ks: dict[str, int] = {}
 
-    async def query(self, text: str, top_k: int = 20) -> list[SearchHit]:
+    async def query(
+        self, text: str, top_k: int = 20, extra_terms: Any = ()
+    ) -> list[SearchHit]:
         self.texts.append(text)
+        self.terms[text] = list(extra_terms)
         self.top_ks[text] = top_k
         if text in self.fail_texts:
             raise RetrievalError("sparse lỗi")
@@ -372,10 +384,12 @@ def test_regex_khong_bung_no_voi_chuoi_rat_dai(query: str):
 
 def test_luot_phu_khong_nuot_cancelled_error():
     class CancellingSparse(SparseByText):
-        async def query(self, text: str, top_k: int = 20) -> list[SearchHit]:
+        async def query(
+            self, text: str, top_k: int = 20, extra_terms: Any = ()
+        ) -> list[SearchHit]:
             if text in TWO_SUBQUERIES:
                 raise asyncio.CancelledError
-            return await super().query(text, top_k)
+            return await super().query(text, top_k, extra_terms)
 
     pipe, _, _ = _multi_pipe(TWO, TWO_SUBQUERIES)
     pipe._sparse_index = CancellingSparse(  # type: ignore[assignment]

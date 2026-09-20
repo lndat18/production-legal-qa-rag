@@ -17,6 +17,7 @@ from pathlib import Path
 
 import typer
 
+from production_legal_qa_rag.retrieval.bm25 import BM25_PARAMS_VERSION
 from production_legal_qa_rag.retrieval.sparse_index import build_index
 
 DEFAULT_CHUNKS_DIR = Path("data/chunks")
@@ -40,7 +41,10 @@ def main(
     except Exception:  # noqa: BLE001 - CLI báo lỗi bằng exit code
         traceback.print_exc()
         raise typer.Exit(code=1) from None
-    print(f"Đã index {total} chunk vào sparse index; params: {params_out}")
+    print(
+        f"Đã index {total} chunk vào sparse index; params: {params_out} "
+        f"(params_version={BM25_PARAMS_VERSION})"
+    )
     raise typer.Exit(code=0)
 
 

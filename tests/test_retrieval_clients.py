@@ -476,6 +476,32 @@ def test_build_index_upsert_theo_batch_sau_khi_xoa(env: None, tmp_path: Path):
     assert (tmp_path / "bm25.json").exists()
 
 
+def test_build_index_ghi_params_version_2_va_token_cau_truc(env: None, tmp_path: Path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    chunk = Chunk(
+        chunk_id="c1",
+        source_document="d",
+        breadcrumb="LUẬT X - Điều 3. Tên - Khoản 1",
+        content="người lao động",
+        token_count=5,
+    )
+    (chunks_dir / "a.json").write_text(
+        json.dumps([chunk.model_dump()]), encoding="utf-8"
+    )
+    index = _FakeSparseIndex()
+    client = SimpleNamespace(list_indexes=lambda: ["sparse"], Index=lambda name: index)
+    params_path = tmp_path / "bm25.json"
+
+    build_index(chunks_dir, params_path, VectorDBSettings(), client)  # type: ignore[arg-type]
+
+    params = json.loads(params_path.read_text(encoding="utf-8"))
+    assert params["params_version"] == 2
+    assert {"điều_3", "khoản_1", "điều_3_khoản_1"} <= set(params["vocab"])
+    indices = index.upserts[0][0]["sparse_values"]["indices"]
+    assert params["vocab"]["điều_3_khoản_1"] in indices
+
+
 def test_build_index_chunks_dir_rong_raise_value_error(env: None, tmp_path: Path):
     with pytest.raises(ValueError):
         build_index(tmp_path, tmp_path / "p.json", VectorDBSettings(), object())  # type: ignore[arg-type]

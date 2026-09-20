@@ -15,7 +15,10 @@ from production_legal_qa_rag.retrieval.citation import (
     CITATION_EXTRAS_BUDGET,
     build_article_queries,
     citation_extras,
+    extract_citation_khoans,
     extract_citation_numbers,
+    pin_exact_matches,
+    structural_terms,
 )
 from production_legal_qa_rag.retrieval.dense_search import DENSE_TOP_N, DenseSearch
 from production_legal_qa_rag.retrieval.fusion import RRF_K
@@ -79,7 +82,10 @@ class RetrievalPipeline:
 
         Câu hỏi viện dẫn Điều được thêm extras từ sparse vào union: 1 Điều dùng
         top sparse của nhánh B, >= 2 Điều dùng sparse query riêng cho từng Điều
-        (mục 8.1).
+        (mục 8.1), sparse query kèm token cấu trúc (mục 6.2). Sau rerank, chunk
+        khớp chính xác Điều/Khoản được ghim lên đầu (mục 8.2), nên với câu hỏi
+        viện dẫn `rerank_score` có thể không giảm dần; câu không viện dẫn giữ
+        thứ tự giảm dần theo điểm.
 
         Args:
             query: Một câu hỏi tiếng Việt độc lập.
@@ -98,22 +104,30 @@ class RetrievalPipeline:
         embeddings = await self._embedder.embed(texts)
         query_embedding = embeddings[-1]
 
+        numbers = extract_citation_numbers(query)
+        khoans = extract_citation_khoans(query) if numbers else []
         branch_jobs = [
-            self._run_branch(query, query_embedding, query_embedding, use_mmr)
+            self._run_branch(
+                query,
+                query_embedding,
+                query_embedding,
+                use_mmr,
+                structural_terms(numbers, khoans),
+            )
         ]
         if hypothetical_document is not None:
+            # Hypo không có số Điều (luật HyDE) nên không sinh token cấu trúc.
             branch_jobs.insert(
                 0,
                 self._run_branch(
-                    hypothetical_document, embeddings[0], query_embedding, use_mmr
+                    hypothetical_document, embeddings[0], query_embedding, use_mmr, []
                 ),
             )
-        numbers = extract_citation_numbers(query)
         # Sparse query phụ (n >= 2 Điều) chạy cùng lúc với 2 nhánh; không phụ
         # thuộc Groq/HF và không bao giờ raise nên không làm hỏng nhánh chính.
         job_results, article_hits = await asyncio.gather(
             asyncio.gather(*branch_jobs),
-            self._article_hits(query, numbers),
+            self._article_hits(query, numbers, khoans),
         )
         results = list(job_results)
         branches = [result.candidates for result in results]
@@ -136,10 +150,10 @@ class RetrievalPipeline:
                 for branch in branches
             ]
 
-        return await self._rerank(query, union, branches)
+        return await self._rerank(query, union, branches, numbers, khoans)
 
     async def _article_hits(
-        self, query: str, numbers: list[int]
+        self, query: str, numbers: list[int], khoans: list[int]
     ) -> dict[int, list[SearchHit]]:
         """Sparse query phụ cho từng Điều khi câu hỏi nhắc >= 2 Điều (mục 8.1).
 
@@ -151,8 +165,13 @@ class RetrievalPipeline:
         quota = CITATION_EXTRAS_BUDGET // len(numbers)
         outcomes = await asyncio.gather(
             *(
-                self._sparse_index.query(sub_query, quota)
-                for sub_query in build_article_queries(query, numbers)
+                # Sub-query mỗi Điều chỉ kèm token cấu trúc của Điều đó.
+                self._sparse_index.query(
+                    sub_query, quota, structural_terms([number], khoans)
+                )
+                for number, sub_query in zip(
+                    numbers, build_article_queries(query, numbers), strict=True
+                )
             ),
             return_exceptions=True,
         )
@@ -176,6 +195,7 @@ class RetrievalPipeline:
         dense_embedding: Sequence[float],
         query_embedding: Sequence[float],
         use_mmr: bool,
+        extra_terms: Sequence[str],
     ) -> _BranchResult:
         """Một nhánh: dense + sparse song song -> RRF -> MMR (nếu bật).
 
@@ -185,7 +205,7 @@ class RetrievalPipeline:
             self._dense_search.query(
                 dense_embedding, DENSE_TOP_N, include_values=use_mmr
             ),
-            self._sparse_index.query(text, SPARSE_TOP_N),
+            self._sparse_index.query(text, SPARSE_TOP_N, extra_terms),
         )
         fused = fusion.rrf(dense_hits, sparse_hits, k=RRF_K)[:FUSION_TOP_N]
         if use_mmr:
@@ -199,6 +219,8 @@ class RetrievalPipeline:
         query: str,
         union: list[Candidate],
         branches: list[list[Candidate]],
+        numbers: list[int],
+        khoans: list[int],
     ) -> list[RetrievedChunk]:
         if not union:
             return []
@@ -207,11 +229,16 @@ class RetrievalPipeline:
 
         if scores is None:
             logger.warning("Rerank thất bại, fallback xen kẽ các nhánh.")
-            fallback = _interleave(branches)[:FINAL_TOP_K]
-            return [_to_retrieved_chunk(c, None) for c in fallback]
+            ordered = [_to_retrieved_chunk(c, None) for c in _interleave(branches)]
+        else:
+            ranked = sorted(zip(union, scores, strict=True), key=lambda pair: -pair[1])
+            ordered = [_to_retrieved_chunk(c, score) for c, score in ranked]
 
-        ranked = sorted(zip(union, scores, strict=True), key=lambda pair: -pair[1])
-        return [_to_retrieved_chunk(c, score) for c, score in ranked[:FINAL_TOP_K]]
+        if numbers:
+            ordered = pin_exact_matches(
+                ordered, numbers, khoans, final_top_k=FINAL_TOP_K
+            )
+        return ordered[:FINAL_TOP_K]
 
 
 _default_pipeline: RetrievalPipeline | None = None
