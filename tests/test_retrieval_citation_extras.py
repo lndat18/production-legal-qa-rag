@@ -352,4 +352,3 @@ def test_reranker_loi_la_khong_sleep_backoff(
     client = RerankerClient(RerankerSettings(), Broken())  # type: ignore[arg-type]
     assert asyncio.run(client.rerank("q", ["a"])) is None
     assert slept == []
-    assert httpx
