@@ -143,6 +143,47 @@ def test_rerank_khong_retry_khi_4xx(env: None, status: int):
     assert calls == [1]
 
 
+def test_rerank_404_khong_retry_va_log_goi_y_ngrok_runbook(
+    env: None, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level("ERROR", logger=reranker_client.logger.name):
+        scores, calls = _rerank(lambda r, n: httpx.Response(404))
+    assert scores is None
+    assert calls == [1]
+    text = caplog.text
+    assert "404" in text and "ngrok" in text and "mục 9.1" in text
+    assert "cấu hình/payload" not in text
+
+
+def test_rerank_4xx_khac_khong_goi_y_ngrok(env: None, caplog: pytest.LogCaptureFixture):
+    with caplog.at_level("ERROR", logger=reranker_client.logger.name):
+        _rerank(lambda r, n: httpx.Response(401))
+    assert "cấu hình/payload" in caplog.text
+    assert "ngrok" not in caplog.text
+
+
+def test_rerank_loi_la_log_traceback_khong_goi_y_studio(
+    env: None, caplog: pytest.LogCaptureFixture
+):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        raise ValueError("bug lập trình")
+
+    with caplog.at_level("WARNING", logger=reranker_client.logger.name):
+        scores, calls = _rerank(handler)
+    assert scores is None
+    assert calls == [3]  # hành vi retry giữ nguyên
+    assert "Traceback" in caplog.text and "bug lập trình" in caplog.text
+    assert "Studio" not in caplog.text
+
+
+def test_rerank_het_retry_5xx_van_goi_y_runbook(
+    env: None, caplog: pytest.LogCaptureFixture
+):
+    with caplog.at_level("WARNING", logger=reranker_client.logger.name):
+        _rerank(lambda r, n: httpx.Response(503))
+    assert "mục 9.1" in caplog.text
+
+
 @pytest.mark.parametrize(
     "payload",
     [
