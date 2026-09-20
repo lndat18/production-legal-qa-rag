@@ -99,7 +99,8 @@ query → Groq → hypo ──►│   dense(emb_hypo) ┐                      
 - **Union**: gộp kết quả của 2 nhánh (sau MMR nếu bật, sau RRF nếu tắt) theo
   `chunk_id`, mỗi chunk 1 lần dù có ở cả 2 nhánh. Không tính lại điểm fusion
   giữa 2 nhánh — reranker quyết định thứ tự cuối cùng. Tối đa
-  `2 × BRANCH_TOP_N` passage.
+  `2 × BRANCH_TOP_N` passage; riêng câu hỏi viện dẫn (mục 8.1) thêm tối đa
+  `CITATION_SPARSE_TOP_K` (=5) extras → tối đa `2 × BRANCH_TOP_N + 5`.
 - **MMR là bước tuỳ chọn** (bật/tắt bằng công tắc, mục 7) để đánh giá tác động
   bằng RAGAS.
 
@@ -111,7 +112,7 @@ query → Groq → hypo ──►│   dense(emb_hypo) ┐                      
 | HF Inference API (embed 2 text trong 1 batch)               | 1                              |
 | Pinecone dense query                                        | 2 (1/nhánh)                   |
 | Pinecone sparse query                                       | 2 (1/nhánh)                   |
-| Pinecone dense fetch (bổ sung vector/metadata, mục 6.4) | MMR bật: ≤ 2 (1/nhánh); MMR tắt: ≤ 1 (cho cả union) |
+| Pinecone dense fetch (bổ sung vector/metadata, mục 6.4) | MMR bật: ≤ 2 (1/nhánh), câu viện dẫn thêm ≤ 1 (metadata extras, mục 8.1) → ≤ 3; MMR tắt: ≤ 1 (cho cả union, kể cả extras) |
 | Reranker tự host                                           | 1                              |
 
 HF Inference API dùng chung quota RPD 1.000/ngày với batch embedding
@@ -263,9 +264,12 @@ MMR bật — cả vector (cho MMR). Bổ sung bằng `dense_index.fetch(ids=[..
 nào:
 
 - **MMR bật**: mỗi nhánh fetch 1 lần cho id thiếu, **trước** MMR — tối đa 2
-  lượt/câu hỏi.
+  lượt/câu hỏi. Câu hỏi viện dẫn: sau khi thêm extras (mục 8.1) fetch thêm tối
+  đa 1 lần, chỉ metadata (không cần values), chỉ khi còn id thiếu → tổng tối
+  đa 3 lượt.
 - **MMR tắt**: không cần vector; fetch **1 lần cho toàn bộ union** (chỉ lấy
-  metadata của id thiếu) — tối đa 1 lượt/câu hỏi.
+  metadata của id thiếu, đã gồm extras nếu là câu viện dẫn) — tối đa 1
+  lượt/câu hỏi.
 - Chunk có ở sparse nhưng fetch không trả về (không có ở dense index do lệch
   build) bị bỏ, log warning.
 
@@ -290,7 +294,7 @@ khác.
 | --- | --- | --- |
 | Chọn candidate mỗi nhánh | `mmr.select(fused, emb_query, MMR_LAMBDA, BRANCH_TOP_N)` | `fused[:BRANCH_TOP_N]` |
 | Cần vector từ Pinecone | Có (`include_values`, fetch mỗi nhánh) | Không |
-| Số lượt fetch (mục 6.4) | ≤ 2 (1/nhánh, trước MMR) | ≤ 1 (cho cả union) |
+| Số lượt fetch (mục 6.4) | ≤ 2 (1/nhánh, trước MMR); câu viện dẫn thêm ≤ 1 sau union (mục 8.1) | ≤ 1 (cho cả union, gồm extras) |
 
 `BRANCH_TOP_N = 10` (số candidate mỗi nhánh đưa vào union, cả khi MMR tắt).
 
@@ -317,9 +321,53 @@ RAGAS; nếu MMR bật kém hơn thì tắt, hoặc tăng `MMR_LAMBDA` (~0.7) r�
 ## 8. Union
 
 `union = dedupe_by_chunk_id(nhánh_a + nhánh_b)` — tối đa `2 × BRANCH_TOP_N`
-chunk. Giữ thứ hạng của mỗi chunk trong nhánh của nó (sau MMR nếu bật, sau RRF
-nếu tắt) để phục vụ fallback (mục 9). Khi MMR tắt, sau union bổ sung metadata
-cho id còn thiếu bằng 1 lượt fetch (mục 6.4).
+chunk (câu viện dẫn: cộng extras, mục 8.1, tối đa `2 × BRANCH_TOP_N + 5`).
+Giữ thứ hạng của mỗi chunk trong nhánh của nó (sau MMR nếu bật, sau RRF
+nếu tắt) để phục vụ fallback (mục 9). Sau union (và sau extras nếu có), bổ
+sung metadata cho id còn thiếu (`fill_missing`, mục 6.4): MMR tắt 1 lượt cho
+cả union; MMR bật chỉ thêm 1 lượt khi câu viện dẫn có id thiếu.
+
+### 8.1. Đảm bảo top-k sparse cho câu hỏi viện dẫn (chốt 2026-09-20)
+
+Vấn đề (điểm mở 5 cũ): với câu hỏi viện dẫn Điều/Khoản, chunk đáp án thường
+nằm cao ở sparse nhưng dense xếp thấp; RRF trọng số bằng nhau rồi cắt
+`FUSION_TOP_N`/`BRANCH_TOP_N` (và MMR) khiến nó không vào union.
+
+- **Nhận diện** (`retrieval/citation.py`, `has_citation(query: str) -> bool`):
+  regex trên **câu hỏi gốc** (không phải hypo), chuẩn hoá Unicode NFC, không
+  phân biệt hoa thường, khớp `điều\s+\d+`. Số Điều là tín hiệu chính; "khoản
+  N" đứng một mình **không đủ**. Phải đúng với "Điều 36 khoản 2 ...", "khoản 2
+  điều 36 ...", "điều 3"; **không** khớp "điều kiện lao động", "trong 3 điều
+  kiện" và câu hỏi tự nhiên không có số Điều.
+- **Extras**: khi `has_citation(query)`, top `CITATION_SPARSE_TOP_K = 5` kết
+  quả sparse của **nhánh B** (câu hỏi gốc; không dùng hypo vì luật HyDE cấm
+  nêu số Điều) luôn được thêm vào union (dedupe theo `chunk_id`), bất kể
+  RRF/MMR/`BRANCH_TOP_N` đã cắt. **Dùng lại kết quả `sparse_index.query` đã có
+  của nhánh B — không thêm lượt gọi Pinecone sparse.** `CITATION_SPARSE_TOP_K`
+  là hằng số nội bộ `retrieval/`, không vào `config.py` (nhất quán mục 12).
+- **Câu không viện dẫn**: pipeline giữ nguyên hoàn toàn (không thêm latency,
+  không đổi kết quả).
+- **Metadata**: chunk extras chỉ có ở sparse cần fetch metadata; bước
+  `fill_missing` cho union chạy **sau** khi thêm extras (số lượt fetch: mục 6.4).
+  Chunk fetch không trả về thì bỏ, log warning.
+- **Bằng chứng** (2026-09-20): 40 câu viện dẫn tự sinh từ corpus (10 câu × 4
+  văn bản: Bộ luật Lao động, Luật BHXH, Luật BHYT, Luật thuế TNCN; dạng "Điều
+  N khoản M <tên văn bản> quy định gì?"; đáp án chuẩn = chunk có đúng
+  Điều/Khoản; chỉ đo nhánh B, không HyDE/reranker). Recall chunk đáp án nằm
+  trong union khi thêm top-k sparse (k=0 là hiện trạng):
+
+  | k | MMR bật | MMR tắt |
+  | --- | --- | --- |
+  | 0 | 25% | 65% |
+  | 3 | 70% (+1,8 chunk/câu) | 72% (+0,4) |
+  | 5 | 80% (+3,0) | 78% (+1,1) |
+  | 10 | 85% (+6,0) | 85% (+5,5) |
+  | 20 | 90% (+14,9) | 90% (+13,7) |
+
+  Chọn k=5: đường cong gập sau k=5, thêm trung bình ≤ 3 chunk vào union
+  (~20 chunk) nên latency rerank tăng nhỏ. Caveat: câu hỏi tổng hợp một dạng,
+  chỉ đo nhánh B nên là cận dưới (nhánh A có thể thêm chút); cần xác nhận
+  bằng RAGAS.
 
 ## 9. Reranker (server tự host)
 
@@ -376,10 +424,11 @@ root repo). Đã test thành công end-to-end (2026-09-18).
 - **Validate response**: `scores` phải là list số hữu hạn, đúng độ dài
   `passages`; sai → coi như lỗi.
 - **Fallback khi hết retry** (chốt 2026-09-19): không crash, log warning, trả
-  top `FINAL_TOP_K` với `rerank_score=None`. Thứ tự: xen kẽ 2 nhánh theo thứ
-  hạng (A1, B1, A2, B2, …), bỏ chunk trùng. Cách này không cần vector nên dùng
-  được ở cả 2 chế độ MMR. Nếu chỉ có 1 nhánh (Groq lỗi) thì lấy theo thứ hạng
-  của nhánh đó.
+  top `FINAL_TOP_K` với `rerank_score=None`. Thứ tự: xen kẽ round-robin các
+  danh sách theo thứ hạng (A1, B1, E1, A2, B2, E2, …), bỏ chunk trùng; E là
+  danh sách extras (mục 8.1), chỉ có khi câu hỏi viện dẫn. Cách này không cần
+  vector nên dùng được ở cả 2 chế độ MMR. Nếu nhánh A vắng (Groq lỗi) thì bỏ
+  qua A (B1, E1, B2, E2, …).
 
 ### 9.1. Runbook: khởi động reranker server (làm trước khi gọi `retrieve()`)
 
@@ -500,7 +549,7 @@ bước generation sau cũng nên async.
 - `LIGHTNING_STUDIO_SSH` trong `.env` — **không** thuộc Settings nào (chỉ là
   ghi chú vận hành cho runbook mục 9.1).
 - **Không** đưa `DENSE_TOP_N`/`SPARSE_TOP_N`/`FUSION_TOP_N`/`RRF_K`/
-  `MMR_LAMBDA`/`BRANCH_TOP_N`/`USE_MMR`/`FINAL_TOP_K` vào `config.py` — hằng số nội bộ của
+  `MMR_LAMBDA`/`BRANCH_TOP_N`/`USE_MMR`/`FINAL_TOP_K`/`CITATION_SPARSE_TOP_K` vào `config.py` — hằng số nội bộ của
   `retrieval/`, nhất quán `embedding_spec.md` mục 7 (chỉ field dùng chung nhiều
   package mới vào `config.py`).
 
@@ -573,7 +622,10 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
           return fused[:BRANCH_TOP_N]
 
   4. union = dedupe_by_chunk_id(branch_a + branch_b)                  # mục 8
-     if not use_mmr: union = await fetch_missing_metadata(union)      # mục 6.4: 1 lượt cho cả union
+     if has_citation(query):                                          # mục 8.1 (regex trên query gốc)
+         union += citation_extras(branch_b_sparse_hits)               # top CITATION_SPARSE_TOP_K sparse của nhánh B, dedupe
+     union = await fill_missing_metadata(union)                       # mục 6.4: MMR tắt 1 lượt cho cả union;
+                                                                      # MMR bật chỉ khi còn id thiếu (extras)
   5. scores = await reranker_client.rerank(query, [c.breadcrumb + "\n" + c.content for c in union])  # mục 9 (lỗi → fallback)
   6. return top FINAL_TOP_K dạng list[RetrievedChunk]
 ```
@@ -594,6 +646,7 @@ nhất là `bm25_params.json`, đọc 1 lần lúc khởi tạo pipeline cùng c
 | `dense_search.py` | Query dense index có sẵn + fetch vector/metadata bổ sung (mục 6.1, 6.4) |
 | `fusion.py`          | Thuật toán RRF (mục 6.3)                                                                     |
 | `mmr.py` | Thuật toán MMR, bật/tắt bằng công tắc `USE_MMR` / `use_mmr` (mục 7) |
+| `citation.py` | `has_citation(query)` — regex nhận diện câu hỏi viện dẫn Điều (mục 8.1) |
 | `reranker_client.py` | HTTP client gọi server LightningAI, retry/validate/fallback (mục 9)                           |
 | `pipeline.py`        | `retrieve(query)` — điều phối toàn bộ (mục 13B); sở hữu các client                  |
 | `__init__.py`        |                                                                                                 |
@@ -623,6 +676,15 @@ agent) cho `reranker_client.py`.
   định gì") để xác nhận sparse/keyword search hoạt động (candidate tương ứng
   xuất hiện trong top sparse dù dense có thể xếp thấp).
 - Số lượt gọi API cho 1 câu hỏi khớp bảng mục 3 (Groq 1, HF 1, rerank 1).
+- `citation.py` có unit test cho `has_citation`: đúng với "Điều 36 khoản 2 ...",
+  "khoản 2 điều 36 ...", "điều 3"; sai với "điều kiện lao động", "trong 3 điều
+  kiện", "khoản 2 quy định gì" (không có số Điều) và câu hỏi tự nhiên không
+  viện dẫn.
+- Câu viện dẫn: chunk đáp án nằm trong sparse top-5 của nhánh B thì có trong
+  union dù RRF/MMR đã loại; câu không viện dẫn: union giống hệt hiện trạng,
+  không có extras; không thêm lượt Pinecone sparse; số lượt fetch đúng mục 3 /
+  6.4 cho cả hai chế độ MMR (MMR bật ≤ 3, MMR tắt ≤ 1 với câu viện dẫn);
+  fallback rerank xen kẽ có danh sách E (A1, B1, E1, …).
 - Vector query được embed qua cùng tiền xử lý `pyvi` như lúc index (test:
   câu hỏi trùng nguyên văn `content` 1 chunk phải trả về chunk đó ở top dense).
 - Giả lập Groq lỗi và reranker lỗi (timeout, 401) → hành vi đúng mục 10 và mục 9, `retrieve()` không crash.
@@ -644,6 +706,10 @@ SSH + tmux, người dùng chỉ bật Studio.
 (mục 9; breadcrumb vẫn metadata-only ở embedding/chunking); cần xác nhận lại
 bằng RAGAS vì thí nghiệm chỉ 7 câu.
 
+Đã chốt (2026-09-20, điểm mở 5): recall câu hỏi viện dẫn giải quyết bằng
+hướng A+C — `has_citation` regex + luôn thêm top `CITATION_SPARSE_TOP_K=5`
+sparse của nhánh B vào union (mục 8.1).
+
 1. Nguyên văn prompt HyDE — chốt khi implement (mục 4).
 2. Xác minh tmux/`on_start.sh` có giúp Studio khỏi sleep không (mục 9.1).
 3. MMR bật hay tắt làm mặc định production — quyết định sau khi đánh giá bằng
@@ -654,13 +720,24 @@ bằng RAGAS vì thí nghiệm chỉ 7 câu.
    hạn batch/concurrency của HF, Groq, Lightning; dynamic batching; circuit
    breaker cho reranker; khởi động sớm nhánh B trong lúc chờ Groq; theo dõi quota
    HF dùng chung.
-5. **Recall cho câu hỏi viện dẫn Điều/Khoản** (chẩn đoán 2026-09-20): với 3
+5. **[ĐÃ CHỐT 2026-09-20 — hướng A+C, k=5, xem mục 8.1]** **Recall cho câu hỏi
+   viện dẫn Điều/Khoản** (chẩn đoán 2026-09-20): với 3
    câu viện dẫn (Điều 3 khoản 1 / Điều 36 khoản 2 / Khoản 1 Điều 113 Bộ luật
    Lao động), chunk đáp án nằm ở sparse top 5/10/16 (dense hạng 45 hoặc ngoài
    top 100), nhưng RRF (trọng số bằng nhau) đẩy nó xuống hạng 10/20/31 của
    danh sách fused, rồi bị cắt bởi `FUSION_TOP_N=20` và `BRANCH_TOP_N=10` (và
    MMR) nên không vào union — reranker (kể cả có breadcrumb) không cứu được.
-   Hướng có thể xét sau (chưa quyết, chưa làm): tăng `BRANCH_TOP_N`/
-   `FUSION_TOP_N` (đổi lại latency rerank vì tỉ lệ thuận số passage); đảm bảo
-   top-k sparse luôn vào union; tăng trọng số sparse trong RRF; tắt MMR; hoặc
-   nhận diện viện dẫn bằng regex.
+   Các hướng đã cân nhắc: tăng `BRANCH_TOP_N`/`FUSION_TOP_N` (đổi lại latency
+   rerank vì tỉ lệ thuận số passage); đảm bảo top-k sparse luôn vào union
+   (**chọn, hướng A**); tăng trọng số sparse trong RRF; tắt MMR; nhận diện
+   viện dẫn bằng regex (**chọn, hướng C**, để chỉ câu viện dẫn bị ảnh hưởng).
+   Kết quả đo 40 câu: recall trong union k=0 → k=5 tăng 25% → 80% (MMR bật),
+   65% → 78% (MMR tắt).
+6. **MMR làm giảm mạnh recall câu viện dẫn**: hiện trạng (k=0) recall chỉ 25%
+   khi MMR bật so với 65% khi tắt (MMR dựa trên cosine dense, không có nghĩa
+   với số Điều). Đưa vào so sánh RAGAS (điểm 3); cân nhắc tắt MMR mặc định
+   hoặc bỏ MMR khi `has_citation`.
+7. Mở rộng nhận diện viện dẫn (Điểm, "Điều 36.2", tên văn bản/số hiệu) và tinh
+   chỉnh `CITATION_SPARSE_TOP_K` theo dữ liệu thật (mục 8.1).
+8. Recall còn lỡ ~20% ở k=5 chưa điều tra nguyên nhân (nghi ngờ câu trùng
+   Điều/Khoản giữa nhiều văn bản, hoặc nhiễu sparse).
