@@ -12,6 +12,8 @@ from pydantic import ValidationError
 
 from production_legal_qa_rag.config import (
     EmbeddingSettings,
+    GenerationSettings,
+    GuardrailSettings,
     LLMSettings,
     RerankerSettings,
     VectorDBSettings,
@@ -174,6 +176,66 @@ def test_llm_settings_khong_co_groq_api_key_2_khong_bao_loi(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
     LLMSettings()  # type: ignore[call-arg] # không raise
+
+
+# ==========================================================================
+# GuardrailSettings / GenerationSettings (generation_spec.md mục 8)
+# ===========================================================================
+
+
+def test_guardrail_settings_doc_key_va_default_theo_spec(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "guardrail-key")
+    settings = GuardrailSettings()  # type: ignore[call-arg]
+
+    assert settings.api_key == "guardrail-key"
+    assert settings.model_name == "openai/gpt-oss-safeguard-20b"
+    assert settings.max_retries == 2
+    assert settings.timeout_seconds == 30
+
+
+def test_guardrail_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(
+        GuardrailSettings,
+        "model_config",
+        {**GuardrailSettings.model_config, "env_file": None},
+    )
+
+    with pytest.raises(ValidationError):
+        GuardrailSettings()  # type: ignore[call-arg]
+
+
+def test_generation_settings_fallback_sang_key_guardrail_khi_key_2_khong_set(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
+    monkeypatch.setattr(
+        GenerationSettings,
+        "model_config",
+        {**GenerationSettings.model_config, "env_file": None},
+    )
+
+    settings = GenerationSettings()  # type: ignore[call-arg]
+
+    assert settings.api_key == "org-a-key"
+    assert settings.model_name == "openai/gpt-oss-120b"
+    assert settings.max_retries == 2
+    assert settings.timeout_seconds == 60
+
+
+def test_generation_settings_uu_tien_key_2(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.setattr(
+        GenerationSettings,
+        "model_config",
+        {**GenerationSettings.model_config, "env_file": None},
+    )
+
+    assert GenerationSettings().api_key == "org-b-key"  # type: ignore[call-arg]
 
 
 # ==========================================================================
