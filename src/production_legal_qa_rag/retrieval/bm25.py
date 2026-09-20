@@ -17,10 +17,17 @@ from pathlib import Path
 from pydantic import BaseModel
 from pyvi import ViTokenizer
 
-from production_legal_qa_rag.retrieval.models import SparseVector
+from production_legal_qa_rag.retrieval.models import RetrievalError, SparseVector
 
 BM25_K1 = 1.2
 BM25_B = 0.75
+# 1 = bản cũ (không có field); 2 = có token cấu trúc điều_N/khoản_M (mục 6.2).
+BM25_PARAMS_VERSION = 2
+REBUILD_COMMAND = "uv run python tools/sparse_index_documents.py"
+
+
+class BM25ParamsVersionError(RetrievalError):
+    """`bm25_params.json` thiếu hoặc khác `params_version` kỳ vọng."""
 
 
 class BM25Params(BaseModel):
@@ -32,6 +39,7 @@ class BM25Params(BaseModel):
     avgdl: float
     k1: float = BM25_K1
     b: float = BM25_B
+    params_version: int = 1  # file cũ không có field = bản 1
 
 
 def tokenize(text: str) -> list[str]:
@@ -68,25 +76,34 @@ class BM25Encoder:
         return self._params
 
     def fit(
-        self, texts: Sequence[str], *, k1: float = BM25_K1, b: float = BM25_B
+        self,
+        texts: Sequence[str],
+        *,
+        extra_terms: Sequence[Sequence[str]] | None = None,
+        k1: float = BM25_K1,
+        b: float = BM25_B,
     ) -> None:
         """Tính vocabulary, IDF và độ dài trung bình từ toàn bộ corpus.
 
         Args:
             texts: Mọi văn bản của corpus (`breadcrumb + " " + content`).
+            extra_terms: Token cấu trúc của từng văn bản (cùng thứ tự `texts`),
+                nối vào danh sách token sau khi tokenize; `None` là không có.
             k1: Hệ số bão hoà tf.
             b: Hệ số chuẩn hoá độ dài.
 
         Raises:
-            ValueError: Khi corpus rỗng.
+            ValueError: Khi corpus rỗng hoặc `extra_terms` lệch độ dài `texts`.
         """
         if not texts:
             raise ValueError("Không thể fit BM25 trên corpus rỗng.")
+        if extra_terms is not None and len(extra_terms) != len(texts):
+            raise ValueError("extra_terms phải cùng độ dài với texts.")
 
         document_frequency: Counter[str] = Counter()
         total_length = 0
-        for text in texts:
-            tokens = tokenize(text)
+        for position, text in enumerate(texts):
+            tokens = tokenize(text) + list(extra_terms[position] if extra_terms else ())
             total_length += len(tokens)
             document_frequency.update(set(tokens))
 
@@ -106,15 +123,19 @@ class BM25Encoder:
             avgdl=total_length / num_documents,
             k1=k1,
             b=b,
+            params_version=BM25_PARAMS_VERSION,
         )
 
-    def encode_document(self, text: str) -> SparseVector:
+    def encode_document(
+        self, text: str, extra_terms: Sequence[str] = ()
+    ) -> SparseVector:
         """Sparse vector phía document: `tf·(k1+1) / (tf + k1·(1-b+b·dl/avgdl))`.
 
-        Term ngoài vocabulary bị bỏ.
+        Term ngoài vocabulary bị bỏ. `extra_terms` là token cấu trúc của chunk,
+        nối vào danh sách token (cùng cách với `fit`).
         """
         params = self.params
-        tokens = tokenize(text)
+        tokens = tokenize(text) + list(extra_terms)
         length_norm = 1 - params.b + params.b * len(tokens) / params.avgdl
         weights: dict[int, float] = {}
         for term, tf in Counter(tokens).items():
@@ -123,12 +144,16 @@ class BM25Encoder:
                 weights[index] = tf * (params.k1 + 1) / (tf + params.k1 * length_norm)
         return _to_sparse_vector(weights)
 
-    def encode_query(self, text: str) -> SparseVector:
-        """Sparse vector phía query: mỗi term trong vocabulary có trọng số IDF."""
+    def encode_query(self, text: str, extra_terms: Sequence[str] = ()) -> SparseVector:
+        """Sparse vector phía query: mỗi term trong vocabulary có trọng số IDF.
+
+        `extra_terms` là token cấu trúc sinh từ câu hỏi gốc, nối vào danh sách
+        token trước khi tính trọng số; term ngoài vocabulary bị bỏ.
+        """
         params = self.params
         weights = {
             params.vocab[term]: params.idf[term]
-            for term in set(tokenize(text))
+            for term in set(tokenize(text) + list(extra_terms))
             if term in params.vocab
         }
         return _to_sparse_vector(weights)
@@ -142,8 +167,21 @@ class BM25Encoder:
 
     @classmethod
     def load(cls, path: Path) -> BM25Encoder:
-        """Đọc tham số từ JSON đã `save`."""
-        return cls(BM25Params.model_validate_json(path.read_text(encoding="utf-8")))
+        """Đọc tham số từ JSON đã `save`.
+
+        Raises:
+            BM25ParamsVersionError: Khi file thiếu/khác `params_version` kỳ
+                vọng (index và params cũ không có token cấu trúc), kèm lệnh
+                rebuild.
+        """
+        params = BM25Params.model_validate_json(path.read_text(encoding="utf-8"))
+        if params.params_version != BM25_PARAMS_VERSION:
+            raise BM25ParamsVersionError(
+                f"{path} có params_version={params.params_version}, cần "
+                f"{BM25_PARAMS_VERSION} (bản có token cấu trúc). Build lại sparse "
+                f"index và params bằng: {REBUILD_COMMAND}"
+            )
+        return cls(params)
 
 
 def _to_sparse_vector(weights: dict[int, float]) -> SparseVector:

@@ -101,11 +101,15 @@ class FakeSparse:
         self.by_text = by_text
         self.error = error
         self.texts: list[str] = []
+        self.terms: dict[str, list[str]] = {}
 
-    async def query(self, text: str, top_k: int = 20) -> list[SearchHit]:
+    async def query(
+        self, text: str, top_k: int = 20, extra_terms: Any = ()
+    ) -> list[SearchHit]:
         if self.error:
             raise self.error
         self.texts.append(text)
+        self.terms[text] = list(extra_terms)
         return [SearchHit(chunk_id=i, score=1.0) for i in self.by_text.get(text, [])]
 
 
@@ -247,7 +251,9 @@ def _fallback_case(*, use_mmr: bool) -> None:
     # Ghi đè dense để nhánh A và B trả thứ tự khác nhau, kiểm tra xen kẽ.
     orders = {"giả định": ["c1", "c2", "c3"], "hỏi": ["c9", "c8", "c7"]}
 
-    async def scripted(text: str, top_k: int = 20) -> list[SearchHit]:
+    async def scripted(
+        text: str, top_k: int = 20, extra_terms: Any = ()
+    ) -> list[SearchHit]:
         return [SearchHit(chunk_id=i, score=1.0) for i in orders[text]]
 
     pipe._sparse_index.query = scripted  # type: ignore[method-assign]

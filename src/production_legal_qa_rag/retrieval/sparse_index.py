@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from pinecone.exceptions import NotFoundException
 from production_legal_qa_rag.chunking.models import Chunk
 from production_legal_qa_rag.config import VectorDBSettings
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
+from production_legal_qa_rag.retrieval.citation import breadcrumb_structural_terms
 from production_legal_qa_rag.retrieval.models import RetrievalError, SearchHit
 
 SPARSE_TOP_N = 20
@@ -50,16 +52,17 @@ def build_index(
         raise ValueError(f"Không tìm thấy chunk nào trong {chunks_dir}")
 
     texts = [_bm25_text(chunk) for chunk in chunks]
+    structural = [breadcrumb_structural_terms(chunk.breadcrumb) for chunk in chunks]
     encoder = BM25Encoder()
-    encoder.fit(texts)
+    encoder.fit(texts, extra_terms=structural)
     encoder.save(params_out_path)
 
     records = [
         {
             "id": chunk.chunk_id,
-            "sparse_values": encoder.encode_document(text).model_dump(),
+            "sparse_values": encoder.encode_document(text, terms).model_dump(),
         }
-        for chunk, text in zip(chunks, texts, strict=True)
+        for chunk, text, terms in zip(chunks, texts, structural, strict=True)
     ]
 
     index = _get_or_create_index(client, settings)
@@ -86,8 +89,13 @@ class SparseIndex:
         self._encoder = encoder
         self._index = index
 
-    async def query(self, text: str, top_k: int = SPARSE_TOP_N) -> list[SearchHit]:
-        """Top-k chunk theo điểm BM25 của `text`.
+    async def query(
+        self,
+        text: str,
+        top_k: int = SPARSE_TOP_N,
+        extra_terms: Sequence[str] = (),
+    ) -> list[SearchHit]:
+        """Top-k chunk theo điểm BM25 của `text` (kèm token cấu trúc `extra_terms`).
 
         Query không có term nào trong vocabulary trả về rỗng (Pinecone từ
         chối sparse vector rỗng).
@@ -95,7 +103,7 @@ class SparseIndex:
         Raises:
             RetrievalError: Khi Pinecone lỗi.
         """
-        sparse_vector = self._encoder.encode_query(text)
+        sparse_vector = self._encoder.encode_query(text, extra_terms)
         if not sparse_vector.indices:
             return []
         try:
