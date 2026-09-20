@@ -47,7 +47,9 @@ query → Groq (1 call) → hypothetical_document
 
 - **Input**: 1 câu hỏi tiếng Việt thô (`query: str`).
 - **Output**: `list[RetrievedChunk]`, tối đa `FINAL_TOP_K` (=5) phần tử. Sắp
-  xếp giảm dần theo độ liên quan.
+  xếp giảm dần theo độ liên quan, **trừ** câu hỏi viện dẫn Điều: các chunk khớp
+  chính xác Điều/Khoản được ghim lên đầu (mục 8.2) nên `rerank_score` có thể
+  không giảm dần; generation không nên giả định danh sách đã sắp theo điểm.
 
 `RetrievedChunk` (pydantic v2, định nghĩa trong `retrieval/models.py`) gồm
 đúng các field lấy được từ Pinecone metadata
@@ -305,11 +307,65 @@ Thiết kế encoder:
 - **`encode_document(text)`** → sparse vector `{indices, values}`, với mỗi
   term: `w = tf·(k1+1) / (tf + k1·(1 − b + b·dl/avgdl))`, `k1=1.2`, `b=0.75`
   (mặc định thông dụng). Không nhân IDF ở phía document.
-- **`encode_query(text)`** → sparse vector, mỗi term có trong vocabulary:
-  `w = idf = ln((N − df + 0.5)/(df + 0.5) + 1)`; term ngoài vocabulary bị bỏ.
-  Dot product query·document trong Pinecone chính là điểm BM25.
+- **`encode_query(text, extra_terms=())`** → sparse vector, mỗi term có trong
+  vocabulary: `w = idf = ln((N − df + 0.5)/(df + 0.5) + 1)`; term ngoài
+  vocabulary bị bỏ. Dot product query·document trong Pinecone chính là điểm
+  BM25. `extra_terms` là các token cấu trúc (bên dưới), được nối vào danh sách
+  token của query trước khi tính trọng số.
+- **Token cấu trúc `điều_N`, `khoản_M`, `điều_N_khoản_M`** (chốt 2026-09-20,
+  theo dữ liệu chẩn đoán). Vấn đề: BM25 tách "Điều 3" thành token rời "điều",
+  "3"; số 1/3 có ở hàng trăm chunk nên idf ~0, và tên văn bản có trong
+  breadcrumb mọi chunk, nên BM25 không phân biệt được Điều nào (ví dụ chunk
+  đáp án "Điều 3 khoản 1 luật thuế TNCN" chỉ ở BM25 hạng 17). Giải pháp: thêm
+  token cấu trúc — có idf cao vì hiếm — vào danh sách token của chunk và của
+  query:
+  - **Phía document** (khi `fit` và `encode_document`, cùng một hàm dùng cho
+    cả hai): parse breadcrumb `... - Điều N. Tên điều - Khoản M [- Điểm ...]` để
+    lấy Điều N và Khoản M (chunk split "(phần i/n)" hay có "Điểm" vẫn lấy Điều
+    và Khoản như thường), sinh `điều_N`, `khoản_M`, `điều_N_khoản_M` thêm vào
+    danh sách token của chunk (mỗi token 1 lần). Breadcrumb không có Điều (vd.
+    frontmatter/Phụ lục) hoặc không có Khoản thì chỉ sinh token tương ứng có
+    trong breadcrumb. Hàm parse breadcrumb (`citation.py`) dùng chung với
+    ghim khớp chính xác (mục 8.2) để không lệch định nghĩa.
+  - **Phía query**: chỉ từ **câu hỏi gốc** (không phải hypo), khi
+    `extract_citation_numbers` ≠ []: `điều_N` cho mỗi Điều nhận diện được (mục
+    8.1), `khoản_M` cho mỗi Khoản (`khoản\s*(\d{1,3})`, cùng NFC/không phân biệt
+    hoa thường, dedupe giữ thứ tự, tối đa `MAX_CITATION_KHOANS = 3`), và
+    `điều_N_khoản_M` cho mỗi cặp (Điều, Khoản). Trần: ≤ 3 Điều × ≤ 3 Khoản →
+    tối đa 3 + 3 + 9 = 15 token. "Khoản M" đứng một mình (không có số Điều)
+    không sinh token. Áp cho **mọi** lượt `encode_query` có từ câu hỏi gốc: sparse
+    nhánh B, và các lượt sparse phụ cho từng Điều (mục 8.1) — sub-query mỗi Điều
+    chỉ sinh token của **Điều đó** (`điều_N`, `điều_N_khoản_M` cho mọi Khoản
+    của câu, `khoản_M` cho mọi Khoản của câu; chưa gán được Khoản nào thuộc
+    Điều nào, cùng giới hạn đã chấp nhận ở mục 8.1). **Nhánh A**: hypo không có
+    số Điều (luật HyDE cấm) nên không sinh token cấu trúc; nhánh A gọi
+    `encode_query` không có `extra_terms`. Token không có trong vocab bị bỏ như
+    hiện có.
+  - Ảnh hưởng: chi phí thêm ≤ 3 token/chunk (dl tăng không đáng kể). Va chạm
+    với token pyvi dạng `điều_khoản` là không thể vì token cấu trúc luôn có
+    hậu tố số; test kiểm tra không có va chạm.
+  - **Cần build lại** sparse index và `bm25_params.json`: người dùng chạy
+    `tools/sparse_index_documents.py` sau khi merge (mục 13A). Để nhận biết
+    params cũ, `bm25_params.json` thêm field `params_version` (số nguyên; bản
+    có token cấu trúc = 2, bản cũ không có field = 1); pipeline khi load thấy
+    thiếu/khác phiên bản kỳ vọng thì báo lỗi rõ, **nêu nguyên văn lệnh
+    rebuild** `uv run python tools/sparse_index_documents.py`, thay vì chạy với
+    params cũ (tránh lệch im lặng giữa index và encoder). Developer **phải xác
+    nhận với code `bm25.py` hiện có** (cách lưu/đọc `bm25_params.json`, chỗ
+    load) trước khi thêm field và điều chỉnh cơ chế này cho khớp.
+  - **Bằng chứng mô phỏng** (offline, 2026-09-20; 40 câu viện dẫn tự sinh, 10
+    câu × 4 văn bản; chấm bằng BM25 chạy riêng trên toàn corpus, **chưa qua
+    Pinecone**, cần đo lại sau khi rebuild):
+
+    | | top1 | top3 | top10 |
+    | --- | --- | --- | --- |
+    | BM25 hiện tại | 35% | 65% | 85% |
+    | + token cấu trúc | 90% | 100% | 100% |
+
+    Hai câu chẩn đoán: "Điều 3 khoản 1 của luật thuế TNCN quy định gì?" hạng
+    17 → 1; "Khoản 1 Điều 113 Bộ luật Lao động nói gì?" hạng 10 → 3.
 - **Lưu tham số**: `data/bm25/bm25_params.json` gồm `vocab`, `idf` (hoặc `df`
-  + `N`), `avgdl`, `k1`, `b`. Load 1 lần khi khởi
+  + `N`), `avgdl`, `k1`, `b`, `params_version`. Load 1 lần khi khởi
   tạo pipeline.
 - Encoder có unit test riêng (công thức, term ngoài vocabulary, lệch tokenizer)
   vì tự chịu trách nhiệm đúng công thức.
@@ -438,7 +494,15 @@ nằm cao ở sparse nhưng dense xếp thấp; RRF trọng số bằng nhau r�
   Nguyên tắc: **ưu tiên không false positive hơn là bắt hết**; mỗi dạng hỗ
   trợ phải có ca dương và ca âm trong test (mục 15). Số Điều tối đa 3 chữ số
   (`\d{1,3}` không dính thêm chữ số, để "điều 2024" không khớp), đứng sau ranh
-  giới từ (`(?<!\w)`).
+  giới từ (`(?<!\w)`). **Siết (chốt 2026-09-20)**: vì kết quả nhận diện còn
+  kích hoạt token cấu trúc (mục 6.2) và **ghim** (mục 8.2), nhận nhầm có hậu
+  quả nặng hơn — **số Điều ngay trước một đơn vị**
+  (`tháng|ngày|năm|tuổi|lần|%|đồng|triệu`; **không** gồm "người" vì "Điều 36
+  người lao động được quyền gì" là viện dẫn thật) **không** tính là viện dẫn,
+  áp cho **mọi** số Điều (cả số đầu tiên, không chỉ số nối trong danh sách).
+  Cũng trích số Khoản: `extract_citation_khoans(query) -> list[int]`
+  (`khoản\s*(\d{1,3})`, dedupe giữ thứ tự, ≤ `MAX_CITATION_KHOANS = 3`), chỉ
+  dùng khi đã có số Điều (mục 6.2, 8.2).
 
   | Dạng | Quyết định | Ca dương / âm và lý do |
   | --- | --- | --- |
@@ -446,17 +510,16 @@ nằm cao ở sparse nhưng dense xếp thấp; RRF trọng số bằng nhau r�
   | "điều36" (liền) | Hỗ trợ (`\s*` thay cho `\s+`) | dương: "điều36 quy định gì" → [36]; "điều" liền chữ số gần như không xuất hiện trong văn nói thường, false positive thấp |
   | "Điều thứ 5" | Hỗ trợ (`điều\s*(?:thứ\s+)?\d`) | dương: "Điều thứ 5" → [5]; âm: "điều thứ hai" (không có số) |
   | "Điều 36.2" | Hỗ trợ, chỉ lấy 36 | dương: "Điều 36.2" → [36]; phần ".2" (Khoản) bỏ qua, vẫn nằm trong sub-query/BM25 |
-  | Danh sách "Điều 3, 5 và 7", "các Điều 3, 5" | Hỗ trợ: sau một `điều N`, các số nối bằng `,` `;` `và` `hoặc` `hay` được tính là Điều | dương → [3, 5, 7]; âm: số nối mà ngay sau là đơn vị (`tháng|ngày|năm|tuổi|người|lần|%|đồng|triệu`) thì không tính, vd. "Điều 3 và 5 người" → [3] |
+  | Danh sách "Điều 3, 5 và 7", "các Điều 3, 5" | Hỗ trợ: sau một `điều N`, các số nối bằng `,` `;` `và` `hoặc` `hay` được tính là Điều | dương → [3, 5, 7]; âm: số nối mà ngay sau là đơn vị thì không tính, vd. "Điều 3 và 5 tháng" → [3]; dương: "Điều 3 và 5 người lao động" → [3, 5] |
+  | "Điều 5 tháng", "điều 3 ngày", "điều 2 lần" (số Điều đứng ngay trước đơn vị) | **Không** khớp | âm → []; siết vì ghim làm hậu quả nhận nhầm nặng hơn |
+  | "Điều 36 người lao động được quyền gì" | Khớp | dương → [36]; "người" không nằm trong danh sách đơn vị loại trừ vì đây là cách hỏi viện dẫn thật |
   | Khoảng "Điều 3 đến Điều 5", "Điều 3 đến 5" | Hỗ trợ **chỉ hai đầu mút** (`đến|tới` là dấu nối như trên), **không** mở rộng các Điều ở giữa (khoảng có thể rất rộng, phá trần) | dương → [3, 5]; giới hạn ghi nhận |
   | "Đ.3", "Đ3", "đ 3" | **Không** hỗ trợ | "Đ" đơn lẻ dễ trùng ký hiệu/mã ngẫu nhiên; người dùng hiếm viết tắt vậy; âm: "Đ3", "mã Đ 3" → [] |
   | "Điều II", "Điều V" (La Mã) | **Không** hỗ trợ | corpus và breadcrumb dùng số Ả Rập ("Điều 36."); token La Mã không khớp BM25; "Điều I/V" dễ nhầm chữ thường; âm: "Điều II" → [] |
   | "Điều ba" (chữ) | **Không** hỗ trợ | không khớp token số trong corpus; "điều một/hai/ba" hay là từ thường ("điều ba người cần biết"); âm → [] |
   | "điều kiện", "điều khoản", "điều hành", "trong 3 điều kiện", "chiều 5" | Không khớp | không có chữ số ngay sau "điều" / không qua ranh giới từ |
 
-  Giới hạn đã biết, chấp nhận: "điều 5 tháng ..." (ít gặp) vẫn khớp vì không
-  thể phân biệt rẻ bằng regex; chi phí false positive thấp (thêm tối đa 10
-  passage, không đổi kết quả khác — reranker vẫn quyết định). Điểm ("Điểm a")
-  và tên/số hiệu văn bản không dùng để nhận diện.
+  Điểm ("Điểm a") và tên/số hiệu văn bản không dùng để nhận diện.
 - **Extras** — `citation_extras(...)`: extras luôn được thêm vào union (dedupe
   theo `chunk_id`), bất kể RRF/MMR/`BRANCH_TOP_N` đã cắt, và là **hit sparse
   thô** nên điểm của chúng là điểm BM25 (dot product sparse), không phải
@@ -540,6 +603,42 @@ nằm cao ở sparse nhưng dense xếp thấp; RRF trọng số bằng nhau r�
   - Caveat: câu hỏi tổng hợp một dạng, chỉ đo nhánh B nên là cận dưới (nhánh
     A có thể thêm chút); k là tham số cần tinh chỉnh lại bằng RAGAS/latency
     khi có GPU.
+  - **Sau khi có token cấu trúc (mục 6.2)**: mô phỏng BM25 top3 = 100% nên k
+    nhỏ hơn có thể đủ (giảm số passage rerank và latency); nhưng **giữ k=10 lúc
+    này**, cân nhắc giảm sau khi rebuild và đo lại qua Pinecone (mục 16).
+
+### 8.2. Ghim chunk khớp chính xác Điều/Khoản (chốt 2026-09-20)
+
+Vấn đề: cross-encoder ngữ nghĩa không khớp chính xác số Điều. Chẩn đoán: câu
+"Khoản 1 Điều 113 Bộ luật Lao động nói gì?" có đáp án trong union nhưng reranker
+xếp hạng 2 (1,07) sau "Điều 5 khoản 1" (1,50). Giải pháp: sau bước rerank (và
+cả khi fallback), danh sách cuối = chunk khớp chính xác trước, phần còn lại theo
+thứ tự rerank/fallback, cắt `FINAL_TOP_K = 5`. **Câu không viện dẫn: không đổi
+gì.**
+
+- **Khớp chính xác** (`pin_exact_matches(ranked, numbers, khoans)` trong
+  `citation.py`, dùng chung hàm parse breadcrumb với mục 6.2): breadcrumb của
+  chunk có `Điều N.` với N nằm trong `numbers` (các số Điều được hỏi). Nếu câu
+  hỏi có Khoản (`khoans` ≠ []): **với từng Điều**, nếu trong union tồn tại chunk
+  của Điều đó khớp cả Khoản (breadcrumb có `Khoản M`, M ∈ `khoans`) thì chỉ
+  ghim các chunk này; nếu không có thì ghim theo Điều. (Chunk split "(phần
+  i/n)" cùng Điều/Khoản đều được coi là khớp.)
+- **Trần ghim** (không nuốt hết `FINAL_TOP_K`): `PIN_PER_ARTICLE = 2` chunk mỗi
+  Điều, tổng ≤ `FINAL_TOP_K − 1` = 4 (luôn chừa ít nhất 1 chỗ cho kết quả ngữ
+  nghĩa). Chọn theo vòng xen kẽ theo Điều (chunk tốt nhất của mỗi Điều trước,
+  rồi chunk thứ hai của từng Điều) cho đến khi đủ trần: n=1 → tối đa 2 ghim;
+  n=2 → 2+2; n=3 → 3 ghim hạng nhất rồi 1 chunk thứ hai (Điều đầu). Lý do 2/
+  Điều: một Khoản bị cắt thành 2 phần vẫn vào hết, mà không chiếm quá nửa
+  danh sách.
+- **Thứ tự**: tập chunk ghim xếp theo điểm rerank giảm dần (fallback: theo thứ
+  tự sẵn có của danh sách fallback), đặt ở đầu danh sách cuối; các chỗ còn lại
+  theo thứ tự rerank/fallback, bỏ chunk đã ghim, cắt tới `FINAL_TOP_K`.
+- **Không đổi `rerank_score`** của chunk (chunk ghim có thể có điểm thấp hơn chunk
+  không ghim; đã ghi ở mục 2). Fallback: `rerank_score=None` như cũ.
+- **Rủi ro**: nhận nhầm viện dẫn (false positive) đẩy chunk không liên quan lên
+  đầu — đã giảm bằng cách siết nhận diện (đơn vị sau số, mục 8.1) và trần ghim;
+  chunk ghim phải nằm trong union nên không bịa ra chunk mới. Tác động thực sự
+  cần đo bằng bộ câu hỏi/RAGAS (mục 16).
 
 ## 9. Reranker (server tự host)
 
@@ -576,23 +675,43 @@ root repo). Đã test thành công end-to-end (2026-09-18).
     nhưng thứ hạng giữ nguyên. 3 câu viện dẫn còn lại: chunk đáp án không nằm
     trong union nên breadcrumb không cứu được (điểm mở 5, mục 16).
   - **Caveat**: mẫu nhỏ (7 câu) — cần xác nhận lại bằng RAGAS ở phase đánh giá.
-- Sort giảm dần theo score, cắt `FINAL_TOP_K` (=5), gán `rerank_score`.
+- Sort giảm dần theo score, gán `rerank_score`, rồi (chỉ khi câu hỏi viện
+  dẫn) ghim chunk khớp chính xác lên đầu (mục 8.2) và cắt `FINAL_TOP_K` (=5).
+  Câu không viện dẫn: sort → cắt như cũ.
 
 **Server tự host rất dễ lỗi** (Studio sleep/restart, tmux/ngrok chết, model
 đang load, CPU chậm, quá tải) — xử lý như sau:
 
-- **Tách connect timeout và read timeout**: `RerankerSettings` thêm
-  `connect_timeout_seconds` (ngắn, khoảng 5s) bên cạnh `timeout_seconds` (read,
-  khoảng 30s). Nếu chỉ có 1 timeout dài, Studio đang sleep có thể khiến 1
-  câu hỏi chờ ~`timeout × (1 + max_retries)` (≈ 90s với cấu hình mặc định).
+- **Tách connect timeout và read timeout, read timeout tỉ lệ số passage**
+  (chốt 2026-09-20, theo đo thực tế): `RerankerSettings` giữ
+  `connect_timeout_seconds` (ngắn, 5s) và `timeout_seconds` (30s) — nay
+  `timeout_seconds` là **sàn** của read timeout. Read timeout thực tế của mỗi
+  request = `max(timeout_seconds, RERANK_SECONDS_PER_PASSAGE × n_passages)`,
+  `RERANK_SECONDS_PER_PASSAGE = 2.5` (hằng số nội bộ `reranker_client.py`,
+  không vào `config.py`). Lý do: đo trên CPU ~1s/passage (câu 1 Điều ~30
+  passage hoàn thành ~33s cả pipeline), 2.5s/passage là biên an toàn ~2,5 lần;
+  union tối đa 36 passage → ~90s. Timeout cố định 30s đã làm union ≥ 25-36
+  passage bị ReadTimeout 3 lần liên tiếp. Khi bật GPU reranker nhanh hơn nhưng
+  giới hạn này vẫn đủ rộng (chỉ là mức chờ tối đa, không làm chậm khi server
+  nhanh); đo lại và hạ hằng số khi có GPU.
 - **Phân loại lỗi:**
-  - **Retry** (tối đa `max_retries`, backoff ngắn): lỗi kết nối, timeout,
-    HTTP 502/503/504.
+  - **Retry** (tối đa `max_retries`, backoff ngắn): **chỉ** `ConnectError`,
+    `ConnectTimeout` và HTTP 502/503/504 — những lỗi mà server chắc chắn chưa
+    xử lý request.
+  - **KHÔNG retry `ReadTimeout`** (và các `httpx.TransportError` khác không
+    thuộc nhóm retry, vd. `WriteTimeout`): sang fallback ngay. Lý do: server có
+    thể vẫn đang tính request trước; retry gửi lại toàn bộ passage làm hàng đợi
+    phình, càng timeout (câu nhiều Điều từng mất ~100s rồi vẫn fallback). Log
+    warning rõ: "reranker chậm với N passage (read timeout X s), có thể do
+    CPU/quá tải; các yêu cầu trước có thể còn trong hàng đợi".
   - **Không retry, log error rõ ràng, sang fallback ngay**: HTTP 401/403 (sai
     `RERANKER_API_KEY`), 422/400 (payload sai) — lỗi cấu hình/code, retry vô
     ích.
   - Với lỗi kết nối/5xx sau khi hết retry, log warning nhắc **kiểm tra Studio
     theo runbook mục 9.1**.
+  - Thời gian chờ tối đa/câu vì thế là 1 lần read timeout (không còn
+    `timeout × (1 + max_retries)`); lỗi kết nối thất bại nhanh (connect
+    timeout 5s × (1 + `max_retries`)).
 - **Validate response**: `scores` phải là list số hữu hạn, đúng độ dài
   `passages`; sai → coi như lỗi.
 - **Fallback khi hết retry** (chốt 2026-09-19): không crash, log warning, trả
@@ -602,7 +721,8 @@ root repo). Đã test thành công end-to-end (2026-09-18).
   đã được xen kẽ theo Điều sẵn (Điều1#1, Điều2#1, …) nên fallback vẫn coi E là
   một danh sách duy nhất. Cách này không cần
   vector nên dùng được ở cả 2 chế độ MMR. Nếu nhánh A vắng (Groq lỗi) thì bỏ
-  qua A (B1, E1, B2, E2, …).
+  qua A (B1, E1, B2, E2, …). Câu viện dẫn: ghim khớp chính xác (mục 8.2) áp
+  dụng lên danh sách fallback này giống như lên danh sách rerank.
 
 ### 9.1. Runbook: khởi động reranker server (làm trước khi gọi `retrieve()`)
 
@@ -726,7 +846,8 @@ bước generation sau cũng nên async.
   ghi chú vận hành cho runbook mục 9.1).
 - **Không** đưa `DENSE_TOP_N`/`SPARSE_TOP_N`/`FUSION_TOP_N`/`RRF_K`/
   `MMR_LAMBDA`/`BRANCH_TOP_N`/`USE_MMR`/`FINAL_TOP_K`/`CITATION_SPARSE_TOP_K`/`MAX_CITATION_ARTICLES`/
-  `CITATION_EXTRAS_BUDGET` vào `config.py` — hằng số nội bộ của
+  `CITATION_EXTRAS_BUDGET`/`MAX_CITATION_KHOANS`/`PIN_PER_ARTICLE`/
+  `RERANK_SECONDS_PER_PASSAGE` vào `config.py` — hằng số nội bộ của
   `retrieval/`, nhất quán `embedding_spec.md` mục 7 (chỉ field dùng chung nhiều
   package mới vào `config.py`).
 
@@ -744,9 +865,10 @@ tools/sparse_index_documents.py (Typer CLI)
   → retrieval.sparse_index.build_index(chunks_dir, params_out_path)
       1. Đọc data/chunks/*.json -> list[Chunk]
       2. Với mỗi chunk: text = breadcrumb + " " + content (corpus = list 2.228 string)
-      3. bm25.fit(all_texts): tokenize (pyvi) -> vocab + df/idf + avgdl chung cho cả corpus
-         -> lưu data/bm25/bm25_params.json
-      4. bm25.encode_document(text) cho từng chunk riêng lẻ -> sparse vector {indices, values}
+         + token cấu trúc điều_N / khoản_M / điều_N_khoản_M parse từ breadcrumb (mục 6.2)
+      3. bm25.fit(all_texts + token cấu trúc): tokenize (pyvi) -> vocab + df/idf + avgdl chung cho cả corpus
+         -> lưu data/bm25/bm25_params.json (kèm params_version)
+      4. bm25.encode_document(text, token cấu trúc) cho từng chunk riêng lẻ -> sparse vector {indices, values}
       5. Tạo Pinecone sparse index nếu chưa có (vector_type="sparse", metric="dotproduct")
       6. Xoá sạch index cũ (bỏ qua NotFoundException namespace), upsert toàn bộ theo batch
          (id=chunk_id, chỉ sparse_values, không metadata)
@@ -773,6 +895,9 @@ uv run python tools/sparse_index_documents.py
 
 Quy ước vận hành: sau mỗi lần `embedding/` build lại dense index, chạy lại
 `tools/sparse_index_documents.py` để 2 index cùng corpus; không có bước tự kiểm tra.
+Chạy lại script này cũng bắt buộc **một lần sau khi merge PR thêm token cấu trúc**
+(mục 6.2): index và `bm25_params.json` cũ không có token `điều_N…`, `retrieve()`
+sẽ báo lỗi `params_version` cho tới khi build lại (việc của người dùng).
 
 ### 13B. Online — `retrieve(query)`
 
@@ -785,16 +910,18 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
   1. hypo = await hyde.generate(query)                                # mục 4 (lỗi → chỉ nhánh B, mục 10)
   2. emb_hypo, emb_query = await embedder.embed([hypo, query])        # mục 5, 1 request HF
   numbers = extract_citation_numbers(query)                           # mục 8.1 (≤ MAX_CITATION_ARTICLES, [] nếu không viện dẫn)
+  khoans  = extract_citation_khoans(query) if numbers else []         # mục 8.1
+  terms   = structural_terms(numbers, khoans)                         # mục 6.2 (điều_N, khoản_M, điều_N_khoản_M); [] nếu không viện dẫn
   3. branch_a, branch_b, article_hits = await gather(
-       run_branch(text=hypo,  dense_emb=emb_hypo),                    # nhánh A
-       run_branch(text=query, dense_emb=emb_query),                   # nhánh B (trả thêm sparse hit thô)
+       run_branch(text=hypo,  dense_emb=emb_hypo,  extra_terms=[]),   # nhánh A (hypo không có số Điều → không token cấu trúc)
+       run_branch(text=query, dense_emb=emb_query, extra_terms=terms),# nhánh B (trả thêm sparse hit thô)
        citation_article_hits(query, numbers) if len(numbers) >= 2 else none())
          # mục 8.1: mỗi Điều 1 sparse query riêng (sub-query bỏ số Điều khác), top k_n = floor(16/n), song song; lượt phụ lỗi → degrade (mục 8.1, 10)
 
-     run_branch(text, dense_emb):
+     run_branch(text, dense_emb, extra_terms):
        a. dense, sparse = await gather(
             dense_search.query(dense_emb, DENSE_TOP_N, include_values=use_mmr),  # mục 6.1
-            sparse_index.query(text, SPARSE_TOP_N))                   # mục 6.2
+            sparse_index.query(text, SPARSE_TOP_N, extra_terms))      # mục 6.2
        b. fused = fusion.rrf(dense, sparse, k=RRF_K)[:FUSION_TOP_N]   # mục 6.3
        c. if use_mmr:
             fused = await fetch_missing(fused)                        # mục 6.4: vector+metadata
@@ -808,8 +935,11 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
            # ≥2 Điều: top k_n mỗi Điều, xen kẽ theo Điều, dedupe; tổng ≤ 16
      union = await fill_missing_metadata(union)                       # mục 6.4: MMR tắt 1 lượt cho cả union;
                                                                       # MMR bật chỉ khi còn id thiếu (extras)
-  5. scores = await reranker_client.rerank(query, [c.breadcrumb + "\n" + c.content for c in union])  # mục 9 (lỗi → fallback)
-  6. return top FINAL_TOP_K dạng list[RetrievedChunk]
+  5. scores = await reranker_client.rerank(query, [c.breadcrumb + "\n" + c.content for c in union])
+       # mục 9: read timeout = max(timeout_seconds, 2.5 × len(union)); ReadTimeout không retry (→ fallback)
+  6. ranked = sort theo scores (lỗi → thứ tự fallback mục 9)
+  7. if numbers: ranked = pin_exact_matches(ranked, numbers, khoans)  # mục 8.2: ≤ 2/Điều, tổng ≤ FINAL_TOP_K-1, không đổi rerank_score
+  8. return ranked[:FINAL_TOP_K] dạng list[RetrievedChunk]
 ```
 
 Stateless giữa các lần gọi — không cache, không session. Trạng thái persist duy
@@ -828,8 +958,8 @@ nhất là `bm25_params.json`, đọc 1 lần lúc khởi tạo pipeline cùng c
 | `dense_search.py` | Query dense index có sẵn + fetch vector/metadata bổ sung (mục 6.1, 6.4) |
 | `fusion.py`          | Thuật toán RRF (mục 6.3)                                                                     |
 | `mmr.py` | Thuật toán MMR, bật/tắt bằng công tắc `USE_MMR` / `use_mmr` (mục 7) |
-| `citation.py` | Nhận diện & extras cho câu hỏi viện dẫn (mục 8.1): `extract_citation_numbers(query) -> list[int]` (≤ 3 số Điều, theo thứ tự, dedupe); `has_citation(query)` = `bool(...)`; `build_article_queries(query, numbers)` — sub-query mỗi Điều (bỏ số Điều khác); `citation_extras(numbers, branch_b_hits, article_hits)` — 1 Điều: K hit đầu sparse thô nhánh B; ≥ 2 Điều: top `k_n` mỗi Điều xen kẽ, dedupe |
-| `reranker_client.py` | HTTP client gọi server LightningAI, retry/validate/fallback (mục 9)                           |
+| `citation.py` | Nhận diện & extras cho câu hỏi viện dẫn (mục 8.1): `extract_citation_numbers(query) -> list[int]` (≤ 3 số Điều, theo thứ tự, dedupe); `has_citation(query)` = `bool(...)`; `build_article_queries(query, numbers)` — sub-query mỗi Điều (bỏ số Điều khác); `citation_extras(numbers, branch_b_hits, article_hits)` — 1 Điều: K hit đầu sparse thô nhánh B; ≥ 2 Điều: top `k_n` mỗi Điều xen kẽ, dedupe; `extract_citation_khoans(query)`; `parse_breadcrumb(breadcrumb) -> (Điều, Khoản)` (dùng chung cho token cấu trúc và ghim); `structural_terms(numbers, khoans)` / `breadcrumb_structural_terms(breadcrumb)` — cùng một hàm định dạng token `điều_N`, `khoản_M`, `điều_N_khoản_M` (mục 6.2); `pin_exact_matches(ranked, numbers, khoans)` (mục 8.2) |
+| `reranker_client.py` | HTTP client gọi server LightningAI, read timeout tỉ lệ số passage, retry (chỉ connect/502/503/504)/validate/fallback (mục 9) |
 | `pipeline.py`        | `retrieve(query)` — điều phối toàn bộ (mục 13B); sở hữu các client                  |
 | `__init__.py`        |                                                                                                 |
 
@@ -862,9 +992,10 @@ agent) cho `reranker_client.py`.
   dạng ở mục 8.1 có ca dương và ca âm: "Điều 36 khoản 2 ..." → [36], "khoản 2
   điều 36 ..." → [36], "điều 3" → [3], "điều36" → [36], "Điều thứ 5" → [5],
   "Điều 36.2" → [36], "Điều 3, 5 và 7" → [3, 5, 7], "Điều 3 đến Điều 5" →
-  [3, 5], "Điều 3 và 5 người" → [3]; dedupe/giữ thứ tự ("Điều 5 và Điều 3 và
+  [3, 5], "Điều 3 và 5 tháng" → [3], "Điều 36 người lao động được quyền gì" → [36]; dedupe/giữ thứ tự ("Điều 5 và Điều 3 và
   Điều 5" → [5, 3]); trần: 4 Điều → chỉ 3 số đầu; sai (→ []) với "điều kiện
   lao động", "trong 3 điều kiện", "điều khoản", "điều hành", "Đ3", "Đ.3",
+  "điều 5 tháng", "Điều 3 ngày", "Điều 2 lần" (số Điều đứng ngay trước đơn vị),
   "Điều II", "Điều ba", "điều 2024", "khoản 2 quy định gì" và câu hỏi tự
   nhiên không viện dẫn.
 - Nhiều Điều (n ≥ 2): `build_article_queries` cho ra sub-query mỗi Điều đã bỏ
@@ -877,6 +1008,30 @@ agent) cho `reranker_client.py`.
   → extras = 10 hit đầu sparse thô nhánh B; lỗi sparse ở nhánh chính vẫn raise
   `RetrievalError`. 1 Điều: extras đúng 10 hit đầu sparse thô nhánh
   B, không thêm lượt sparse (không đổi so với hiện trạng).
+- `extract_citation_khoans`: "khoản 1" → [1], "Điều 3 khoản 1 và khoản 2" →
+  [1, 2], trần 3, dedupe giữ thứ tự; "khoản" không số → [].
+- Token cấu trúc (mục 6.2): `parse_breadcrumb` lấy đúng Điều/Khoản từ breadcrumb
+  có "Điểm" và hậu tố "(phần i/n)"; token phía document và phía query sinh từ
+  cùng hàm định dạng nên khớp nhau (breadcrumb "… - Điều 3. … - Khoản 1" và câu
+  "Điều 3 khoản 1" cùng cho `điều_3`, `khoản_1`, `điều_3_khoản_1`); trên corpus
+  mẫu, chunk đáp án của "Điều 3 khoản 1" xếp trên chunk **cùng số 3 hoặc 1 nhưng
+  khác Điều** và trên chunk chỉ trùng tên văn bản; nhánh A (hypo) không có
+  `extra_terms`; sub-query mỗi Điều chỉ có token của Điều đó; trần ≤ 15 token;
+  term ngoài vocab bị bỏ; `bm25_params.json` thiếu/khác `params_version` → lỗi
+  rõ có chứa lệnh `uv run python tools/sparse_index_documents.py`, không chạy với params cũ; không va chạm với token pyvi có `_`.
+- Ghim (mục 8.2): chunk có `Điều N.` ∈ số Điều được hỏi lên đầu dù `rerank_score`
+  thấp hơn chunk khác; câu hỏi có Khoản và tồn tại chunk khớp cả Khoản thì chỉ
+  ghim các chunk đó (per Điều), không có thì ghim theo Điều; nhiều Điều: ghim
+  xen kẽ theo Điều; trần 2/Điều và tổng ≤ 4 (luôn còn ≥ 1 chỗ ngữ nghĩa); áp
+  dụng cả khi rerank lỗi (fallback); `rerank_score` các chunk không đổi; câu
+  không viện dẫn: kết quả y hệt không ghim; không có chunk khớp trong union thì
+  không ghim gì.
+- Reranker client (fake transport `httpx.MockTransport`): read timeout gửi đi =
+  `max(timeout_seconds, 2.5 × n_passages)` (n nhỏ → 30s, n=36 → 90s); `ReadTimeout`
+  **không retry** (đúng 1 lần gọi) và sang fallback kèm log cảnh báo nêu số
+  passage/timeout; `ConnectError`/`ConnectTimeout` và 502/503/504 vẫn retry tới
+  `max_retries` (vd. 503 hai lần rồi 200 → có scores); 401/403/400/422 không
+  retry.
 - Câu viện dẫn 1 Điều: chunk đáp án nằm trong sparse top-10 của nhánh B thì có trong
   union dù RRF/MMR đã loại; câu không viện dẫn: union giống hệt hiện trạng,
   không có extras; không thêm lượt Pinecone sparse (1 Điều); số lượt fetch đúng mục 3 /
@@ -966,3 +1121,21 @@ tinh chỉnh lại bằng RAGAS/latency khi có GPU.
    Điều/Khoản giữa nhiều văn bản, hoặc nhiễu sparse).
 9. Có nên bỏ HyDE (tiết kiệm 1 lượt Groq) khi câu hỏi chỉ thuần viện dẫn, không
    nêu chủ đề — chỉ ghi nhận, chưa làm; xét cùng đánh giá hiệu quả nhánh A.
+10. **[ĐÃ CHỐT 2026-09-20 — việc 1, PR riêng làm trước]** Reranker timeout/retry
+    (mục 9): read timeout = `max(timeout_seconds, 2.5 × n_passages)`; không retry
+    `ReadTimeout` (sang fallback + log cảnh báo), vẫn retry ConnectError/
+    ConnectTimeout/502/503/504. Chốt theo đo thực tế (~1s/passage trên CPU, 3
+    lần ReadTimeout với union ≥ 25-36 passage, retry làm phình hàng đợi). Đo lại
+    và hạ `RERANK_SECONDS_PER_PASSAGE` khi có GPU.
+11. **[ĐÃ CHỐT 2026-09-20 — việc 2 + 3, cùng PR, sau việc 1]** Token cấu trúc BM25
+    (`điều_N`, `khoản_M`, `điều_N_khoản_M`, mục 6.2) và ghim chunk khớp chính
+    xác Điều/Khoản sau rerank/fallback (mục 8.2, ≤ 2/Điều, tổng ≤ 4), kèm siết
+    nhận diện (số Điều ngay trước đơn vị không tính). Chốt theo dữ liệu chẩn
+    đoán và mô phỏng BM25 offline (top1 35% → 90%, top3 65% → 100%), **chưa qua
+    Pinecone/RAGAS**. Cần làm sau khi merge: (a) người dùng chạy lại
+    `tools/sparse_index_documents.py`; (b) đo lại recall qua Pinecone sau rebuild;
+    (c) cân nhắc giảm `CITATION_SPARSE_TOP_K` (top3 = 100% trong mô phỏng → ít
+    passage rerank, latency thấp hơn) — **giữ k=10 lúc này**; (d) đo hiệu quả
+    ghim (bộ câu hỏi viện dẫn/RAGAS), đặc biệt rủi ro nhận nhầm viện dẫn và
+    việc `rerank_score` không còn giảm dần khi có ghim; (e) gán Khoản cho đúng
+    Điều trong câu nhiều Điều (hiện dùng chung mọi Khoản cho mỗi Điều).
