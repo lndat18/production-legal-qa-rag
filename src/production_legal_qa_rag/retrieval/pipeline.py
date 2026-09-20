@@ -105,9 +105,13 @@ class RetrievalPipeline:
         results = list(await asyncio.gather(*branch_jobs))
         branches = [result.candidates for result in results]
 
-        # Extras chỉ cho câu viện dẫn; dùng lại sparse hits của nhánh B (cuối
-        # danh sách), không thêm lượt gọi sparse.
-        extras = citation_extras(results[-1].sparse_hits) if has_citation(query) else []
+        # Extras chỉ cho câu viện dẫn; dùng lại sparse hits của nhánh B, không
+        # thêm lượt gọi sparse.
+        extras = (
+            citation_extras(_branch_b_result(results).sparse_hits)
+            if has_citation(query)
+            else []
+        )
         if extras:
             branches.append(extras)
 
@@ -187,6 +191,12 @@ async def retrieve(query: str, *, use_mmr: bool | None = None) -> list[Retrieved
     if _default_pipeline is None:
         _default_pipeline = RetrievalPipeline()
     return await _default_pipeline.retrieve(query, use_mmr=use_mmr)
+
+
+def _branch_b_result(results: list[_BranchResult]) -> _BranchResult:
+    """Kết quả nhánh B (câu hỏi gốc): luôn là phần tử cuối vì nhánh A chỉ được
+    chèn vào đầu danh sách `branch_jobs` khi có hypothetical document."""
+    return results[-1]
 
 
 def _dedupe_by_chunk_id(branches: list[list[Candidate]]) -> list[Candidate]:

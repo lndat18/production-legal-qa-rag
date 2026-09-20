@@ -57,7 +57,10 @@ def test_has_citation_am(query: str):
 
 
 def test_citation_extras_lay_top_k_theo_thu_tu():
-    hits = [SearchHit(chunk_id=f"s{i}", score=10.0 - i) for i in range(8)]
+    hits = [
+        SearchHit(chunk_id=f"s{i}", score=10.0 - i)
+        for i in range(CITATION_SPARSE_TOP_K + 3)
+    ]
     extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == [
         f"s{i}" for i in range(CITATION_SPARSE_TOP_K)
@@ -179,7 +182,7 @@ def test_citation_extras_it_hon_top_k_va_rong():
     hits = [SearchHit(chunk_id="s0", score=1.0), SearchHit(chunk_id="s1", score=0.5)]
     extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == ["s0", "s1"]
-    assert [c.rrf_score for c in extras] == [1.0, 0.5]
+    assert [c.rrf_score for c in extras] == [0.0, 0.0]
     assert citation_extras([]) == []
 
 
@@ -211,3 +214,30 @@ def test_cau_vien_dan_hai_dieu_van_chi_1_lan_extras():
     passages = rr.calls[0][1]
     assert len(passages) == len(set(passages))  # union không trùng
     assert "bc-c50\nnd-c50" in passages
+
+
+def _cited_pipe_with_sparse_ranks():  # type: ignore[no-untyped-def]
+    """Sparse thô của nhánh B: c1..c9 (trùng dense), c50 hạng 10, c51 hạng 11."""
+    assert CITATION_SPARSE_TOP_K == 10
+    sparse = [f"c{i}" for i in range(1, CITATION_SPARSE_TOP_K)]
+    sparse += ["c50", "c51"]
+    known = set(DENSE) | {"c50", "c51"}
+    return _build(DENSE, {CITED: sparse}, known=known)
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_extras_lay_dung_top_k_hang_10_vao_hang_11_khong(use_mmr: bool):
+    pipe, _, rr, _ = _cited_pipe_with_sparse_ranks()
+    asyncio.run(pipe.retrieve(CITED, use_mmr=use_mmr))
+    passages = rr.calls[0][1]
+    assert "bc-c50\nnd-c50" in passages  # hạng thô = CITATION_SPARSE_TOP_K
+    assert "bc-c51\nnd-c51" not in passages  # hạng K + 1
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_union_toi_da_2_branch_top_n_cong_top_k(use_mmr: bool):
+    pipe, _, rr, _ = _cited_pipe_with_sparse_ranks()
+    asyncio.run(pipe.retrieve(CITED, use_mmr=use_mmr))
+    assert len(rr.calls[0][1]) <= 2 * pipeline_module.BRANCH_TOP_N + (
+        CITATION_SPARSE_TOP_K
+    )

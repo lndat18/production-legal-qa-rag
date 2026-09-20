@@ -50,7 +50,8 @@ class RerankerClient:
 
         Args:
             query: Câu hỏi gốc (không phải hypothetical document).
-            passages: `content` của từng chunk trong union.
+            passages: Passage đã dựng `breadcrumb + "\\n" + content` của từng
+                chunk, cùng thứ tự với union.
 
         Returns:
             Score cùng thứ tự `passages`, hoặc `None` khi thất bại và caller
