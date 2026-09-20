@@ -7,3 +7,6 @@ __pycache__/
 
 
 
+
+# Sinh ra bởi tools/sparse_index_documents.py, phải khớp với sparse index đang có trên Pinecone
+data/bm25/
