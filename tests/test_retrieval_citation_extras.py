@@ -301,3 +301,55 @@ def test_timeout_reranker_union_toi_da_30_passage_la_75s(
     monkeypatch.setenv("RERANKER_API_KEY", "k")
     client = RerankerClient(RerankerSettings(), httpx.AsyncClient())
     assert client._read_timeout_seconds(2 * 10 + CITATION_SPARSE_TOP_K) == 75.0
+
+
+def test_fallback_thu_tu_a_b_extras_khi_rerank_loi(monkeypatch: pytest.MonkeyPatch):
+    from test_retrieval_pipeline import (
+        FakeDense,
+        FakeEmbedder,
+        FakeHyde,
+        FakeReranker,
+        FakeSparse,
+    )
+
+    monkeypatch.setattr(pipeline_module, "BRANCH_TOP_N", 2)
+    query = "Điều 3 khoản 1 quy định gì"
+    a_ids = ["a1", "a2"]
+    b_ids = [f"b{i}" for i in range(1, 13)]
+    pipe = pipeline_module.RetrievalPipeline(
+        hyde=FakeHyde("giả định"),  # type: ignore[arg-type]
+        embedder=FakeEmbedder(),  # type: ignore[arg-type]
+        dense_search=FakeDense([], set(a_ids + b_ids)),  # type: ignore[arg-type]
+        sparse_index=FakeSparse({"giả định": a_ids, query: b_ids}),  # type: ignore[arg-type]
+        reranker=FakeReranker("fail"),  # type: ignore[arg-type]
+    )
+    result = asyncio.run(pipe.retrieve(query, use_mmr=False))
+    # Round-robin theo hạng: (A1, B1, E1=B1), (A2, B2, E2=B2), E3 = b3; bỏ trùng.
+    assert [c.chunk_id for c in result] == ["a1", "b1", "a2", "b2", "b3"]
+    assert all(c.rerank_score is None for c in result)
+
+
+def test_reranker_loi_la_khong_sleep_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from production_legal_qa_rag.config import RerankerSettings
+    from production_legal_qa_rag.retrieval import reranker_client
+    from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+
+    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "http://x")
+    monkeypatch.setenv("RERANKER_API_KEY", "k")
+    slept: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(reranker_client.asyncio, "sleep", fake_sleep)
+
+    class Broken:
+        async def post(self, *args: object, **kwargs: object) -> object:
+            raise ValueError("bug")
+
+    client = RerankerClient(RerankerSettings(), Broken())  # type: ignore[arg-type]
+    assert asyncio.run(client.rerank("q", ["a"])) is None
+    assert slept == []
+    assert httpx
