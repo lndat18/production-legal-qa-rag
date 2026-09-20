@@ -1,0 +1,504 @@
+"""Test reranker_client, hyde, query_embedder, sparse_index, dense_search (fake client)."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import httpx
+import pytest
+from pinecone.exceptions import NotFoundException
+from typer.testing import CliRunner
+
+from production_legal_qa_rag.chunking.models import Chunk
+from production_legal_qa_rag.config import (
+    EmbeddingSettings,
+    LLMSettings,
+    RerankerSettings,
+    VectorDBSettings,
+)
+from production_legal_qa_rag.embedding.models import PineconeMetadata
+from production_legal_qa_rag.retrieval import (
+    query_embedder,
+    reranker_client,
+    sparse_index,
+)
+from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
+from production_legal_qa_rag.retrieval.dense_search import DenseSearch
+from production_legal_qa_rag.retrieval.hyde import HYDE_PROMPT, HydeGenerator
+from production_legal_qa_rag.retrieval.models import Candidate, RetrievalError
+from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
+from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+from production_legal_qa_rag.retrieval.sparse_index import SparseIndex, build_index
+
+
+@pytest.fixture
+def env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key, value in {
+        "RERANKER_ENDPOINT_URL": "http://rerank.test/rerank",
+        "RERANKER_API_KEY": "k",
+        "GROQ_API_KEY": "g",
+        "HF_TOKEN": "h",
+        "PINECONE_API_KEY": "p",
+        "PINECONE_INDEX_NAME": "dense",
+        "PINECONE_SPARSE_INDEX_NAME": "sparse",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(reranker_client, "_BACKOFF_SECONDS", 0.0)
+
+
+# ---------------------------------------------------------------- reranker
+
+
+def _rerank(handler: Any, passages: list[str] | None = None) -> tuple[Any, list[int]]:
+    calls = [0]
+
+    def counting(request: httpx.Request) -> httpx.Response:
+        calls[0] += 1
+        return handler(request, calls[0])
+
+    async def run() -> Any:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(counting)) as http:
+            client = RerankerClient(RerankerSettings(), http)
+            return await client.rerank("q", passages or ["a", "b"])
+
+    return asyncio.run(run()), calls
+
+
+def test_rerank_thanh_cong_gui_api_key_va_1_request(env: None):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request, _n: int) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"scores": [0.1, 2]})
+
+    scores, calls = _rerank(handler)
+    assert scores == [0.1, 2.0]
+    assert calls == [1]
+    assert seen[0].headers["X-API-Key"] == "k"
+    assert json.loads(seen[0].content) == {"query": "q", "passages": ["a", "b"]}
+
+
+def test_rerank_passages_rong_khong_goi_mang(env: None):
+    # passages=[] bị `or` thay bằng mặc định trong _rerank, nên gọi trực tiếp.
+    async def run() -> Any:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda r: httpx.Response(500))
+        ) as http:
+            return await RerankerClient(RerankerSettings(), http).rerank("q", [])
+
+    assert asyncio.run(run()) == []
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_rerank_retry_khi_5xx_tam_thoi_roi_thanh_cong(env: None, status: int):
+    def handler(_r: httpx.Request, n: int) -> httpx.Response:
+        if n < 3:
+            return httpx.Response(status)
+        return httpx.Response(200, json={"scores": [1, 2]})
+
+    scores, calls = _rerank(handler)
+    assert scores == [1.0, 2.0]
+    assert calls == [3]  # max_retries=2 -> tối đa 3 lần
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_rerank_het_retry_tra_none(env: None, status: int):
+    scores, calls = _rerank(lambda r, n: httpx.Response(status))
+    assert scores is None
+    assert calls == [3]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [httpx.ConnectError("x"), httpx.ReadTimeout("x"), httpx.ConnectTimeout("x")],
+)
+def test_rerank_retry_khi_loi_ket_noi_hoac_timeout(env: None, error: Exception):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        if n < 2:
+            raise error
+        return httpx.Response(200, json={"scores": [1, 2]})
+
+    scores, calls = _rerank(handler)
+    assert scores == [1.0, 2.0]
+    assert calls == [2]
+
+
+def test_rerank_loi_ket_noi_lien_tuc_tra_none(env: None):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        raise httpx.ConnectError("down")
+
+    scores, calls = _rerank(handler)
+    assert scores is None
+    assert calls == [3]
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 422])
+def test_rerank_khong_retry_khi_4xx(env: None, status: int):
+    scores, calls = _rerank(lambda r, n: httpx.Response(status))
+    assert scores is None
+    assert calls == [1]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"scores": "abc"},
+        {"scores": [1.0]},
+        {"scores": [1.0, 2.0, 3.0]},
+        {"scores": [1.0, None]},
+        {"scores": [1.0, "2"]},
+        {"scores": [1.0, True]},
+        {"scores": [1.0, float("nan")]},
+        {"scores": [1.0, float("inf")]},
+        [1.0, 2.0],
+    ],
+)
+def test_rerank_response_khong_hop_le_tra_none_khong_retry(env: None, payload: Any):
+    body = json.dumps(payload, allow_nan=True).encode()
+    scores, calls = _rerank(lambda r, n: httpx.Response(200, content=body))
+    assert scores is None
+    assert calls == [1]
+
+
+def test_rerank_response_khong_phai_json_tra_none(env: None):
+    scores, calls = _rerank(lambda r, n: httpx.Response(200, content=b"<html>"))
+    assert scores is None
+    assert calls == [1]
+
+
+# ---------------------------------------------------------------- hyde
+
+
+class _FakeGroq:
+    def __init__(self, content: str | None = None, error: Exception | None = None):
+        self.prompts: list[str] = []
+        self._content = content
+        self._error = error
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    async def _create(self, **kwargs: Any) -> Any:
+        self.prompts.append(kwargs["messages"][0]["content"])
+        if self._error:
+            raise self._error
+        message = SimpleNamespace(content=self._content)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+def _hyde(fake: _FakeGroq, query: str = "hỏi") -> str | None:
+    generator = HydeGenerator(LLMSettings(), fake)  # type: ignore[arg-type]
+    return asyncio.run(generator.generate(query))
+
+
+def test_hyde_tra_ve_van_ban_da_strip(env: None):
+    assert _hyde(_FakeGroq("  đoạn văn \n")) == "đoạn văn"
+
+
+@pytest.mark.parametrize("content", ["", "   \n", None])
+def test_hyde_output_rong_coi_nhu_loi(env: None, content: str | None):
+    assert _hyde(_FakeGroq(content)) is None
+
+
+def test_hyde_groq_loi_tra_none(env: None):
+    assert _hyde(_FakeGroq(error=RuntimeError("boom"))) is None
+
+
+def test_hyde_prompt_cam_neu_so_dieu_khoan_va_chua_cau_hoi(env: None):
+    fake = _FakeGroq("x")
+    _hyde(fake, "Nghỉ phép mấy ngày?")
+    prompt = fake.prompts[0]
+    assert "Nghỉ phép mấy ngày?" in prompt
+    assert "KHÔNG nêu số Điều" in HYDE_PROMPT
+    assert "số Khoản" in prompt
+
+
+# ---------------------------------------------------------------- embedder
+
+
+class _FakeHF:
+    def __init__(self, failures: int = 0, response: Any = None):
+        self.calls: list[Any] = []
+        self._failures = failures
+        self._response = response
+
+    def feature_extraction(self, texts: Any) -> Any:
+        self.calls.append(texts)
+        if len(self.calls) <= self._failures:
+            raise ConnectionError("hf")
+        if self._response is not None:
+            return self._response
+        return [[float(i), 1.0] for i in range(len(texts))]
+
+
+def _embed(fake: _FakeHF, texts: list[str]) -> list[list[float]]:
+    embedder = QueryEmbedder(EmbeddingSettings(), fake)  # type: ignore[arg-type]
+    return asyncio.run(embedder.embed(texts))
+
+
+def test_embed_goi_pyvi_segment_va_1_request_cho_nhieu_text(
+    env: None, monkeypatch: pytest.MonkeyPatch
+):
+    tokenized: list[str] = []
+
+    def fake_tokenize(text: str) -> str:
+        tokenized.append(text)
+        return f"SEG({text})"
+
+    monkeypatch.setattr(query_embedder.ViTokenizer, "tokenize", fake_tokenize)
+    fake = _FakeHF()
+    result = _embed(fake, ["a b", "c d"])
+
+    assert tokenized == ["a b", "c d"]
+    assert len(fake.calls) == 1
+    assert fake.calls[0] == ["SEG(a b)", "SEG(c d)"]
+    assert result == [[0.0, 1.0], [1.0, 1.0]]
+
+
+def test_embed_retry_roi_thanh_cong(env: None):
+    fake = _FakeHF(failures=2)
+    assert len(_embed(fake, ["a"])) == 1
+    assert len(fake.calls) == 3
+
+
+def test_embed_het_retry_raise_retrieval_error(env: None):
+    fake = _FakeHF(failures=99)
+    with pytest.raises(RetrievalError):
+        _embed(fake, ["a"])
+    assert len(fake.calls) == 3
+
+
+def test_embed_response_sai_so_luong_raise(env: None):
+    with pytest.raises(RetrievalError):
+        _embed(_FakeHF(response=[[1.0]]), ["a", "b"])
+
+
+# ---------------------------------------------------------------- sparse index
+
+
+class _FakeSparseIndex:
+    def __init__(self, delete_error: Exception | None = None):
+        self.delete_error = delete_error
+        self.deleted = False
+        self.upserts: list[list[dict[str, Any]]] = []
+        self.queries: list[dict[str, Any]] = []
+
+    def delete(self, *, delete_all: bool) -> None:
+        self.deleted = delete_all
+        if self.delete_error:
+            raise self.delete_error
+
+    def upsert(self, *, vectors: list[dict[str, Any]]) -> None:
+        self.upserts.append(vectors)
+
+    def query(self, **kwargs: Any) -> Any:
+        self.queries.append(kwargs)
+        return SimpleNamespace(matches=[SimpleNamespace(id="c1", score=0.5)])
+
+
+def test_delete_all_bo_qua_namespace_not_found():
+    index = _FakeSparseIndex(NotFoundException("Namespace not found"))
+    sparse_index._delete_all_vectors(index)  # không raise
+    assert index.deleted is True
+
+
+def test_delete_all_nem_lai_not_found_khac():
+    index = _FakeSparseIndex(NotFoundException("Index not found"))
+    with pytest.raises(NotFoundException):
+        sparse_index._delete_all_vectors(index)
+
+
+def test_build_index_upsert_theo_batch_sau_khi_xoa(env: None, tmp_path: Path):
+    chunks_dir = tmp_path / "chunks"
+    chunks_dir.mkdir()
+    total = sparse_index.SPARSE_UPSERT_BATCH_SIZE * 2 + 5
+    chunks = [
+        Chunk(
+            chunk_id=f"c{i}",
+            source_document="d",
+            breadcrumb="Điều 1",
+            content=f"người lao động {i}",
+            token_count=5,
+        ).model_dump()
+        for i in range(total)
+    ]
+    (chunks_dir / "a.json").write_text(json.dumps(chunks), encoding="utf-8")
+    index = _FakeSparseIndex(NotFoundException("Namespace not found"))
+    client = SimpleNamespace(list_indexes=lambda: ["sparse"], Index=lambda name: index)
+
+    count = build_index(
+        chunks_dir,
+        tmp_path / "bm25.json",
+        VectorDBSettings(),
+        client,  # type: ignore[arg-type]
+    )
+
+    assert count == total
+    assert [len(b) for b in index.upserts] == [100, 100, 5]
+    assert index.upserts[0][0]["id"] == "c0"
+    assert set(index.upserts[0][0]["sparse_values"]) == {"indices", "values"}
+    assert (tmp_path / "bm25.json").exists()
+
+
+def test_build_index_chunks_dir_rong_raise_value_error(env: None, tmp_path: Path):
+    with pytest.raises(ValueError):
+        build_index(tmp_path, tmp_path / "p.json", VectorDBSettings(), object())  # type: ignore[arg-type]
+
+
+def _encoder() -> BM25Encoder:
+    encoder = BM25Encoder()
+    encoder.fit(["người lao động", "tiền lương"])
+    return encoder
+
+
+def test_sparse_query_vector_rong_khong_goi_pinecone():
+    index = _FakeSparseIndex()
+    result = asyncio.run(SparseIndex(_encoder(), index=index).query("zzzz qqqq"))
+    assert result == []
+    assert index.queries == []
+
+
+def test_sparse_query_tra_hits():
+    index = _FakeSparseIndex()
+    result = asyncio.run(
+        SparseIndex(_encoder(), index=index).query("tiền lương", top_k=7)
+    )
+    assert [(h.chunk_id, h.score) for h in result] == [("c1", 0.5)]
+    assert index.queries[0]["top_k"] == 7
+    assert index.queries[0]["sparse_vector"]["indices"]
+
+
+def test_sparse_query_pinecone_loi_raise_retrieval_error():
+    class Broken(_FakeSparseIndex):
+        def query(self, **kwargs: Any) -> Any:
+            raise RuntimeError("x")
+
+    with pytest.raises(RetrievalError):
+        asyncio.run(SparseIndex(_encoder(), index=Broken()).query("tiền lương"))
+
+
+# ---------------------------------------------------------------- dense search
+
+META = {
+    "content": "nd",
+    "breadcrumb": "bc",
+    "source_document": "sd",
+    "has_table": False,
+}
+
+
+class _FakeDense:
+    def __init__(self, fetchable: dict[str, dict[str, Any]] | None = None):
+        self.queries: list[dict[str, Any]] = []
+        self.fetches: list[list[str]] = []
+        self._fetchable = fetchable or {}
+
+    def query(self, **kwargs: Any) -> Any:
+        self.queries.append(kwargs)
+        match = SimpleNamespace(id="a", score=0.9, metadata=META, values=[1.0, 0.0])
+        return SimpleNamespace(matches=[match])
+
+    def fetch(self, *, ids: list[str]) -> Any:
+        self.fetches.append(ids)
+        return SimpleNamespace(
+            vectors={
+                i: SimpleNamespace(metadata=META, values=self._fetchable[i]["values"])
+                for i in ids
+                if i in self._fetchable
+            }
+        )
+
+
+@pytest.mark.parametrize("flag", [True, False])
+def test_dense_query_include_values_theo_co(flag: bool):
+    index = _FakeDense()
+    hits = asyncio.run(DenseSearch(index=index).query([1.0, 0.0], include_values=flag))
+    assert index.queries[0]["include_values"] is flag
+    assert index.queries[0]["include_metadata"] is True
+    assert hits[0].values == ([1.0, 0.0] if flag else None)
+    assert isinstance(hits[0].metadata, PineconeMetadata)
+
+
+def test_dense_query_loi_raise_retrieval_error():
+    class Broken(_FakeDense):
+        def query(self, **kwargs: Any) -> Any:
+            raise RuntimeError("x")
+
+    with pytest.raises(RetrievalError):
+        asyncio.run(DenseSearch(index=Broken()).query([1.0]))
+
+
+def _cand(chunk_id: str, *, meta: bool, values: bool) -> Candidate:
+    return Candidate(
+        chunk_id=chunk_id,
+        rrf_score=1.0,
+        metadata=PineconeMetadata(**META) if meta else None,  # type: ignore[arg-type]
+        values=[1.0] if values else None,
+    )
+
+
+def test_fill_missing_khong_fetch_khi_khong_thieu():
+    index = _FakeDense()
+    cands = [_cand("a", meta=True, values=False)]
+    out = asyncio.run(DenseSearch(index=index).fill_missing(cands, need_values=False))
+    assert out == cands
+    assert index.fetches == []
+
+
+def test_fill_missing_can_values_fetch_khi_thieu_vector():
+    index = _FakeDense({"a": {"values": [3.0]}})
+    cands = [_cand("a", meta=True, values=False)]
+    out = asyncio.run(DenseSearch(index=index).fill_missing(cands, need_values=True))
+    assert index.fetches == [["a"]]
+    assert out[0].values == [3.0]
+
+
+def test_fill_missing_giu_thu_tu_va_bo_chunk_khong_co_o_dense():
+    index = _FakeDense({"b": {"values": [2.0]}, "d": {"values": [4.0]}})
+    cands = [
+        _cand("a", meta=True, values=True),
+        _cand("b", meta=False, values=False),
+        _cand("c", meta=False, values=False),  # không có ở dense
+        _cand("d", meta=False, values=False),
+    ]
+    out = asyncio.run(DenseSearch(index=index).fill_missing(cands, need_values=False))
+    assert index.fetches == [["b", "c", "d"]]  # đúng 1 lượt fetch
+    assert [c.chunk_id for c in out] == ["a", "b", "d"]
+    assert out[1].metadata is not None
+
+
+def test_fetch_loi_raise_retrieval_error():
+    class Broken(_FakeDense):
+        def fetch(self, *, ids: list[str]) -> Any:
+            raise RuntimeError("x")
+
+    with pytest.raises(RetrievalError):
+        asyncio.run(DenseSearch(index=Broken()).fetch(["a"]))
+
+
+# ---------------------------------------------------------------- CLI
+
+
+def test_cli_sparse_exit_code_0(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from tools import sparse_index_documents as cli
+
+    monkeypatch.setattr(cli, "build_index", lambda _c, _p: 3)
+    result = CliRunner().invoke(cli.app, ["--chunks-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "3" in result.output
+
+
+def test_cli_sparse_exit_code_1_khi_loi(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    from tools import sparse_index_documents as cli
+
+    def boom(_c: Path, _p: Path) -> int:
+        raise ValueError("không có chunk")
+
+    monkeypatch.setattr(cli, "build_index", boom)
+    result = CliRunner().invoke(cli.app, ["--chunks-dir", str(tmp_path)])
+    assert result.exit_code == 1
