@@ -6,10 +6,12 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 from production_legal_qa_rag.embedding.models import PineconeMetadata
 from production_legal_qa_rag.retrieval import fusion, mmr
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
+from production_legal_qa_rag.retrieval.citation import citation_extras, has_citation
 from production_legal_qa_rag.retrieval.dense_search import DENSE_TOP_N, DenseSearch
 from production_legal_qa_rag.retrieval.fusion import RRF_K
 from production_legal_qa_rag.retrieval.hyde import HydeGenerator
@@ -18,6 +20,7 @@ from production_legal_qa_rag.retrieval.models import (
     Candidate,
     RetrievalError,
     RetrievedChunk,
+    SearchHit,
 )
 from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
 from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
@@ -30,6 +33,13 @@ BRANCH_TOP_N = 10
 FINAL_TOP_K = 5
 USE_MMR = True
 DEFAULT_BM25_PARAMS_PATH = Path("data/bm25/bm25_params.json")
+
+
+class _BranchResult(NamedTuple):
+    """Kết quả một nhánh: candidate đã chọn và sparse hits thô (trước RRF)."""
+
+    candidates: list[Candidate]
+    sparse_hits: list[SearchHit]
 
 
 class RetrievalPipeline:
@@ -62,6 +72,9 @@ class RetrievalPipeline:
     ) -> list[RetrievedChunk]:
         """Trả về tối đa `FINAL_TOP_K` chunk liên quan nhất tới `query`.
 
+        Câu hỏi viện dẫn Điều (`has_citation`) được thêm top sparse của nhánh B
+        vào union (mục 8.1).
+
         Args:
             query: Một câu hỏi tiếng Việt độc lập.
             use_mmr: Ghi đè công tắc MMR; `None` dùng `USE_MMR`.
@@ -89,10 +102,17 @@ class RetrievalPipeline:
                     hypothetical_document, embeddings[0], query_embedding, use_mmr
                 ),
             )
-        branches = list(await asyncio.gather(*branch_jobs))
+        results = list(await asyncio.gather(*branch_jobs))
+        branches = [result.candidates for result in results]
+
+        # Extras chỉ cho câu viện dẫn; dùng lại sparse hits của nhánh B (cuối
+        # danh sách), không thêm lượt gọi sparse.
+        extras = citation_extras(results[-1].sparse_hits) if has_citation(query) else []
+        if extras:
+            branches.append(extras)
 
         union = _dedupe_by_chunk_id(branches)
-        if not use_mmr:
+        if not use_mmr or extras:
             union = await self._dense_search.fill_missing(union, need_values=False)
             # Ánh xạ sang bản đã fill: object cũ của nhánh còn thiếu metadata.
             filled_by_id = {candidate.chunk_id: candidate for candidate in union}
@@ -109,8 +129,11 @@ class RetrievalPipeline:
         dense_embedding: Sequence[float],
         query_embedding: Sequence[float],
         use_mmr: bool,
-    ) -> list[Candidate]:
-        """Một nhánh: dense + sparse song song -> RRF -> MMR (nếu bật)."""
+    ) -> _BranchResult:
+        """Một nhánh: dense + sparse song song -> RRF -> MMR (nếu bật).
+
+        Trả thêm sparse hits thô để nhánh B cấp extras cho câu viện dẫn.
+        """
         dense_hits, sparse_hits = await asyncio.gather(
             self._dense_search.query(
                 dense_embedding, DENSE_TOP_N, include_values=use_mmr
@@ -120,8 +143,9 @@ class RetrievalPipeline:
         fused = fusion.rrf(dense_hits, sparse_hits, k=RRF_K)[:FUSION_TOP_N]
         if use_mmr:
             fused = await self._dense_search.fill_missing(fused, need_values=True)
-            return mmr.select(fused, query_embedding, MMR_LAMBDA, BRANCH_TOP_N)
-        return fused[:BRANCH_TOP_N]
+            selected = mmr.select(fused, query_embedding, MMR_LAMBDA, BRANCH_TOP_N)
+            return _BranchResult(selected, sparse_hits)
+        return _BranchResult(fused[:BRANCH_TOP_N], sparse_hits)
 
     async def _rerank(
         self,
@@ -175,7 +199,10 @@ def _dedupe_by_chunk_id(branches: list[list[Candidate]]) -> list[Candidate]:
 
 
 def _interleave(branches: list[list[Candidate]]) -> list[Candidate]:
-    """Xen kẽ theo hạng (A1, B1, A2, B2, ...), bỏ chunk trùng."""
+    """Xen kẽ round-robin theo hạng (A1, B1, E1, A2, ...), bỏ chunk trùng.
+
+    `branches` gồm nhánh A (nếu có), nhánh B và extras E (chỉ câu viện dẫn).
+    """
     longest = max((len(branch) for branch in branches), default=0)
     ordered = [
         branch[rank]
