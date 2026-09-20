@@ -9,6 +9,7 @@ import math
 import httpx
 
 from production_legal_qa_rag.config import RerankerSettings
+from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,10 @@ class RerankerClient:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._settings = settings or RerankerSettings()
-        self._client = client or httpx.AsyncClient(
+        self._client = LoopBoundClient(self._create_client, client)
+
+    def _create_client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
             timeout=httpx.Timeout(
                 float(self._settings.timeout_seconds),
                 connect=float(self._settings.connect_timeout_seconds),
@@ -57,7 +61,7 @@ class RerankerClient:
             except _NonRetryableRerankError as error:
                 logger.error("Reranker lỗi cấu hình/payload, không retry: %s", error)
                 return None
-            except (httpx.TransportError, _RetryableStatusError) as error:
+            except Exception as error:  # noqa: BLE001 - rerank không bao giờ raise
                 logger.warning(
                     "Reranker lỗi tạm thời ở lần thử %d/%d: %r",
                     attempt + 1,
@@ -71,7 +75,7 @@ class RerankerClient:
         return None
 
     async def _request_scores(self, query: str, passages: list[str]) -> list[float]:
-        response = await self._client.post(
+        response = await self._client.get().post(
             self._settings.endpoint_url,
             headers={"X-API-Key": self._settings.api_key},
             json={"query": query, "passages": passages},

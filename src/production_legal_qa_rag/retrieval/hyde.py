@@ -7,6 +7,7 @@ import logging
 from groq import AsyncGroq
 
 from production_legal_qa_rag.config import LLMSettings
+from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,10 @@ class HydeGenerator:
         client: AsyncGroq | None = None,
     ) -> None:
         self._settings = settings or LLMSettings()
-        self._client = client or AsyncGroq(
+        self._client = LoopBoundClient(self._create_client, client)
+
+    def _create_client(self) -> AsyncGroq:
+        return AsyncGroq(
             api_key=self._settings.groq_api_key,
             max_retries=self._settings.max_retries,
             timeout=float(self._settings.timeout_seconds),
@@ -54,7 +58,7 @@ class HydeGenerator:
             bỏ nhánh A (mục 10).
         """
         try:
-            response = await self._client.chat.completions.create(
+            response = await self._client.get().chat.completions.create(
                 model=self._settings.model_name,
                 messages=[{"role": "user", "content": HYDE_PROMPT.format(query=query)}],
                 max_completion_tokens=_MAX_COMPLETION_TOKENS,

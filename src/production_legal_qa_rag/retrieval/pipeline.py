@@ -35,8 +35,8 @@ DEFAULT_BM25_PARAMS_PATH = Path("data/bm25/bm25_params.json")
 class RetrievalPipeline:
     """Sở hữu các client (khởi tạo 1 lần, dùng lại cho mọi query).
 
-    Client async (Groq, httpx) gắn với event loop đầu tiên dùng chúng, nên
-    một instance nên được dùng trong một `asyncio.run` duy nhất.
+    Client async (Groq, httpx) được tạo lazy theo event loop hiện tại và tạo
+    lại khi loop đổi, nên một instance dùng được qua nhiều `asyncio.run`.
     """
 
     def __init__(
