@@ -21,8 +21,9 @@ from production_legal_qa_rag.retrieval.models import RetrievalError, SparseVecto
 
 BM25_K1 = 1.2
 BM25_B = 0.75
-# 1 = bản cũ (không có field); 2 = có token cấu trúc điều_N/khoản_M (mục 6.2).
-BM25_PARAMS_VERSION = 2
+# 1 = bản cũ (không có field); 2 = token cấu trúc điều_N/khoản_M; 3 = thêm token
+# theo văn bản vb_X... (mục 6.2).
+BM25_PARAMS_VERSION = 3
 REBUILD_COMMAND = "uv run python tools/sparse_index_documents.py"
 
 
@@ -178,7 +179,7 @@ class BM25Encoder:
         if params.params_version != BM25_PARAMS_VERSION:
             raise BM25ParamsVersionError(
                 f"{path} có params_version={params.params_version}, cần "
-                f"{BM25_PARAMS_VERSION} (bản có token cấu trúc). Build lại sparse "
+                f"{BM25_PARAMS_VERSION} (bản có token cấu trúc và token theo văn bản). Build lại sparse "
                 f"index và params bằng: {REBUILD_COMMAND}"
             )
         return cls(params)

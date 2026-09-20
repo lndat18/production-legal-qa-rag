@@ -1,4 +1,4 @@
-"""Nhận diện câu hỏi viện dẫn Điều và chọn extras từ sparse (mục 8.1).
+"""Nhận diện câu hỏi viện dẫn Điều, token cấu trúc và chọn extras từ sparse (mục 6.2, 8.1).
 
 Với câu hỏi kiểu "Điều 36 khoản 2 quy định gì", chunk đáp án thường xếp cao ở
 sparse nhưng thấp ở dense nên dễ bị RRF/MMR cắt; các extras đảm bảo top-k
@@ -14,19 +14,14 @@ import unicodedata
 from collections.abc import Sequence
 from typing import NamedTuple
 
-from production_legal_qa_rag.retrieval.models import (
-    Candidate,
-    RetrievedChunk,
-    SearchHit,
-)
+from production_legal_qa_rag.retrieval.models import Candidate, SearchHit
 
 logger = logging.getLogger(__name__)
 
 CITATION_SPARSE_TOP_K = 10
 MAX_CITATION_ARTICLES = 3
-CITATION_EXTRAS_BUDGET = 16
+CITATION_EXTRAS_BUDGET = 24
 MAX_CITATION_KHOANS = 3
-PIN_PER_ARTICLE = 2
 
 _FLAGS = re.IGNORECASE
 # (?<!\w): "điều" không dính vào cuối từ khác (vd. "chiều 5"); \d{1,3}(?!\d):
@@ -66,7 +61,7 @@ def _find_mentions(text: str) -> list[_Mention]:
     while (match := _ARTICLE.search(text, position)) is not None:
         position = match.end(2)
         # Số Điều ngay trước đơn vị ("điều 5 tháng") là đại lượng, không phải
-        # viện dẫn; siết vì token cấu trúc và ghim làm nhận nhầm tốn kém hơn.
+        # viện dẫn; siết vì token cấu trúc và extras làm nhận nhầm tốn kém hơn.
         if _UNIT_AFTER.match(text, position):
             continue
         mentions.append(_Mention(int(match.group(2)), match.start(), position))
@@ -186,7 +181,7 @@ def extract_citation_khoans(query: str) -> list[int]:
     """Các số Khoản trong câu hỏi gốc ("khoản 2"), dedupe giữ thứ tự, tối đa
     `MAX_CITATION_KHOANS`.
 
-    Chỉ có nghĩa khi câu hỏi đã có số Điều (token cấu trúc, ghim).
+    Chỉ có nghĩa khi câu hỏi đã có số Điều (token cấu trúc).
     """
     khoans = list(
         dict.fromkeys(
@@ -208,7 +203,7 @@ def extract_citation_khoans(query: str) -> list[int]:
 # ------------------------------------------------------------- token cấu trúc
 # Một bộ hàm định dạng duy nhất cho cả phía document (breadcrumb) và phía query
 # để hai phía không thể lệch nhau. Hậu tố số nên không va chạm token pyvi
-# (`điều_khoản`, ...).
+# (`điều_khoản`, ...); token văn bản có tiền tố `vb_`.
 
 
 def _dieu_term(number: int) -> str:
@@ -221,6 +216,16 @@ def _khoan_term(number: int) -> str:
 
 def _pair_term(dieu: int, khoan: int) -> str:
     return f"điều_{dieu}_khoản_{khoan}"
+
+
+def _doc_term(key: str, dieu: int | None = None, khoan: int | None = None) -> str:
+    """`vb_X`, `vb_X_điều_N`, `vb_X_điều_N_khoản_M`; tiền tố `vb_` tránh va chạm pyvi."""
+    term = f"vb_{key}"
+    if dieu is not None:
+        term += f"_điều_{dieu}"
+        if khoan is not None:
+            term += f"_khoản_{khoan}"
+    return term
 
 
 class BreadcrumbRef(NamedTuple):
@@ -253,8 +258,14 @@ def parse_breadcrumb(breadcrumb: str) -> BreadcrumbRef:
     return BreadcrumbRef(dieu, khoan)
 
 
-def breadcrumb_structural_terms(breadcrumb: str) -> list[str]:
-    """Token cấu trúc phía document, chỉ những token có trong breadcrumb."""
+def breadcrumb_structural_terms(
+    breadcrumb: str, source_document: str | None = None
+) -> list[str]:
+    """Token cấu trúc phía document, chỉ những token có trong breadcrumb.
+
+    Kèm token theo văn bản (`vb_X`, `vb_X_điều_N`, `vb_X_điều_N_khoản_M`) khi
+    `source_document` có trong bảng `DOCUMENTS`.
+    """
     ref = parse_breadcrumb(breadcrumb)
     terms: list[str] = []
     if ref.dieu is not None:
@@ -263,64 +274,115 @@ def breadcrumb_structural_terms(breadcrumb: str) -> list[str]:
         terms.append(_khoan_term(ref.khoan))
     if ref.dieu is not None and ref.khoan is not None:
         terms.append(_pair_term(ref.dieu, ref.khoan))
+
+    document = DOCUMENTS.get(source_document) if source_document else None
+    if document is not None:
+        terms.append(_doc_term(document.key))
+        if ref.dieu is not None:
+            terms.append(_doc_term(document.key, ref.dieu))
+            if ref.khoan is not None:
+                terms.append(_doc_term(document.key, ref.dieu, ref.khoan))
     return terms
 
 
-def structural_terms(numbers: Sequence[int], khoans: Sequence[int]) -> list[str]:
+def structural_terms(
+    numbers: Sequence[int], khoans: Sequence[int], doc: str | None = None
+) -> list[str]:
     """Token cấu trúc phía query: mỗi Điều, mỗi Khoản, mỗi cặp (Điều, Khoản).
 
-    "Khoản M" không kèm số Điều không sinh token. Tối đa 3 + 3 + 9 = 15 token.
+    "Khoản M" không kèm số Điều không sinh token. Khi `doc` (key văn bản duy
+    nhất trong câu hỏi) có mặt, thêm `vb_X`, `vb_X_điều_N` cho mỗi Điều và
+    `vb_X_điều_N_khoản_M` cho mỗi cặp. Tối đa 15 + 1 + 3 + 9 = 28 token.
     """
     if not numbers:
         return []
-    return (
+    terms = (
         [_dieu_term(n) for n in numbers]
         + [_khoan_term(m) for m in khoans]
         + [_pair_term(n, m) for n in numbers for m in khoans]
     )
+    if doc is not None:
+        terms += (
+            [_doc_term(doc)]
+            + [_doc_term(doc, n) for n in numbers]
+            + [_doc_term(doc, n, m) for n in numbers for m in khoans]
+        )
+    return terms
 
 
-# ------------------------------------------------------------- ghim khớp chính xác
+# ------------------------------------------------------------- văn bản (mục 6.2)
 
 
-def pin_exact_matches(
-    ranked: Sequence[RetrievedChunk],
-    numbers: Sequence[int],
-    khoans: Sequence[int],
-    *,
-    final_top_k: int,
-) -> list[RetrievedChunk]:
-    """Đưa chunk khớp chính xác Điều/Khoản lên đầu danh sách đã xếp hạng (mục 8.2).
+def _fold(text: str) -> str:
+    """NFC + lowercase + bỏ dấu (kể cả đ -> d) + gộp khoảng trắng."""
+    decomposed = unicodedata.normalize("NFD", unicodedata.normalize("NFC", text))
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return " ".join(stripped.lower().replace("đ", "d").split())
 
-    Với mỗi Điều được hỏi: chunk có `Điều N.` trong breadcrumb; nếu câu hỏi có
-    Khoản và tồn tại chunk khớp cả Khoản thì chỉ giữ chúng. Mỗi Điều tối đa
-    `PIN_PER_ARTICLE` chunk, tổng tối đa `final_top_k - 1`, chọn xen kẽ theo
-    Điều. Chunk ghim giữ thứ tự sẵn có của `ranked`; `rerank_score` không đổi.
 
-    Args:
-        ranked: Toàn bộ chunk đã xếp hạng (theo rerank hoặc fallback).
-        numbers: Số Điều được hỏi.
-        khoans: Số Khoản được hỏi.
-        final_top_k: Số chunk trả về cuối cùng (để tính trần ghim).
+class DocumentEntry(NamedTuple):
+    """Văn bản trong corpus: key ASCII làm token và các alias (đã chuẩn hoá)."""
 
-    Returns:
-        Danh sách cùng phần tử với `ranked`: chunk ghim trước, phần còn lại
-        giữ thứ tự cũ.
+    key: str
+    aliases: tuple[str, ...]
+
+
+def _entry(key: str, *aliases: str) -> DocumentEntry:
+    return DocumentEntry(key, tuple(_fold(alias) for alias in aliases))
+
+
+# `source_document` nguyên văn trong data/chunks -> key + alias. Alias chỉ gồm
+# tên có tiền tố luật/bộ luật/nghị định hoặc chữ viết tắt; tên chủ đề trơn
+# ("bảo hiểm xã hội", "lao động") không phải alias vì thường chỉ chủ đề. Thêm/đổi
+# văn bản trong corpus phải cập nhật bảng này.
+DOCUMENTS: dict[str, DocumentEntry] = {
+    "BỘ LUẬT LAO ĐỘNG": _entry("blld", "bộ luật lao động", "luật lao động", "blld"),
+    "LUẬT BẢO HIỂM XÃ HỘI": _entry("bhxh", "luật bảo hiểm xã hội", "luật bhxh"),
+    "LUẬT BẢO HIỂM Y TẾ": _entry("bhyt", "luật bảo hiểm y tế", "luật bhyt"),
+    "LUẬT THUẾ THU NHẬP CÁ NHÂN": _entry(
+        "tncn",
+        "luật thuế thu nhập cá nhân",
+        "luật thuế tncn",
+        "thuế thu nhập cá nhân",
+        "thuế tncn",
+    ),
+    "NGHỊ ĐỊNH QUY ĐỊNH MỨC LƯƠNG TỐI THIỂU ĐỐI VỚI NGƯỜI LAO ĐỘNG LÀM VIỆC THEO HỢP ĐỒNG LAO ĐỘNG": _entry(
+        "nd_luong",
+        "nghị định lương tối thiểu",
+        "nghị định mức lương tối thiểu",
+        "nghị định quy định mức lương tối thiểu",
+    ),
+    "NGHỊ ĐỊNH QUY ĐỊNH CHI TIẾT VÀ HƯỚNG DẪN THI HÀNH MỘT SỐ ĐIỀU CỦA BỘ LUẬT LAO ĐỘNG VỀ ĐIỀU KIỆN LAO ĐỘNG VÀ QUAN HỆ LAO ĐỘNG": _entry(
+        "nd_dkld",
+        "nghị định điều kiện lao động",
+        "nghị định quan hệ lao động",
+        "nghị định hướng dẫn bộ luật lao động",
+        "nghị định về điều kiện lao động và quan hệ lao động",
+    ),
+}
+
+_ALIAS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    (entry.key, re.compile(rf"(?<!\w){re.escape(alias)}(?!\w)"))
+    for entry in DOCUMENTS.values()
+    for alias in entry.aliases
+]
+
+
+def detect_document(query: str) -> str | None:
+    """Key của văn bản duy nhất được nêu tên trong câu hỏi gốc, hoặc `None`.
+
+    So khớp alias sau khi chuẩn hoá (NFC, lowercase, bỏ dấu). Khi các khoảng
+    khớp chồng lấn, alias dài thắng ("nghị định hướng dẫn bộ luật lao động"
+    thắng "bộ luật lao động" nằm trong nó). Không nêu văn bản, hoặc nêu từ 2
+    văn bản khác nhau (mơ hồ), trả `None`.
     """
-    refs = [parse_breadcrumb(chunk.breadcrumb) for chunk in ranked]
-    per_article: list[list[int]] = []
-    for number in numbers:
-        indices = [i for i, ref in enumerate(refs) if ref.dieu == number]
-        if khoans:
-            exact = [i for i in indices if refs[i].khoan in khoans]
-            indices = exact or indices
-        per_article.append(indices)
-
-    limit = final_top_k - 1
-    pinned: set[int] = set()
-    for rank in range(PIN_PER_ARTICLE):
-        for indices in per_article:
-            if len(pinned) < limit and rank < len(indices):
-                pinned.add(indices[rank])
-    order = sorted(pinned) + [i for i in range(len(ranked)) if i not in pinned]
-    return [ranked[i] for i in order]
+    text = _fold(query)
+    spans: list[tuple[int, int, str]] = []
+    for key, pattern in _ALIAS_PATTERNS:
+        spans.extend((m.start(), m.end(), key) for m in pattern.finditer(text))
+    accepted: list[tuple[int, int, str]] = []
+    for start, end, key in sorted(spans, key=lambda s: s[0] - s[1]):  # dài trước
+        if all(end <= a_start or start >= a_end for a_start, a_end, _ in accepted):
+            accepted.append((start, end, key))
+    keys = {key for _, _, key in accepted}
+    return next(iter(keys)) if len(keys) == 1 else None

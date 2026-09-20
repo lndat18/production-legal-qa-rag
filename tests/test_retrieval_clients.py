@@ -170,7 +170,7 @@ def test_rerank_read_timeout_log_so_passage_va_timeout_khong_goi_y_tunnel(
 
 @pytest.mark.parametrize(
     ("n_passages", "expected_read"),
-    [(2, 30.0), (12, 30.0), (13, 32.5), (36, 90.0)],
+    [(2, 30.0), (12, 30.0), (13, 32.5), (36, 90.0), (44, 110.0)],
 )
 def test_rerank_read_timeout_ti_le_so_passage_voi_san_30s(
     env: None, n_passages: int, expected_read: float
@@ -476,7 +476,7 @@ def test_build_index_upsert_theo_batch_sau_khi_xoa(env: None, tmp_path: Path):
     assert (tmp_path / "bm25.json").exists()
 
 
-def test_build_index_ghi_params_version_2_va_token_cau_truc(env: None, tmp_path: Path):
+def test_build_index_ghi_params_version_3_va_token_cau_truc(env: None, tmp_path: Path):
     chunks_dir = tmp_path / "chunks"
     chunks_dir.mkdir()
     chunk = Chunk(
@@ -496,7 +496,7 @@ def test_build_index_ghi_params_version_2_va_token_cau_truc(env: None, tmp_path:
     build_index(chunks_dir, params_path, VectorDBSettings(), client)  # type: ignore[arg-type]
 
     params = json.loads(params_path.read_text(encoding="utf-8"))
-    assert params["params_version"] == 2
+    assert params["params_version"] == 3
     assert {"điều_3", "khoản_1", "điều_3_khoản_1"} <= set(params["vocab"])
     indices = index.upserts[0][0]["sparse_values"]["indices"]
     assert params["vocab"]["điều_3_khoản_1"] in indices
