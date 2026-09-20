@@ -238,15 +238,6 @@ def test_reranker_loi_fallback_xen_ke_a_b_voi_score_none_mmr_bat():
     _fallback_case(use_mmr=True)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=RetrievalError,
-    reason=(
-        "BUG pipeline.py:~93-100: khi use_mmr=False, `branches` giữ Candidate cũ "
-        "(metadata=None) thay vì bản đã fill_missing, nên fallback rerank lỗi "
-        "với chunk chỉ có ở sparse raise RetrievalError thay vì degrade."
-    ),
-)
 def test_reranker_loi_fallback_xen_ke_mmr_tat_chunk_chi_co_o_sparse():
     _fallback_case(use_mmr=False)
 

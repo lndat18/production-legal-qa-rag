@@ -94,9 +94,11 @@ class RetrievalPipeline:
         union = _dedupe_by_chunk_id(branches)
         if not use_mmr:
             union = await self._dense_search.fill_missing(union, need_values=False)
-            kept_ids = {candidate.chunk_id for candidate in union}
+            # Ánh xạ sang bản đã fill: object cũ của nhánh còn thiếu metadata.
+            filled_by_id = {candidate.chunk_id: candidate for candidate in union}
             branches = [
-                [c for c in branch if c.chunk_id in kept_ids] for branch in branches
+                [filled_by_id[c.chunk_id] for c in branch if c.chunk_id in filled_by_id]
+                for branch in branches
             ]
 
         return await self._rerank(query, union, branches)
