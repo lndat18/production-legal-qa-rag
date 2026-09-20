@@ -579,3 +579,32 @@ def test_cli_sparse_exit_code_1_khi_loi(
     monkeypatch.setattr(cli, "build_index", boom)
     result = CliRunner().invoke(cli.app, ["--chunks-dir", str(tmp_path)])
     assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------- HyDE vs spec
+
+
+def _spec_hyde_prompt() -> tuple[str, str]:
+    """Đọc khối prompt trong retrieval_spec.md mục 4 (system, user)."""
+    spec = (
+        Path(__file__).resolve().parent.parent
+        / "src/production_legal_qa_rag/retrieval/retrieval_spec.md"
+    ).read_text(encoding="utf-8")
+    start = spec.index("[system]\n") + len("[system]\n")
+    user_marker = spec.index("\n\n[user]\n", start)
+    system = spec[start:user_marker]
+    user_start = user_marker + len("\n\n[user]\n")
+    user = spec[user_start : spec.index("\n```", user_start)]
+    return system, user
+
+
+def test_hyde_prompt_khop_tung_ky_tu_voi_spec_muc_4():
+    system, user = _spec_hyde_prompt()
+    assert HYDE_SYSTEM_PROMPT == system
+    assert HYDE_USER_TEMPLATE == user
+
+
+def test_hyde_system_prompt_khong_co_placeholder_format():
+    # System prompt dùng nguyên văn (không .format) nên không được chứa {query}.
+    assert "{query}" not in HYDE_SYSTEM_PROMPT
+    assert HYDE_USER_TEMPLATE.count("{query}") == 1
