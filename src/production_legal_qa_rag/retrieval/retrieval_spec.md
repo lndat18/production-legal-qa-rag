@@ -100,7 +100,8 @@ query → Groq → hypo ──►│   dense(emb_hypo) ┐                      
   `chunk_id`, mỗi chunk 1 lần dù có ở cả 2 nhánh. Không tính lại điểm fusion
   giữa 2 nhánh — reranker quyết định thứ tự cuối cùng. Tối đa
   `2 × BRANCH_TOP_N` passage; riêng câu hỏi viện dẫn (mục 8.1) thêm tối đa
-  `CITATION_SPARSE_TOP_K` (=10) extras → tối đa `2 × BRANCH_TOP_N + 10`.
+  extras (mục 8.1: 10 với 1 Điều; tối đa 16 với 2-3 Điều) → tối đa
+  `2 × BRANCH_TOP_N + 16` = 36.
 - **MMR là bước tuỳ chọn** (bật/tắt bằng công tắc, mục 7) để đánh giá tác động
   bằng RAGAS.
 
@@ -111,7 +112,7 @@ query → Groq → hypo ──►│   dense(emb_hypo) ┐                      
 | Groq (HyDE)                                                 | 1                              |
 | HF Inference API (embed 2 text trong 1 batch)               | 1                              |
 | Pinecone dense query                                        | 2 (1/nhánh)                   |
-| Pinecone sparse query                                       | 2 (1/nhánh)                   |
+| Pinecone sparse query                                       | 2 (1/nhánh); câu viện dẫn ≥ 2 Điều thêm n lượt (mỗi Điều 1 lượt, n ≤ 3, chạy song song, mục 8.1) → ≤ 5 |
 | Pinecone dense fetch (bổ sung vector/metadata, mục 6.4) | MMR bật: ≤ 2 (1/nhánh), câu viện dẫn thêm ≤ 1 (metadata extras, mục 8.1) → ≤ 3; MMR tắt: ≤ 1 (cho cả union, kể cả extras) |
 | Reranker tự host                                           | 1                              |
 
@@ -133,6 +134,8 @@ mức tiêu thụ so với 2 request riêng. Spec này không xử lý thêm v�
   viện dẫn sai sẽ kéo các chunk khớp số sai vào nhánh A.
 
 **Prompt (tách system/user; hằng số trong `retrieval/hyde.py`):**
+
+<!-- tests/test_retrieval_clients.py đọc khối prompt bên dưới để so khớp với `retrieval/hyde.py`; đừng đổi cấu trúc khối (fence, nhãn [system]/[user]) mà không sửa test. -->
 
 Tách system/user vì phần quy tắc cố định nằm ở system (model tuân thủ ổn định
 hơn, và câu hỏi người dùng nằm riêng ở user nên khó "ghi đè" quy tắc bằng nội
@@ -413,7 +416,7 @@ RAGAS; nếu MMR bật kém hơn thì tắt, hoặc tăng `MMR_LAMBDA` (~0.7) r�
 ## 8. Union
 
 `union = dedupe_by_chunk_id(nhánh_a + nhánh_b)` — tối đa `2 × BRANCH_TOP_N`
-chunk (câu viện dẫn: cộng extras, mục 8.1, tối đa `2 × BRANCH_TOP_N + 10`).
+chunk (câu viện dẫn: cộng extras, mục 8.1, tối đa `2 × BRANCH_TOP_N + 16`).
 Giữ thứ hạng của mỗi chunk trong nhánh của nó (sau MMR nếu bật, sau RRF
 nếu tắt) để phục vụ fallback (mục 9). Sau union (và sau extras nếu có), bổ
 sung metadata cho id còn thiếu (`fill_missing`, mục 6.4): MMR tắt 1 lượt cho
@@ -425,24 +428,91 @@ Vấn đề (điểm mở 5 cũ): với câu hỏi viện dẫn Điều/Khoản,
 nằm cao ở sparse nhưng dense xếp thấp; RRF trọng số bằng nhau rồi cắt
 `FUSION_TOP_N`/`BRANCH_TOP_N` (và MMR) khiến nó không vào union.
 
-- **Nhận diện** (`retrieval/citation.py`, `has_citation(query: str) -> bool`):
-  regex trên **câu hỏi gốc** (không phải hypo), chuẩn hoá Unicode NFC, không
-  phân biệt hoa thường, khớp `điều\s+\d+`. Số Điều là tín hiệu chính; "khoản
-  N" đứng một mình **không đủ**. Phải đúng với "Điều 36 khoản 2 ...", "khoản 2
-  điều 36 ...", "điều 3"; **không** khớp "điều kiện lao động", "trong 3 điều
-  kiện" và câu hỏi tự nhiên không có số Điều.
-- **Extras**: khi `has_citation(query)`, top `CITATION_SPARSE_TOP_K = 10` kết
-  quả sparse của **nhánh B** (câu hỏi gốc; không dùng hypo vì luật HyDE cấm
-  nêu số Điều) luôn được thêm vào union (dedupe theo `chunk_id`), bất kể
-  RRF/MMR/`BRANCH_TOP_N` đã cắt. Extras là **hit sparse thô** nên điểm của
-  chúng là điểm BM25 (dot product sparse), không phải `rrf_score`. **Dùng lại kết quả `sparse_index.query` đã có
-  của nhánh B — không thêm lượt gọi Pinecone sparse.** `CITATION_SPARSE_TOP_K`
-  là hằng số nội bộ `retrieval/`, không vào `config.py` (nhất quán mục 12).
+- **Nhận diện** (`retrieval/citation.py`, chốt 2026-09-20 theo lý thuyết):
+  `extract_citation_numbers(query: str) -> list[int]` trả các số Điều theo
+  thứ tự xuất hiện, dedupe giữ thứ tự, **tối đa `MAX_CITATION_ARTICLES = 3`**
+  (phần dư bỏ qua và log info — chặn số lượt sparse phụ và latency rerank);
+  `has_citation(query) = bool(extract_citation_numbers(query))`. Regex trên
+  **câu hỏi gốc** (không phải hypo), chuẩn hoá Unicode NFC, không phân biệt
+  hoa thường. Số Điều là tín hiệu chính; "khoản N" đứng một mình **không đủ**.
+  Nguyên tắc: **ưu tiên không false positive hơn là bắt hết**; mỗi dạng hỗ
+  trợ phải có ca dương và ca âm trong test (mục 15). Số Điều tối đa 3 chữ số
+  (`\d{1,3}` không dính thêm chữ số, để "điều 2024" không khớp), đứng sau ranh
+  giới từ (`(?<!\w)`).
+
+  | Dạng | Quyết định | Ca dương / âm và lý do |
+  | --- | --- | --- |
+  | "Điều 36", "điều 3", "khoản 2 điều 36" | Hỗ trợ (hiện có) | "Điều 36 khoản 2 ..." → [36] |
+  | "điều36" (liền) | Hỗ trợ (`\s*` thay cho `\s+`) | dương: "điều36 quy định gì" → [36]; "điều" liền chữ số gần như không xuất hiện trong văn nói thường, false positive thấp |
+  | "Điều thứ 5" | Hỗ trợ (`điều\s*(?:thứ\s+)?\d`) | dương: "Điều thứ 5" → [5]; âm: "điều thứ hai" (không có số) |
+  | "Điều 36.2" | Hỗ trợ, chỉ lấy 36 | dương: "Điều 36.2" → [36]; phần ".2" (Khoản) bỏ qua, vẫn nằm trong sub-query/BM25 |
+  | Danh sách "Điều 3, 5 và 7", "các Điều 3, 5" | Hỗ trợ: sau một `điều N`, các số nối bằng `,` `;` `và` `hoặc` `hay` được tính là Điều | dương → [3, 5, 7]; âm: số nối mà ngay sau là đơn vị (`tháng|ngày|năm|tuổi|người|lần|%|đồng|triệu`) thì không tính, vd. "Điều 3 và 5 người" → [3] |
+  | Khoảng "Điều 3 đến Điều 5", "Điều 3 đến 5" | Hỗ trợ **chỉ hai đầu mút** (`đến|tới` là dấu nối như trên), **không** mở rộng các Điều ở giữa (khoảng có thể rất rộng, phá trần) | dương → [3, 5]; giới hạn ghi nhận |
+  | "Đ.3", "Đ3", "đ 3" | **Không** hỗ trợ | "Đ" đơn lẻ dễ trùng ký hiệu/mã ngẫu nhiên; người dùng hiếm viết tắt vậy; âm: "Đ3", "mã Đ 3" → [] |
+  | "Điều II", "Điều V" (La Mã) | **Không** hỗ trợ | corpus và breadcrumb dùng số Ả Rập ("Điều 36."); token La Mã không khớp BM25; "Điều I/V" dễ nhầm chữ thường; âm: "Điều II" → [] |
+  | "Điều ba" (chữ) | **Không** hỗ trợ | không khớp token số trong corpus; "điều một/hai/ba" hay là từ thường ("điều ba người cần biết"); âm → [] |
+  | "điều kiện", "điều khoản", "điều hành", "trong 3 điều kiện", "chiều 5" | Không khớp | không có chữ số ngay sau "điều" / không qua ranh giới từ |
+
+  Giới hạn đã biết, chấp nhận: "điều 5 tháng ..." (ít gặp) vẫn khớp vì không
+  thể phân biệt rẻ bằng regex; chi phí false positive thấp (thêm tối đa 10
+  passage, không đổi kết quả khác — reranker vẫn quyết định). Điểm ("Điểm a")
+  và tên/số hiệu văn bản không dùng để nhận diện.
+- **Extras** — `citation_extras(...)`: extras luôn được thêm vào union (dedupe
+  theo `chunk_id`), bất kể RRF/MMR/`BRANCH_TOP_N` đã cắt, và là **hit sparse
+  thô** nên điểm của chúng là điểm BM25 (dot product sparse), không phải
+  `rrf_score`. Không dùng hypo (luật HyDE cấm nêu số Điều). Hằng số nội bộ
+  `retrieval/`, không vào `config.py` (mục 12): `CITATION_SPARSE_TOP_K = 10`
+  (K), `MAX_CITATION_ARTICLES = 3`, `CITATION_EXTRAS_BUDGET = 16`. Gọi n là số
+  Điều nhận diện được (1 ≤ n ≤ 3):
+  - **n = 1 (giữ nguyên hành vi hiện tại)**: đúng K hit đầu của danh sách
+    sparse thô của nhánh B (câu hỏi gốc). **Dùng lại kết quả
+    `sparse_index.query` đã có — không thêm lượt gọi Pinecone sparse.**
+  - **n ≥ 2 (chốt 2026-09-20)**: với mỗi Điều i chạy **1 truy vấn sparse
+    riêng**, sub-query_i = câu hỏi gốc đã bỏ các số (kèm "điều"/"điều thứ"
+    đứng trước nếu có) của **các Điều khác** — vd. "Điều 3 khoản 1 và Điều 5
+    khoản 2" → Điều 3: "Điều 3 khoản 1 và khoản 2"; Điều 5: "khoản 1 và
+    Điều 5 khoản 2" — rồi `encode_query` + `sparse_index.query(top_k=k_n)`.
+    Các truy vấn này (n lượt, ≤ 3) chạy **song song** với 2 nhánh (`gather`
+    ở bước 3 mục 13B). Với n ≥ 2 danh sách sparse thô của nhánh B **không**
+    dùng cho extras (nhánh B vẫn chạy bình thường cho union).
+  - **Quota** (chốt 2026-09-20): chia tổng ngân sách cố định
+    `CITATION_EXTRAS_BUDGET = 16` cho n ≥ 2: `k_n = floor(16 / n)` hit đầu của
+    mỗi Điều — n=2 → 8/Điều (tổng 16), n=3 → 5/Điều (tổng 15); n=1 giữ K = 10
+    (hồi quy). Lý do: mỗi Điều nên có recall gần bằng trường hợp 1 Điều hơn
+    công thức chia nhỏ tổng 10-12 (chỉ 4-5/Điều), trong khi tổng ≤ 16 vẫn chặn
+    trần: không cần trần tổng riêng, union tối đa `2 × BRANCH_TOP_N + 16` = 36
+    passage. Ưu tiên chất lượng/recall hơn latency: reranker đang chạy CPU nên
+    câu nhiều Điều có thể ~40s/câu (quan sát ~30s cho câu 1 Điều với union ~30);
+    đo lại khi có GPU.
+  - **Thứ tự extras E**: xen kẽ theo Điều (Điều1#1, Điều2#1, Điều3#1,
+    Điều1#2, …), bỏ trùng `chunk_id` (chunk ở nhiều danh sách giữ ở vị trí
+    sớm nhất) — dùng làm danh sách E của fallback (mục 9).
+  - **Lý do chọn hướng (a)** thay vì (b) (giữ danh sách thô nhánh B, fetch
+    metadata để gán chunk cho Điều theo breadcrumb rồi chia quota): (b) không
+    tốn lượt sparse nhưng chỉ chọn trong SPARSE_TOP_N=20 hit thô dùng chung nên
+    một Điều có thể chiếm gần hết, Điều kia rơi ngoài top 20 (recall kém đúng ở
+    ca cần cải thiện), và phải fetch metadata *trước* khi chia quota (thêm một
+    lượt fetch vào đường chính). (a) tốn ≤ 3 lượt sparse (rẻ, song song, không
+    phụ thuộc Groq/HF nên không nằm trên đường găng) đổi lấy quota công bằng và
+    sub-query bớt nhiễu từ số Điều khác.
+  - **Lỗi sparse của lượt phụ (chốt 2026-09-20): DEGRADE, không raise.**
+    Lượt phụ của một Điều lỗi (sau hết retry) → log warning, bỏ extras của
+    Điều đó, các Điều khác vẫn dùng; nếu **mọi** lượt phụ lỗi → lùi về hành vi
+    n=1 (K=10 hit đầu của danh sách sparse thô nhánh B). Lỗi sparse ở 2 nhánh
+    chính giữ nguyên (raise `RetrievalError`, mục 10). Đây là **ngoại lệ có
+    chủ ý** của nguyên tắc mục 10 ("chỉ degrade 2 điểm"): extras chỉ là phần
+    tăng cường, để một lượt phụ hỏng làm hỏng cả câu trong khi đường chính vẫn
+    trả lời được là quá nặng tay (mục 10 ghi là điểm degrade thứ 3).
+  - **Giới hạn đã biết (chấp nhận)**: sub-query chỉ xoá **số Điều** của các
+    Điều khác, không xoá "khoản Y" đi kèm (không phân định chắc "khoản" thuộc
+    Điều nào) nên khoản của Điều kia vẫn lẫn vào sub-query; cần đo lại.
 - **Câu không viện dẫn**: pipeline giữ nguyên hoàn toàn (không thêm latency,
-  không đổi kết quả).
+  không đổi kết quả). **Câu 1 Điều**: y hệt hành vi cũ.
 - **Metadata**: chunk extras chỉ có ở sparse cần fetch metadata; bước
-  `fill_missing` cho union chạy **sau** khi thêm extras (số lượt fetch: mục 6.4).
-  Chunk fetch không trả về thì bỏ, log warning.
+  `fill_missing` cho union chạy **sau** khi thêm extras (số lượt fetch: mục 6.4;
+  không đổi theo n). Chunk fetch không trả về thì bỏ, log warning.
+- **Số lượt gọi API**: Pinecone sparse query: 2 (n ≤ 1) hoặc 2 + n (n ≥ 2,
+  tối đa 5); các lượt còn lại như mục 3.
 - **Bằng chứng** (2026-09-20): 40 câu viện dẫn tự sinh từ corpus (10 câu × 4
   văn bản: Bộ luật Lao động, Luật BHXH, Luật BHYT, Luật thuế TNCN; dạng "Điều
   N khoản M <tên văn bản> quy định gì?"; đáp án chuẩn = chunk có đúng
@@ -528,7 +598,9 @@ root repo). Đã test thành công end-to-end (2026-09-18).
 - **Fallback khi hết retry** (chốt 2026-09-19): không crash, log warning, trả
   top `FINAL_TOP_K` với `rerank_score=None`. Thứ tự: xen kẽ round-robin các
   danh sách theo thứ hạng (A1, B1, E1, A2, B2, E2, …), bỏ chunk trùng; E là
-  danh sách extras (mục 8.1), chỉ có khi câu hỏi viện dẫn. Cách này không cần
+  danh sách extras (mục 8.1), chỉ có khi câu hỏi viện dẫn; với nhiều Điều, E
+  đã được xen kẽ theo Điều sẵn (Điều1#1, Điều2#1, …) nên fallback vẫn coi E là
+  một danh sách duy nhất. Cách này không cần
   vector nên dùng được ở cả 2 chế độ MMR. Nếu nhánh A vắng (Groq lỗi) thì bỏ
   qua A (B1, E1, B2, E2, …).
 
@@ -600,16 +672,18 @@ tiếp khi phiên SSH đóng; nó KHÔNG ngăn Studio sleep, xem ghi chú):**
   là proxy giao diện web có xác thực; còn "Lightning Deploy" (Autoscale) bị
   lỗi hạ tầng (replica crash-loop ở bước Setup) khi thử nghiệm 2026-09-18.
 
-## 10. Xử lý lỗi (chỉ degrade 2 điểm)
+## 10. Xử lý lỗi (degrade 2 điểm chính + 1 ngoại lệ extras)
 
-Chỉ degrade ở 2 điểm hay lỗi nhất và có phương án thay thế rẻ; các lỗi còn lại
-raise rõ ràng, không cố xử lý từng trường hợp (giữ đơn giản).
+Chỉ degrade ở 2 điểm hay lỗi nhất và có phương án thay thế rẻ, cộng 1 ngoại lệ
+có chủ ý là lượt sparse phụ của extras viện dẫn (dòng thứ 3 bảng dưới); các lỗi
+còn lại raise rõ ràng, không cố xử lý từng trường hợp (giữ đơn giản).
 
 | Lỗi (sau hết retry) | Xử lý |
 | --- | --- |
 | Groq lỗi/timeout hoặc trả rỗng | Bỏ nhánh A; chỉ embed câu hỏi gốc (batch 1) và chạy nhánh B; log warning |
 | Reranker lỗi | Fallback mục 9 |
-| HF embed hoặc Pinecone (dense/sparse/fetch) lỗi | Raise `RetrievalError` kèm nguyên nhân; bước generation quyết định xử lý |
+| Sparse lượt phụ của extras (câu ≥ 2 Điều, mục 8.1) lỗi | Log warning, bỏ extras của Điều đó, các Điều khác vẫn dùng; mọi lượt phụ lỗi → lùi về hành vi n=1. Lý do: extras chỉ là phần tăng cường, đường chính vẫn trả lời được nên không đáng làm hỏng cả câu |
+| HF embed hoặc Pinecone (dense/sparse của 2 nhánh chính/fetch) lỗi | Raise `RetrievalError` kèm nguyên nhân; bước generation quyết định xử lý |
 
 Số lần retry theo settings sẵn có của từng dịch vụ (`LLMSettings`,
 `EmbeddingSettings`, `RerankerSettings`).
@@ -651,7 +725,8 @@ bước generation sau cũng nên async.
 - `LIGHTNING_STUDIO_SSH` trong `.env` — **không** thuộc Settings nào (chỉ là
   ghi chú vận hành cho runbook mục 9.1).
 - **Không** đưa `DENSE_TOP_N`/`SPARSE_TOP_N`/`FUSION_TOP_N`/`RRF_K`/
-  `MMR_LAMBDA`/`BRANCH_TOP_N`/`USE_MMR`/`FINAL_TOP_K`/`CITATION_SPARSE_TOP_K` vào `config.py` — hằng số nội bộ của
+  `MMR_LAMBDA`/`BRANCH_TOP_N`/`USE_MMR`/`FINAL_TOP_K`/`CITATION_SPARSE_TOP_K`/`MAX_CITATION_ARTICLES`/
+  `CITATION_EXTRAS_BUDGET` vào `config.py` — hằng số nội bộ của
   `retrieval/`, nhất quán `embedding_spec.md` mục 7 (chỉ field dùng chung nhiều
   package mới vào `config.py`).
 
@@ -709,9 +784,12 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
   use_mmr = USE_MMR if use_mmr is None else use_mmr                  # mục 7
   1. hypo = await hyde.generate(query)                                # mục 4 (lỗi → chỉ nhánh B, mục 10)
   2. emb_hypo, emb_query = await embedder.embed([hypo, query])        # mục 5, 1 request HF
-  3. branch_a, branch_b = await gather(
+  numbers = extract_citation_numbers(query)                           # mục 8.1 (≤ MAX_CITATION_ARTICLES, [] nếu không viện dẫn)
+  3. branch_a, branch_b, article_hits = await gather(
        run_branch(text=hypo,  dense_emb=emb_hypo),                    # nhánh A
-       run_branch(text=query, dense_emb=emb_query))                   # nhánh B
+       run_branch(text=query, dense_emb=emb_query),                   # nhánh B (trả thêm sparse hit thô)
+       citation_article_hits(query, numbers) if len(numbers) >= 2 else none())
+         # mục 8.1: mỗi Điều 1 sparse query riêng (sub-query bỏ số Điều khác), top k_n = floor(16/n), song song; lượt phụ lỗi → degrade (mục 8.1, 10)
 
      run_branch(text, dense_emb):
        a. dense, sparse = await gather(
@@ -724,8 +802,10 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
           return fused[:BRANCH_TOP_N]
 
   4. union = dedupe_by_chunk_id(branch_a + branch_b)                  # mục 8
-     if has_citation(query):                                          # mục 8.1 (regex trên query gốc)
-         union += citation_extras(branch_b_sparse_hits)               # top CITATION_SPARSE_TOP_K sparse của nhánh B, dedupe
+     if numbers:                                                      # = has_citation(query), mục 8.1
+         union += citation_extras(numbers, branch_b_sparse_hits, article_hits)
+           # 1 Điều: K=10 hit đầu sparse thô nhánh B (không thêm lượt sparse);
+           # ≥2 Điều: top k_n mỗi Điều, xen kẽ theo Điều, dedupe; tổng ≤ 16
      union = await fill_missing_metadata(union)                       # mục 6.4: MMR tắt 1 lượt cho cả union;
                                                                       # MMR bật chỉ khi còn id thiếu (extras)
   5. scores = await reranker_client.rerank(query, [c.breadcrumb + "\n" + c.content for c in union])  # mục 9 (lỗi → fallback)
@@ -748,7 +828,7 @@ nhất là `bm25_params.json`, đọc 1 lần lúc khởi tạo pipeline cùng c
 | `dense_search.py` | Query dense index có sẵn + fetch vector/metadata bổ sung (mục 6.1, 6.4) |
 | `fusion.py`          | Thuật toán RRF (mục 6.3)                                                                     |
 | `mmr.py` | Thuật toán MMR, bật/tắt bằng công tắc `USE_MMR` / `use_mmr` (mục 7) |
-| `citation.py` | `has_citation(query)` — regex nhận diện câu hỏi viện dẫn Điều; `citation_extras(...)` — lấy top `CITATION_SPARSE_TOP_K` hit sparse thô của nhánh B làm extras (mục 8.1) |
+| `citation.py` | Nhận diện & extras cho câu hỏi viện dẫn (mục 8.1): `extract_citation_numbers(query) -> list[int]` (≤ 3 số Điều, theo thứ tự, dedupe); `has_citation(query)` = `bool(...)`; `build_article_queries(query, numbers)` — sub-query mỗi Điều (bỏ số Điều khác); `citation_extras(numbers, branch_b_hits, article_hits)` — 1 Điều: K hit đầu sparse thô nhánh B; ≥ 2 Điều: top `k_n` mỗi Điều xen kẽ, dedupe |
 | `reranker_client.py` | HTTP client gọi server LightningAI, retry/validate/fallback (mục 9)                           |
 | `pipeline.py`        | `retrieve(query)` — điều phối toàn bộ (mục 13B); sở hữu các client                  |
 | `__init__.py`        |                                                                                                 |
@@ -778,13 +858,28 @@ agent) cho `reranker_client.py`.
   định gì") để xác nhận sparse/keyword search hoạt động (candidate tương ứng
   xuất hiện trong top sparse dù dense có thể xếp thấp).
 - Số lượt gọi API cho 1 câu hỏi khớp bảng mục 3 (Groq 1, HF 1, rerank 1).
-- `citation.py` có unit test cho `has_citation`: đúng với "Điều 36 khoản 2 ...",
-  "khoản 2 điều 36 ...", "điều 3"; sai với "điều kiện lao động", "trong 3 điều
-  kiện", "khoản 2 quy định gì" (không có số Điều) và câu hỏi tự nhiên không
-  viện dẫn.
-- Câu viện dẫn: chunk đáp án nằm trong sparse top-10 của nhánh B thì có trong
+- `citation.py` có unit test cho `extract_citation_numbers`/`has_citation`, mỗi
+  dạng ở mục 8.1 có ca dương và ca âm: "Điều 36 khoản 2 ..." → [36], "khoản 2
+  điều 36 ..." → [36], "điều 3" → [3], "điều36" → [36], "Điều thứ 5" → [5],
+  "Điều 36.2" → [36], "Điều 3, 5 và 7" → [3, 5, 7], "Điều 3 đến Điều 5" →
+  [3, 5], "Điều 3 và 5 người" → [3]; dedupe/giữ thứ tự ("Điều 5 và Điều 3 và
+  Điều 5" → [5, 3]); trần: 4 Điều → chỉ 3 số đầu; sai (→ []) với "điều kiện
+  lao động", "trong 3 điều kiện", "điều khoản", "điều hành", "Đ3", "Đ.3",
+  "Điều II", "Điều ba", "điều 2024", "khoản 2 quy định gì" và câu hỏi tự
+  nhiên không viện dẫn.
+- Nhiều Điều (n ≥ 2): `build_article_queries` cho ra sub-query mỗi Điều đã bỏ
+  số Điều khác; mỗi Điều có extras riêng (chunk đáp án nằm trong top `k_n` sparse
+  của sub-query Điều đó thì có trong union dù Điều kia chiếm cao ở danh sách
+  chung); quota `k_n = floor(16/n)` (n=2 → 8, n=3 → 5) và tổng extras ≤ 16;
+  thứ tự E xen kẽ theo Điều, dedupe; số lượt Pinecone sparse = 2 + n (n ≥ 2).
+  Lượt phụ sparse lỗi (fake client ném lỗi) → degrade: bỏ extras của Điều đó,
+  các Điều khác vẫn có, log warning, `retrieve()` không raise; mọi lượt phụ lỗi
+  → extras = 10 hit đầu sparse thô nhánh B; lỗi sparse ở nhánh chính vẫn raise
+  `RetrievalError`. 1 Điều: extras đúng 10 hit đầu sparse thô nhánh
+  B, không thêm lượt sparse (không đổi so với hiện trạng).
+- Câu viện dẫn 1 Điều: chunk đáp án nằm trong sparse top-10 của nhánh B thì có trong
   union dù RRF/MMR đã loại; câu không viện dẫn: union giống hệt hiện trạng,
-  không có extras; không thêm lượt Pinecone sparse; số lượt fetch đúng mục 3 /
+  không có extras; không thêm lượt Pinecone sparse (1 Điều); số lượt fetch đúng mục 3 /
   6.4 cho cả hai chế độ MMR (MMR bật ≤ 3, MMR tắt ≤ 1 với câu viện dẫn);
   fallback rerank xen kẽ có danh sách E (A1, B1, E1, …).
 - Vector query được embed qua cùng tiền xử lý `pyvi` như lúc index (test:
@@ -854,9 +949,19 @@ tinh chỉnh lại bằng RAGAS/latency khi có GPU.
    khi MMR bật so với 65% khi tắt (MMR dựa trên cosine dense, không có nghĩa
    với số Điều). Đưa vào so sánh RAGAS (điểm 3); cân nhắc tắt MMR mặc định
    hoặc bỏ MMR khi `has_citation`.
-7. Mở rộng nhận diện viện dẫn (Điểm, "Điều 36.2", tên văn bản/số hiệu) và tinh
-   chỉnh `CITATION_SPARSE_TOP_K` theo dữ liệu thật (mục 8.1). k là tham số
-   cần tinh chỉnh lại bằng RAGAS/latency khi có GPU.
+7. **[ĐÃ CHỐT 2026-09-20 — theo lý thuyết, chưa đo]** Mở rộng nhận diện viện
+   dẫn và chia quota cho câu nhiều Điều (mục 8.1): nhận "điều36", "Điều thứ
+   5", "Điều 36.2", danh sách/khoảng (chỉ hai đầu mút), trần 3 Điều; không nhận
+   "Đ.3"/"Đ3", La Mã, chữ. n ≥ 2: 1 sparse query riêng mỗi Điều (sub-query bỏ
+   số Điều khác), `k_n = floor(16/n)` (`CITATION_EXTRAS_BUDGET = 16`: 8/Điều với
+   n=2, 5/Điều với n=3; tổng ≤ 16, union ≤ 36), xen kẽ theo Điều; n = 1 giữ
+   nguyên. Lượt sparse phụ lỗi thì degrade (ngoại lệ có chủ ý, mục 10). Ưu
+   tiên recall hơn latency: trên CPU câu nhiều Điều có thể ~40s, đo lại khi có
+   GPU. Chấp nhận chưa đo: false positive "điều 5 tháng", chất lượng sub-query
+   (chỉ xoá số Điều khác, không xoá "khoản Y"), quota. Cần đo lại bằng RAGAS/bộ câu hỏi nhiều Điều sau này
+   (kể cả có nên tăng quota/trần, nhận thêm Điểm, tên/số hiệu văn bản). k
+   (`CITATION_SPARSE_TOP_K`) cũng cần tinh chỉnh lại bằng RAGAS/latency khi có
+   GPU.
 8. Recall còn lỡ ~15% ở k=10 (~20% ở k=5) chưa điều tra nguyên nhân (nghi ngờ câu trùng
    Điều/Khoản giữa nhiều văn bản, hoặc nhiễu sparse).
 9. Có nên bỏ HyDE (tiết kiệm 1 lượt Groq) khi câu hỏi chỉ thuần viện dẫn, không

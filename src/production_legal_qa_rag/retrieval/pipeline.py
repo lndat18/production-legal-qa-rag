@@ -11,7 +11,12 @@ from typing import NamedTuple
 from production_legal_qa_rag.embedding.models import PineconeMetadata
 from production_legal_qa_rag.retrieval import fusion, mmr
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
-from production_legal_qa_rag.retrieval.citation import citation_extras, has_citation
+from production_legal_qa_rag.retrieval.citation import (
+    CITATION_EXTRAS_BUDGET,
+    build_article_queries,
+    citation_extras,
+    extract_citation_numbers,
+)
 from production_legal_qa_rag.retrieval.dense_search import DENSE_TOP_N, DenseSearch
 from production_legal_qa_rag.retrieval.fusion import RRF_K
 from production_legal_qa_rag.retrieval.hyde import HydeGenerator
@@ -72,8 +77,9 @@ class RetrievalPipeline:
     ) -> list[RetrievedChunk]:
         """Trả về tối đa `FINAL_TOP_K` chunk liên quan nhất tới `query`.
 
-        Câu hỏi viện dẫn Điều (`has_citation`) được thêm top sparse của nhánh B
-        vào union (mục 8.1).
+        Câu hỏi viện dẫn Điều được thêm extras từ sparse vào union: 1 Điều dùng
+        top sparse của nhánh B, >= 2 Điều dùng sparse query riêng cho từng Điều
+        (mục 8.1).
 
         Args:
             query: Một câu hỏi tiếng Việt độc lập.
@@ -102,15 +108,20 @@ class RetrievalPipeline:
                     hypothetical_document, embeddings[0], query_embedding, use_mmr
                 ),
             )
-        results = list(await asyncio.gather(*branch_jobs))
+        numbers = extract_citation_numbers(query)
+        # Sparse query phụ (n >= 2 Điều) chạy cùng lúc với 2 nhánh; không phụ
+        # thuộc Groq/HF và không bao giờ raise nên không làm hỏng nhánh chính.
+        job_results, article_hits = await asyncio.gather(
+            asyncio.gather(*branch_jobs),
+            self._article_hits(query, numbers),
+        )
+        results = list(job_results)
         branches = [result.candidates for result in results]
 
-        # Extras chỉ cho câu viện dẫn; dùng lại sparse hits của nhánh B, không
-        # thêm lượt gọi sparse.
-        extras = (
-            citation_extras(_branch_b_result(results).sparse_hits)
-            if has_citation(query)
-            else []
+        # Extras chỉ cho câu viện dẫn; n = 1 dùng lại sparse hits của nhánh B,
+        # không thêm lượt gọi sparse.
+        extras = citation_extras(
+            numbers, _branch_b_result(results).sparse_hits, article_hits
         )
         if extras:
             branches.append(extras)
@@ -126,6 +137,38 @@ class RetrievalPipeline:
             ]
 
         return await self._rerank(query, union, branches)
+
+    async def _article_hits(
+        self, query: str, numbers: list[int]
+    ) -> dict[int, list[SearchHit]]:
+        """Sparse query phụ cho từng Điều khi câu hỏi nhắc >= 2 Điều (mục 8.1).
+
+        Lượt lỗi chỉ log warning và bỏ Điều đó (degrade); không bao giờ raise.
+        Trả rỗng khi n < 2.
+        """
+        if len(numbers) < 2:
+            return {}
+        quota = CITATION_EXTRAS_BUDGET // len(numbers)
+        outcomes = await asyncio.gather(
+            *(
+                self._sparse_index.query(sub_query, quota)
+                for sub_query in build_article_queries(query, numbers)
+            ),
+            return_exceptions=True,
+        )
+        hits: dict[int, list[SearchHit]] = {}
+        for number, outcome in zip(numbers, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                if not isinstance(outcome, Exception):
+                    raise outcome  # CancelledError/KeyboardInterrupt đi tiếp
+                logger.warning(
+                    "Sparse query phụ cho Điều %d lỗi, bỏ extras của Điều này.",
+                    number,
+                    exc_info=outcome,
+                )
+                continue
+            hits[number] = outcome
+        return hits
 
     async def _run_branch(
         self,
