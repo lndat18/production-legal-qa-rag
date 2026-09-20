@@ -50,6 +50,8 @@ Quy tắc:
 HYDE_USER_TEMPLATE = "Câu hỏi: {query}"
 
 # Tham số Groq (mục 4): hằng số nội bộ, không vào LLMSettings.
+# `reasoning_effort` là tham số đặc thù của họ gpt-oss: nếu đổi sang model không
+# hỗ trợ, lời gọi sẽ lỗi và HyDE degrade im lặng (bỏ nhánh A, chỉ có warning).
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE = 0.2
 _MAX_COMPLETION_TOKENS = 2048
