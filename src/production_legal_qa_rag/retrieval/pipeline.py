@@ -103,31 +103,29 @@ class RetrievalPipeline:
         numbers = extract_citation_numbers(query)
         khoans = extract_citation_khoans(query) if numbers else []
         doc = detect_document(query) if numbers else None
-        branch_jobs = [
-            self._run_branch(
-                query,
-                query_embedding,
-                query_embedding,
-                use_mmr,
-                structural_terms(numbers, khoans, doc),
-            )
-        ]
-        if hypothetical_document is not None:
+        branch_b_job = self._run_branch(
+            query,
+            query_embedding,
+            query_embedding,
+            use_mmr,
+            structural_terms(numbers, khoans, doc),
+        )
+        result_a: _BranchResult | None = None
+        if hypothetical_document is None:
+            result_b = await branch_b_job
+        else:
             # Hypo không có số Điều (luật HyDE) nên không sinh token cấu trúc.
-            branch_jobs.insert(
-                0,
+            result_a, result_b = await asyncio.gather(
                 self._run_branch(
                     hypothetical_document, embeddings[0], query_embedding, use_mmr, []
                 ),
+                branch_b_job,
             )
-        results = list(await asyncio.gather(*branch_jobs))
-        branches = [result.candidates for result in results]
+        branches = [r.candidates for r in (result_a, result_b) if r is not None]
 
         # Extras chỉ cho câu viện dẫn; dùng lại sparse hits của nhánh B nên
         # không thêm lượt gọi sparse (luôn đúng 2 lượt, mọi số Điều).
-        extras = (
-            citation_extras(_branch_b_result(results).sparse_hits) if numbers else []
-        )
+        extras = citation_extras(result_b.sparse_hits) if numbers else []
         if extras:
             branches.append(extras)
 
@@ -209,12 +207,6 @@ async def retrieve(query: str, *, use_mmr: bool | None = None) -> list[Retrieved
     if _default_pipeline is None:
         _default_pipeline = RetrievalPipeline()
     return await _default_pipeline.retrieve(query, use_mmr=use_mmr)
-
-
-def _branch_b_result(results: list[_BranchResult]) -> _BranchResult:
-    """Kết quả nhánh B (câu hỏi gốc): luôn là phần tử cuối vì nhánh A chỉ được
-    chèn vào đầu danh sách `branch_jobs` khi có hypothetical document."""
-    return results[-1]
 
 
 def _dedupe_by_chunk_id(branches: list[list[Candidate]]) -> list[Candidate]:

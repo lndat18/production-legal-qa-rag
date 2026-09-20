@@ -11,7 +11,7 @@ from production_legal_qa_rag.retrieval import pipeline as pipeline_module
 from production_legal_qa_rag.retrieval.citation import (
     CITATION_SPARSE_TOP_K,
     citation_extras,
-    has_citation,
+    extract_citation_numbers,
 )
 from production_legal_qa_rag.retrieval.models import SearchHit
 
@@ -32,14 +32,14 @@ DENSE = [f"c{i}" for i in range(1, 21)]
         "Điều 3 khoản 1".encode().decode("utf-8"),
     ],
 )
-def test_has_citation_duong(query: str):
-    assert has_citation(query)
+def test_extract_citation_numbers_truthy_duong(query: str):
+    assert extract_citation_numbers(query)
 
 
-def test_has_citation_nfc_tu_dang_to_hop():
+def test_extract_citation_numbers_truthy_nfc_tu_dang_to_hop():
     import unicodedata
 
-    assert has_citation(unicodedata.normalize("NFD", "Điều 3 quy định gì"))
+    assert extract_citation_numbers(unicodedata.normalize("NFD", "Điều 3 quy định gì"))
 
 
 @pytest.mark.parametrize(
@@ -52,8 +52,8 @@ def test_has_citation_nfc_tu_dang_to_hop():
         "",
     ],
 )
-def test_has_citation_am(query: str):
-    assert not has_citation(query)
+def test_extract_citation_numbers_truthy_am(query: str):
+    assert not extract_citation_numbers(query)
 
 
 def test_citation_extras_lay_top_k_theo_thu_tu():
@@ -159,8 +159,8 @@ def test_extras_khong_co_metadata_tren_dense_bi_bo():
         "điều 3, điều kiện lao động",
     ],
 )
-def test_has_citation_ranh_gioi_va_nhieu_dieu(query: str):
-    assert has_citation(query)
+def test_extract_citation_numbers_truthy_ranh_gioi_va_nhieu_dieu(query: str):
+    assert extract_citation_numbers(query)
 
 
 @pytest.mark.parametrize(
@@ -174,8 +174,8 @@ def test_has_citation_ranh_gioi_va_nhieu_dieu(query: str):
         "Điều ba",
     ],
 )
-def test_has_citation_am_ranh_gioi(query: str):
-    assert not has_citation(query)
+def test_extract_citation_numbers_truthy_am_ranh_gioi(query: str):
+    assert not extract_citation_numbers(query)
 
 
 def test_citation_extras_it_hon_top_k_va_rong():
@@ -232,18 +232,6 @@ def test_union_toi_da_2_branch_top_n_cong_top_k(use_mmr: bool):
     assert len(rr.calls[0][1]) <= 2 * pipeline_module.BRANCH_TOP_N + (
         CITATION_SPARSE_TOP_K
     )
-
-
-def test_branch_b_result_la_phan_tu_cuoi():
-    from production_legal_qa_rag.retrieval.pipeline import (
-        _branch_b_result,
-        _BranchResult,
-    )
-
-    only_b = _BranchResult([], [SearchHit(chunk_id="b")])
-    a_and_b = [_BranchResult([], [SearchHit(chunk_id="a")]), only_b]
-    assert _branch_b_result([only_b]) is only_b  # Groq lỗi: chỉ có nhánh B
-    assert _branch_b_result(a_and_b) is only_b  # A + B: lấy B, không lấy A
 
 
 def _distinct_union_pipe(hyde: str | None):  # type: ignore[no-untyped-def]

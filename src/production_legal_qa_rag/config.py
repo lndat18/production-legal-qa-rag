@@ -81,8 +81,10 @@ class LLMSettings(BaseSettings):
 class RerankerSettings(BaseSettings):
     """Config reranker tự host trên LightningAI (retrieval_spec.md mục 9, 12).
 
-    `connect_timeout_seconds` tách khỏi `timeout_seconds` (read) để Studio
-    đang sleep không khiến 1 câu hỏi chờ quá lâu ở bước kết nối.
+    `connect_timeout_seconds` tách khỏi read timeout để Studio đang sleep không
+    khiến 1 câu hỏi chờ quá lâu ở bước kết nối. `timeout_seconds` là **sàn** của
+    read timeout: read thực tế = `max(timeout_seconds, 2.5 × n_passages)`
+    (`RERANK_SECONDS_PER_PASSAGE` trong `retrieval/reranker_client.py`).
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

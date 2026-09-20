@@ -1,4 +1,4 @@
-"""Test token cấu trúc BM25, params_version và ghim khớp chính xác (mục 6.2, 8.2)."""
+"""Test token cấu trúc BM25 (điều_N/khoản_M) và `params_version` (mục 6.2)."""
 
 from __future__ import annotations
 
@@ -238,6 +238,15 @@ def test_load_params_thieu_hoac_khac_version_bao_loi_ro_co_lenh_rebuild(
         BM25Encoder.load(path)
     assert REBUILD_COMMAND == "uv run python tools/sparse_index_documents.py"
     assert REBUILD_COMMAND in str(info.value)
+
+
+def test_load_thieu_file_params_bao_loi_ro_co_lenh_rebuild(tmp_path: Path):
+    missing = tmp_path / "khong_co.json"
+    with pytest.raises(BM25ParamsVersionError) as info:
+        BM25Encoder.load(missing)
+    assert REBUILD_COMMAND in str(info.value)
+    assert str(missing) in str(info.value)
+    assert isinstance(info.value.__cause__, FileNotFoundError)
 
 
 def test_pipeline_khong_chay_voi_params_cu(tmp_path: Path):

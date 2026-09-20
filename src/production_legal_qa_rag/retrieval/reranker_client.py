@@ -30,6 +30,10 @@ class _EndpointNotFoundError(_NonRetryableRerankError):
     """HTTP 404 — ngrok trả 404 khi tunnel offline hoặc Studio đang sleep."""
 
 
+class _RetryableStatusError(Exception):
+    """HTTP 502/503/504 — server chưa sẵn sàng hoặc quá tải."""
+
+
 class RerankerClient:
     """Client rerank 1 request cho toàn bộ passage, với retry và validate."""
 
@@ -64,7 +68,6 @@ class RerankerClient:
         if not passages:
             return []
 
-        studio_hint = ""
         for attempt in range(self._settings.max_retries + 1):
             try:
                 return await self._request_scores(query, passages)
@@ -100,7 +103,6 @@ class RerankerClient:
                     self._settings.max_retries + 1,
                     error,
                 )
-                studio_hint = _RUNBOOK_HINT
                 if attempt < self._settings.max_retries:
                     await asyncio.sleep(_BACKOFF_SECONDS * (2**attempt))
             except httpx.TransportError as error:
@@ -113,19 +115,15 @@ class RerankerClient:
                 )
                 return None
             except Exception:
-                # Lỗi ngoài httpx thường là lỗi lập trình: kèm traceback, không
-                # gợi ý kiểm tra Studio.
+                # Lỗi ngoài httpx thường là lỗi lập trình: retry vô ích, fallback
+                # ngay kèm traceback, không gợi ý kiểm tra Studio.
                 logger.warning(
-                    "Reranker gặp lỗi không mong đợi ở lần thử %d/%d",
-                    attempt + 1,
-                    self._settings.max_retries + 1,
+                    "Reranker gặp lỗi không mong đợi, không retry, dùng fallback.",
                     exc_info=True,
                 )
-                studio_hint = ""
-                if attempt < self._settings.max_retries:
-                    await asyncio.sleep(_BACKOFF_SECONDS * (2**attempt))
+                return None
 
-        logger.warning("Reranker hết retry, dùng fallback. %s", studio_hint)
+        logger.warning("Reranker hết retry, dùng fallback. %s", _RUNBOOK_HINT)
         return None
 
     def _read_timeout_seconds(self, passage_count: int) -> float:
@@ -155,10 +153,6 @@ class RerankerClient:
                 raise _EndpointNotFoundError("HTTP 404")
             raise _NonRetryableRerankError(f"HTTP {status}")
         return _validate_scores(response, expected_count=len(passages))
-
-
-class _RetryableStatusError(Exception):
-    """HTTP 502/503/504 — server chưa sẵn sàng hoặc quá tải."""
 
 
 def _validate_scores(response: httpx.Response, *, expected_count: int) -> list[float]:

@@ -1,4 +1,7 @@
-"""Hồi quy: dùng lại một RetrievalPipeline qua nhiều `asyncio.run` (mục 9, 10).
+"""Hồi quy PR #19: dùng lại một RetrievalPipeline qua nhiều `asyncio.run`.
+
+HyDE (Groq) không được nuốt lỗi loop và reranker không được crash, nên
+nhánh A và rerank vẫn chạy ở lần gọi thứ 2, 3 (retrieval_spec.md mục 9, 10).
 
 Fake client mô phỏng đúng `AsyncGroq`/`httpx.AsyncClient`: gắn với event loop
 lúc tạo và ném `RuntimeError('Event loop is closed')` nếu dùng ở loop khác.
