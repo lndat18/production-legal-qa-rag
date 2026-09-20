@@ -15,9 +15,9 @@ from production_legal_qa_rag.retrieval.citation import (
     CITATION_EXTRAS_BUDGET,
     build_article_queries,
     citation_extras,
+    detect_document,
     extract_citation_khoans,
     extract_citation_numbers,
-    pin_exact_matches,
     structural_terms,
 )
 from production_legal_qa_rag.retrieval.dense_search import DENSE_TOP_N, DenseSearch
@@ -82,10 +82,9 @@ class RetrievalPipeline:
 
         Câu hỏi viện dẫn Điều được thêm extras từ sparse vào union: 1 Điều dùng
         top sparse của nhánh B, >= 2 Điều dùng sparse query riêng cho từng Điều
-        (mục 8.1), sparse query kèm token cấu trúc (mục 6.2). Sau rerank, chunk
-        khớp chính xác Điều/Khoản được ghim lên đầu (mục 8.2), nên với câu hỏi
-        viện dẫn `rerank_score` có thể không giảm dần; câu không viện dẫn giữ
-        thứ tự giảm dần theo điểm.
+        (mục 8.1), sparse query kèm token cấu trúc và token văn bản (mục 6.2).
+        Kết quả sắp giảm dần theo độ liên quan (`rerank_score`; fallback:
+        xen kẽ các nhánh, `rerank_score=None`).
 
         Args:
             query: Một câu hỏi tiếng Việt độc lập.
@@ -106,13 +105,14 @@ class RetrievalPipeline:
 
         numbers = extract_citation_numbers(query)
         khoans = extract_citation_khoans(query) if numbers else []
+        doc = detect_document(query) if numbers else None
         branch_jobs = [
             self._run_branch(
                 query,
                 query_embedding,
                 query_embedding,
                 use_mmr,
-                structural_terms(numbers, khoans),
+                structural_terms(numbers, khoans, doc),
             )
         ]
         if hypothetical_document is not None:
@@ -127,7 +127,7 @@ class RetrievalPipeline:
         # thuộc Groq/HF và không bao giờ raise nên không làm hỏng nhánh chính.
         job_results, article_hits = await asyncio.gather(
             asyncio.gather(*branch_jobs),
-            self._article_hits(query, numbers, khoans),
+            self._article_hits(query, numbers, khoans, doc),
         )
         results = list(job_results)
         branches = [result.candidates for result in results]
@@ -150,10 +150,14 @@ class RetrievalPipeline:
                 for branch in branches
             ]
 
-        return await self._rerank(query, union, branches, numbers, khoans)
+        return await self._rerank(query, union, branches)
 
     async def _article_hits(
-        self, query: str, numbers: list[int], khoans: list[int]
+        self,
+        query: str,
+        numbers: list[int],
+        khoans: list[int],
+        doc: str | None,
     ) -> dict[int, list[SearchHit]]:
         """Sparse query phụ cho từng Điều khi câu hỏi nhắc >= 2 Điều (mục 8.1).
 
@@ -167,7 +171,7 @@ class RetrievalPipeline:
             *(
                 # Sub-query mỗi Điều chỉ kèm token cấu trúc của Điều đó.
                 self._sparse_index.query(
-                    sub_query, quota, structural_terms([number], khoans)
+                    sub_query, quota, structural_terms([number], khoans, doc)
                 )
                 for number, sub_query in zip(
                     numbers, build_article_queries(query, numbers), strict=True
@@ -219,8 +223,6 @@ class RetrievalPipeline:
         query: str,
         union: list[Candidate],
         branches: list[list[Candidate]],
-        numbers: list[int],
-        khoans: list[int],
     ) -> list[RetrievedChunk]:
         if not union:
             return []
@@ -234,10 +236,6 @@ class RetrievalPipeline:
             ranked = sorted(zip(union, scores, strict=True), key=lambda pair: -pair[1])
             ordered = [_to_retrieved_chunk(c, score) for c, score in ranked]
 
-        if numbers:
-            ordered = pin_exact_matches(
-                ordered, numbers, khoans, final_top_k=FINAL_TOP_K
-            )
         return ordered[:FINAL_TOP_K]
 
 

@@ -141,17 +141,18 @@ def test_extras_n1_dung_k_hit_dau_sparse_tho_nhanh_b():
     assert _ids(extras) == [f"b{i}" for i in range(1, CITATION_SPARSE_TOP_K + 1)]
 
 
-def test_extras_n2_moi_dieu_8_xen_ke():
+def test_extras_n2_moi_dieu_12_xen_ke():
+    assert CITATION_EXTRAS_BUDGET == 24
     extras = citation_extras([3, 5], _hits("b"), {3: _hits("x"), 5: _hits("y")})
-    expected = [f"{p}{i}" for i in range(1, 9) for p in "xy"]
+    expected = [f"{p}{i}" for i in range(1, 13) for p in "xy"]
     assert _ids(extras) == expected
     assert len(extras) == CITATION_EXTRAS_BUDGET
 
 
-def test_extras_n3_moi_dieu_5_tong_toi_da_16():
+def test_extras_n3_moi_dieu_8_tong_toi_da_24():
     hits = {3: _hits("x"), 5: _hits("y"), 7: _hits("z")}
     extras = citation_extras([3, 5, 7], _hits("b"), hits)
-    assert _ids(extras) == [f"{p}{i}" for i in range(1, 6) for p in "xyz"]
+    assert _ids(extras) == [f"{p}{i}" for i in range(1, 9) for p in "xyz"]
     assert len(extras) <= CITATION_EXTRAS_BUDGET
 
 
@@ -163,7 +164,7 @@ def test_extras_dedupe_giu_vi_tri_som_nhat():
 
 def test_extras_mot_dieu_loi_bo_dieu_do_quota_van_theo_n():
     extras = citation_extras([3, 5], _hits("b"), {5: _hits("y")})
-    assert _ids(extras) == [f"y{i}" for i in range(1, 9)]
+    assert _ids(extras) == [f"y{i}" for i in range(1, 13)]
 
 
 def test_extras_moi_luot_phu_loi_lui_ve_n1():
@@ -219,7 +220,7 @@ def _multi_pipe(
     reranker: str = "ok",
 ) -> tuple[pipeline_module.RetrievalPipeline, SparseByText, FakeReranker]:
     prefixes = ["x", "y", "z"]
-    by_text = {sq: _ids_of(prefixes[i], 12) for i, sq in enumerate(subqueries)}
+    by_text = {sq: _ids_of(prefixes[i], 20) for i, sq in enumerate(subqueries)}
     by_text[query] = _ids_of("b", 12)
     known = set(DENSE)
     for ids in by_text.values():
@@ -246,29 +247,29 @@ def _passage_ids(rr: FakeReranker) -> set[str]:
 
 
 @pytest.mark.parametrize("use_mmr", [True, False])
-def test_pipeline_n2_moi_dieu_8_extras_va_dung_so_luot_sparse(use_mmr: bool):
+def test_pipeline_n2_moi_dieu_12_extras_va_dung_so_luot_sparse(use_mmr: bool):
     pipe, sparse, rr = _multi_pipe(TWO, TWO_SUBQUERIES)
     asyncio.run(pipe.retrieve(TWO, use_mmr=use_mmr))
     assert len(sparse.texts) == 2 + 2
     assert set(sparse.texts) >= set(TWO_SUBQUERIES)
-    assert all(sparse.top_ks[sq] == 8 for sq in TWO_SUBQUERIES)
+    assert all(sparse.top_ks[sq] == 12 for sq in TWO_SUBQUERIES)
     ids = _passage_ids(rr)
-    assert set(_ids_of("x", 8)) <= ids and "x9" not in ids
-    assert set(_ids_of("y", 8)) <= ids and "y9" not in ids
+    assert set(_ids_of("x", 12)) <= ids and "x13" not in ids
+    assert set(_ids_of("y", 12)) <= ids and "y13" not in ids
     assert len(ids) <= 2 * pipeline_module.BRANCH_TOP_N + CITATION_EXTRAS_BUDGET
     # n = 2 không dùng sparse thô nhánh B cho extras.
     assert "b10" not in ids
 
 
 @pytest.mark.parametrize("use_mmr", [True, False])
-def test_pipeline_n3_moi_dieu_5_extras_va_dung_so_luot_sparse(use_mmr: bool):
+def test_pipeline_n3_moi_dieu_8_extras_va_dung_so_luot_sparse(use_mmr: bool):
     pipe, sparse, rr = _multi_pipe(THREE, THREE_SUBQUERIES)
     asyncio.run(pipe.retrieve(THREE, use_mmr=use_mmr))
     assert len(sparse.texts) == 2 + 3
-    assert all(sparse.top_ks[sq] == 5 for sq in THREE_SUBQUERIES)
+    assert all(sparse.top_ks[sq] == 8 for sq in THREE_SUBQUERIES)
     ids = _passage_ids(rr)
     for prefix in "xyz":
-        assert set(_ids_of(prefix, 5)) <= ids and f"{prefix}6" not in ids
+        assert set(_ids_of(prefix, 8)) <= ids and f"{prefix}9" not in ids
     assert len(ids) <= 2 * pipeline_module.BRANCH_TOP_N + CITATION_EXTRAS_BUDGET
 
 
@@ -288,7 +289,7 @@ def test_pipeline_mot_luot_phu_loi_bo_extras_dieu_do(
         asyncio.run(pipe.retrieve(TWO, use_mmr=False))
     ids = _passage_ids(rr)
     assert "x1" not in ids
-    assert set(_ids_of("y", 8)) <= ids
+    assert set(_ids_of("y", 12)) <= ids
     assert "Điều 3" in caplog.text
 
 
@@ -299,7 +300,7 @@ def test_pipeline_moi_luot_phu_loi_lui_ve_n1():
     assert result
     assert set(_ids_of("b", CITATION_SPARSE_TOP_K)) <= ids
     assert "b11" not in ids
-    assert not ids & set(_ids_of("x", 12) + _ids_of("y", 12))
+    assert not ids & set(_ids_of("x", 20) + _ids_of("y", 20))
 
 
 def test_pipeline_loi_sparse_nhanh_chinh_van_raise():
@@ -320,7 +321,7 @@ def test_pipeline_groq_loi_nhieu_dieu_chi_nhanh_b_va_luot_phu():
     pipe, sparse, rr = _multi_pipe(TWO, TWO_SUBQUERIES, hyde=None)
     asyncio.run(pipe.retrieve(TWO, use_mmr=False))
     assert len(sparse.texts) == 1 + 2
-    assert set(_ids_of("x", 8) + _ids_of("y", 8)) <= _passage_ids(rr)
+    assert set(_ids_of("x", 12) + _ids_of("y", 12)) <= _passage_ids(rr)
 
 
 def test_pipeline_fallback_xen_ke_e_theo_dieu():

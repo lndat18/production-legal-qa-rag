@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -15,8 +16,13 @@ from pinecone.exceptions import NotFoundException
 from production_legal_qa_rag.chunking.models import Chunk
 from production_legal_qa_rag.config import VectorDBSettings
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
-from production_legal_qa_rag.retrieval.citation import breadcrumb_structural_terms
+from production_legal_qa_rag.retrieval.citation import (
+    DOCUMENTS,
+    breadcrumb_structural_terms,
+)
 from production_legal_qa_rag.retrieval.models import RetrievalError, SearchHit
+
+logger = logging.getLogger(__name__)
 
 SPARSE_TOP_N = 20
 SPARSE_UPSERT_BATCH_SIZE = 100
@@ -52,7 +58,11 @@ def build_index(
         raise ValueError(f"Không tìm thấy chunk nào trong {chunks_dir}")
 
     texts = [_bm25_text(chunk) for chunk in chunks]
-    structural = [breadcrumb_structural_terms(chunk.breadcrumb) for chunk in chunks]
+    _warn_unknown_documents(chunks)
+    structural = [
+        breadcrumb_structural_terms(chunk.breadcrumb, chunk.source_document)
+        for chunk in chunks
+    ]
     encoder = BM25Encoder()
     encoder.fit(texts, extra_terms=structural)
     encoder.save(params_out_path)
@@ -126,6 +136,14 @@ def _read_chunks(chunks_dir: Path) -> list[Chunk]:
         raw_chunks = json.loads(path.read_text(encoding="utf-8"))
         chunks.extend(Chunk.model_validate(raw) for raw in raw_chunks)
     return chunks
+
+
+def _warn_unknown_documents(chunks: list[Chunk]) -> None:
+    """Cảnh báo `source_document` chưa có trong `DOCUMENTS` (không sinh `vb_*`)."""
+    for name in sorted({c.source_document for c in chunks} - DOCUMENTS.keys()):
+        logger.warning(
+            "source_document %r chưa có trong DOCUMENTS, bỏ token vb_*.", name
+        )
 
 
 def _bm25_text(chunk: Chunk) -> str:
