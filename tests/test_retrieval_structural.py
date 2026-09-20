@@ -24,7 +24,6 @@ from production_legal_qa_rag.retrieval.citation import (
     MAX_CITATION_KHOANS,
     BreadcrumbRef,
     breadcrumb_structural_terms,
-    build_article_queries,
     extract_citation_khoans,
     extract_citation_numbers,
     parse_breadcrumb,
@@ -114,8 +113,8 @@ def test_token_document_va_query_cung_dinh_dang():
     assert set(doc) == set(query)
 
 
-def test_structural_terms_tran_toi_da_15_va_khoan_mot_minh_khong_sinh_token():
-    numbers = list(extract_citation_numbers("Điều 1, 2, 3, 4"))
+def test_structural_terms_khoan_mot_minh_khong_sinh_token_va_tran_khoan():
+    numbers = list(extract_citation_numbers("Điều 1, 2, 3"))
     khoans = extract_citation_khoans("khoản 1, khoản 2, khoản 3, khoản 4")
     assert len(numbers) == 3 and len(khoans) == MAX_CITATION_KHOANS == 3
     assert len(structural_terms(numbers, khoans)) == 3 + 3 + 9
@@ -320,14 +319,12 @@ def test_pipeline_nhanh_b_co_token_cau_truc_nhanh_a_khong():
     assert sparse.terms["giả định"] == []
 
 
-def test_pipeline_sub_query_moi_dieu_chi_co_token_cua_dieu_do():
+def test_pipeline_nhieu_dieu_chi_1_lan_token_o_nhanh_b_khong_co_luot_phu():
     query = "Điều 3 khoản 1 và Điều 5 khoản 2"
     pipe, sparse = _pipe(["z1"], {})
     asyncio.run(pipe.retrieve(query, use_mmr=False))
-    sub_3, sub_5 = build_article_queries(query, [3, 5])
-    assert sparse.terms[sub_3] == structural_terms([3], [1, 2])
-    assert sparse.terms[sub_5] == structural_terms([5], [1, 2])
     assert sparse.terms[query] == structural_terms([3, 5], [1, 2])
+    assert sorted(sparse.texts) == sorted(["giả định", query])  # đúng 2 lượt
 
 
 def test_pipeline_cau_khong_vien_dan_khong_co_token_cau_truc():

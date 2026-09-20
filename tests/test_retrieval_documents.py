@@ -15,7 +15,6 @@ from production_legal_qa_rag.retrieval.bm25 import BM25_PARAMS_VERSION, BM25Enco
 from production_legal_qa_rag.retrieval.citation import (
     DOCUMENTS,
     breadcrumb_structural_terms,
-    build_article_queries,
     detect_document,
     extract_citation_khoans,
     extract_citation_numbers,
@@ -136,7 +135,7 @@ def test_structural_terms_khong_nen_van_ban_giu_hanh_vi_cu():
     assert structural_terms([], [2], "blld") == []
 
 
-def test_structural_terms_tran_28_token():
+def test_structural_terms_dem_token_3_dieu_3_khoan_co_van_ban():
     terms = structural_terms([1, 2, 3], [1, 2, 3], "blld")
     assert len(terms) == 15 + 1 + 3 + 9 == 28
 
@@ -223,17 +222,14 @@ def test_khong_neu_van_ban_hanh_vi_nhu_cu(real_chunks: list[dict[str, Any]]):
 # ------------------------------------------------------------- pipeline
 
 
-def test_pipeline_nhanh_b_va_sub_query_co_token_van_ban_nhanh_a_khong():
+def test_pipeline_nhanh_b_co_token_van_ban_nhanh_a_khong_va_khong_luot_phu():
     query = "Điều 3 khoản 1 và Điều 5 khoản 2 Bộ luật Lao động"
     pipe, sparse = _pipe(["z1"], {})
     asyncio.run(pipe.retrieve(query, use_mmr=False))
-    sub_3, sub_5 = build_article_queries(query, [3, 5])
     assert sparse.terms[query] == structural_terms([3, 5], [1, 2], "blld")
-    assert sparse.terms[sub_3] == structural_terms([3], [1, 2], "blld")
-    assert sparse.terms[sub_5] == structural_terms([5], [1, 2], "blld")
-    assert "vb_blld_điều_3" in sparse.terms[sub_3]
-    assert "vb_blld_điều_5" not in sparse.terms[sub_3]
+    assert "vb_blld_điều_3" in sparse.terms[query]
     assert sparse.terms["giả định"] == []
+    assert len(sparse.texts) == 2  # chỉ nhánh A và B
 
 
 def test_pipeline_van_ban_mo_ho_khong_sinh_token_van_ban():
