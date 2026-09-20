@@ -328,3 +328,37 @@ def test_retrieved_chunk_content_khong_chua_breadcrumb_va_diem_cao_dung_chunk():
     first_passage = rr.calls[0][1][0]
     assert result[0].rerank_score == float(len(rr.calls[0][1]))
     assert first_passage == f"bc-{result[0].chunk_id}\nnd-{result[0].chunk_id}"
+
+
+@pytest.mark.parametrize(
+    ("breadcrumb", "content"),
+    [
+        ("", "nd"),
+        ("Luật > Điều 25 > Khoản 1\n(tiếp)", "nd\n\nxuống dòng"),
+        ("bc {x} % \\n <b>", "{0} nd \u200b"),
+    ],
+)
+def test_build_rerank_passages_khong_hong_voi_breadcrumb_dac_biet(
+    breadcrumb: str, content: str
+):
+    from production_legal_qa_rag.retrieval.models import Candidate
+    from production_legal_qa_rag.retrieval.pipeline import build_rerank_passages
+
+    metadata = PineconeMetadata(
+        content=content,
+        breadcrumb=breadcrumb,
+        source_document="sd",
+        has_table=False,
+    )
+    union = [Candidate(chunk_id="c1", rrf_score=1.0, metadata=metadata)]
+    # Ghép đúng nguyên văn, không strip/format: breadcrumb + "\n" + content.
+    assert build_rerank_passages(union) == [f"{breadcrumb}\n{content}"]
+
+
+def test_build_rerank_passages_rong_va_thieu_metadata():
+    from production_legal_qa_rag.retrieval.models import Candidate
+    from production_legal_qa_rag.retrieval.pipeline import build_rerank_passages
+
+    assert build_rerank_passages([]) == []
+    with pytest.raises(RetrievalError):
+        build_rerank_passages([Candidate(chunk_id="c1", rrf_score=1.0)])
