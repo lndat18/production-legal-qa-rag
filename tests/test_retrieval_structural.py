@@ -443,3 +443,98 @@ def test_pin_exact_matches_khoan_tinh_rieng_tung_dieu():
     # Điều 5 có chunk khớp Khoản 2 nên chỉ ghim a5_2; Điều 7 không có -> ghim theo Điều.
     out = pin_exact_matches(ranked, [5, 7], [2], final_top_k=5)
     assert [c.chunk_id for c in out] == ["a5_2", "a7_1", "a5_1", "z"]
+
+
+# ------------------------------------------------------------- bổ sung
+
+
+def test_pin_khong_ghim_chunk_hau_to_chu_dieu_48a_cho_cau_hoi_dieu_48():
+    ranked = [
+        _chunk("z", "D - Phụ lục", 9),
+        _chunk("a48a", "D - Điều 48a. Chậm đóng - Khoản 1", 8),
+        _chunk("a48", "D - Điều 48. Tên - Khoản 1", 1),
+    ]
+    out = pin_exact_matches(ranked, [48], [1], final_top_k=5)
+    assert [c.chunk_id for c in out] == ["a48", "z", "a48a"]
+
+
+def test_pin_khong_hong_khi_breadcrumb_hau_to_hoac_rong():
+    ranked = [
+        _chunk("e", "", 3),
+        _chunk("s", "D - Điều 7. T - Khoản 3a", 2),  # Khoản 3a không parse được
+    ]
+    out = pin_exact_matches(ranked, [7], [3], final_top_k=5)
+    # Khoản không khớp thì lùi về khớp theo Điều.
+    assert [c.chunk_id for c in out] == ["s", "e"]
+
+
+def test_pin_nhieu_dieu_khoan_cheo_khop_khoan_bat_ky_trong_danh_sach():
+    ranked = [
+        _chunk("z", "D - Phụ lục", 9),
+        _chunk("a3_2", "D - Điều 3. T - Khoản 2", 5),
+        _chunk("a3_1", "D - Điều 3. T - Khoản 1", 4),
+        _chunk("a5_2", "D - Điều 5. T - Khoản 2", 3),
+        _chunk("a5_9", "D - Điều 5. T - Khoản 9", 2),
+    ]
+    out = pin_exact_matches(ranked, [3, 5], [1, 2], final_top_k=5)
+    # Khoản chéo: mỗi Điều khớp mọi Khoản trong danh sách; tối đa 2 mỗi Điều
+    # và tổng <= final_top_k - 1 = 4; a5_9 (Khoản 9) không được ghim.
+    assert [c.chunk_id for c in out][:4] == ["a3_2", "a3_1", "a5_2", "z"] or (
+        {c.chunk_id for c in out[:3]} == {"a3_2", "a3_1", "a5_2"}
+    )
+    assert out[-1].chunk_id in {"a5_9", "z"}
+    assert {c.chunk_id for c in out} == {c.chunk_id for c in ranked}
+    assert [c.rerank_score for c in out if c.chunk_id == "a3_2"] == [5]
+
+
+def test_pin_giu_rerank_score_va_khong_doi_tap_phan_tu():
+    ranked = [_chunk("z", "D - Phụ lục", 9.5), _chunk("a", "D - Điều 5. T", -3.25)]
+    out = pin_exact_matches(ranked, [5], [], final_top_k=5)
+    assert [(c.chunk_id, c.rerank_score) for c in out] == [("a", -3.25), ("z", 9.5)]
+
+
+def test_encode_query_extra_terms_rong_giong_het_khong_tham_so():
+    encoder = BM25Encoder()
+    encoder.fit(
+        ["Điều 3 người lao động nghỉ", "tiền lương tối thiểu"],
+        extra_terms=[["điều_3"], []],
+    )
+    plain = encoder.encode_query("người lao động")
+    assert encoder.encode_query("người lao động", ()) == plain
+    assert encoder.encode_query("người lao động", []) == plain
+    with_term = encoder.encode_query("người lao động", ["điều_3"])
+    assert len(with_term.indices) == len(plain.indices) + 1
+
+
+def test_encode_document_tinh_dung_khi_them_token_cau_truc():
+    import math
+
+    encoder = BM25Encoder()
+    texts = ["Điều 3 người lao động", "tiền lương"]
+    encoder.fit(texts, extra_terms=[["điều_3", "khoản_1"], []])
+    params = encoder.params
+    tokens = tokenize(texts[0]) + ["điều_3", "khoản_1"]
+    norm = 1 - params.b + params.b * len(tokens) / params.avgdl
+    doc = encoder.encode_document(texts[0], ["điều_3", "khoản_1"])
+    weights = dict(zip(doc.indices, doc.values, strict=True))
+    index = params.vocab["điều_3"]
+    expected = 1 * (params.k1 + 1) / (1 + params.k1 * norm)
+    assert math.isclose(weights[index], expected)
+    # Không truyền extra_terms thì token cấu trúc vắng và độ dài ngắn hơn.
+    plain = encoder.encode_document(texts[0])
+    assert index not in dict(zip(plain.indices, plain.values, strict=True))
+
+
+def test_load_params_file_cu_khong_co_params_version_bao_loi_ro(tmp_path: Path):
+    old = tmp_path / "bm25_params.json"
+    old.write_text(
+        json.dumps(
+            {"vocab": {"a": 0}, "idf": {"a": 1.0}, "num_documents": 2, "avgdl": 3.0}
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(BM25ParamsVersionError) as info:
+        BM25Encoder.load(old)
+    message = str(info.value)
+    assert "params_version=1" in message
+    assert REBUILD_COMMAND in message
