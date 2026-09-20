@@ -13,7 +13,7 @@ query → Groq (1 call) → hypothetical_document
       → HF embed [hypothetical_document, query] (1 call, 2 vector)
       → 2 nhánh song song (HyDE / câu hỏi gốc), mỗi nhánh: dense + sparse → RRF → MMR (bật/tắt được, mục 7)
       → union theo chunk_id
-      → Reranker tự host (1 call)
+      → Reranker tự host (1 call; passage = breadcrumb + "\n" + content, mục 9)
       → top FINAL_TOP_K = 5
 ```
 
@@ -80,7 +80,7 @@ Metadata Pinecone **không** lưu `token_count`, `is_split`, `split_*`,
                        ┌─ Nhánh A (text = hypothetical_document) ─┐
 query → Groq → hypo ──►│   dense(emb_hypo) ┐                       │
         │              │   sparse(hypo)    ┴► RRF → MMR ──────────┤
-        └► HF embed ──►│                                           ├► union → Rerank(query gốc) → top 5
+        └► HF embed ──►│                                           ├► union → Rerank(query gốc, breadcrumb+"\n"+content) → top 5
           [hypo,query] │ Nhánh B (text = query gốc)                │
                        │   dense(emb_query) ┐                      │
                        └   sparse(query)    ┴► RRF → MMR ─────────┘
@@ -332,12 +332,30 @@ root repo). Đã test thành công end-to-end (2026-09-18).
 **Client** (`retrieval/reranker_client.py`, `httpx`):
 
 - `POST {endpoint_url}` với header `X-API-Key: {api_key}` (auth built-in của
-  LitServe), payload `{"query": câu_hỏi_gốc, "passages": [content của từng chunk trong union]}`, response `{"scores": [float, ...]}` cùng thứ tự.
+  LitServe), payload `{"query": câu_hỏi_gốc, "passages": [breadcrumb + "\n" + content của từng chunk trong union]}`, response `{"scores": [float, ...]}` cùng thứ tự.
   Schema đã xác nhận bằng `retrieval/test.py`.
 - **1 request duy nhất cho toàn bộ union.**
-- Passage chỉ dùng `content` (không kèm breadcrumb — nhất quán
-  `chunking_spec.md` mục 2). Query là **câu hỏi gốc**, không phải
-  `hypothetical_document`.
+- **Passage = `breadcrumb + "\n" + content`** (chốt 2026-09-20). Query là
+  **câu hỏi gốc**, không phải `hypothetical_document`.
+  - Lý do: cross-encoder cần thấy số Điều/Khoản và tiêu đề Điều (vd.
+    "Điều 25. Thời gian thử việc") để khớp câu hỏi viện dẫn hoặc theo chủ đề;
+    `content` một mình thường không chứa các thông tin này.
+  - Phạm vi: breadcrumb vẫn là **metadata-only ở tầng embedding dense/chunking**
+    (`chunking_spec.md` mục 2, `embedding/hf_client.py` chỉ embed `content`);
+    quyết định này **chỉ áp dụng cho input của reranker**.
+    `RetrievedChunk.content` không đổi — không nhét breadcrumb vào `content`;
+    ghép chuỗi passage chỉ xảy ra ngay trước khi gọi reranker.
+  - Độ dài: breadcrumb ngắn so với giới hạn passage 2048 token của reranker nên
+    không cần cắt.
+  - Bằng chứng thí nghiệm (2026-09-20, cùng tập candidate, chỉ đổi passage, 7
+    câu, mỗi câu 1 lần): với 4 câu có chunk đáp án trong union, hạng đáp án khi
+    chỉ `content` → khi có breadcrumb: "Điều 25 Bộ luật Lao động quy định gì?"
+    8 → 2; "Thời gian thử việc tối đa là bao lâu?" 6 → 1; "nghỉ phép năm 12
+    tháng" 1 → 1; "báo trước khi đơn phương chấm dứt HĐLĐ" 1 → 1. Không câu
+    nào tệ đi về hạng; điểm tuyệt đối giảm nhẹ ở một số câu (vd. 4.74 → 3.31)
+    nhưng thứ hạng giữ nguyên. 3 câu viện dẫn còn lại: chunk đáp án không nằm
+    trong union nên breadcrumb không cứu được (điểm mở 5, mục 16).
+  - **Caveat**: mẫu nhỏ (7 câu) — cần xác nhận lại bằng RAGAS ở phase đánh giá.
 - Sort giảm dần theo score, cắt `FINAL_TOP_K` (=5), gán `rerank_score`.
 
 **Server tự host rất dễ lỗi** (Studio sleep/restart, tmux/ngrok chết, model
@@ -556,7 +574,7 @@ retrieval.pipeline.retrieve(query: str, *, use_mmr: bool | None = None) -> list[
 
   4. union = dedupe_by_chunk_id(branch_a + branch_b)                  # mục 8
      if not use_mmr: union = await fetch_missing_metadata(union)      # mục 6.4: 1 lượt cho cả union
-  5. scores = await reranker_client.rerank(query, [c.content for c in union])  # mục 9 (lỗi → fallback)
+  5. scores = await reranker_client.rerank(query, [c.breadcrumb + "\n" + c.content for c in union])  # mục 9 (lỗi → fallback)
   6. return top FINAL_TOP_K dạng list[RetrievedChunk]
 ```
 
@@ -608,6 +626,10 @@ agent) cho `reranker_client.py`.
 - Vector query được embed qua cùng tiền xử lý `pyvi` như lúc index (test:
   câu hỏi trùng nguyên văn `content` 1 chunk phải trả về chunk đó ở top dense).
 - Giả lập Groq lỗi và reranker lỗi (timeout, 401) → hành vi đúng mục 10 và mục 9, `retrieve()` không crash.
+- Test: mỗi passage gửi tới reranker bắt đầu bằng `breadcrumb`, rồi xuống dòng
+  (`"\n"`), rồi `content` (mục 9); `RetrievedChunk.content` trả ra vẫn là
+  `content` nguyên gốc không kèm breadcrumb. Retry/lỗi/fallback không đổi so
+  với mục 9.
 - `config.py` có đủ `sparse_index_name`/`RerankerSettings` mới; các module
   trong `retrieval/` không đọc `.env` trực tiếp.
 
@@ -617,6 +639,10 @@ agent) cho `reranker_client.py`.
 `RetrievedChunk` thu gọn theo metadata Pinecone; fallback reranker xen kẽ 2
 nhánh; `retrieve()` là `async def`; MMR có công tắc bật/tắt; runbook do agent
 SSH + tmux, người dùng chỉ bật Studio.
+
+Đã chốt (2026-09-20): passage gửi reranker = `breadcrumb + "\n" + content`
+(mục 9; breadcrumb vẫn metadata-only ở embedding/chunking); cần xác nhận lại
+bằng RAGAS vì thí nghiệm chỉ 7 câu.
 
 1. Nguyên văn prompt HyDE — chốt khi implement (mục 4).
 2. Xác minh tmux/`on_start.sh` có giúp Studio khỏi sleep không (mục 9.1).
@@ -628,3 +654,13 @@ SSH + tmux, người dùng chỉ bật Studio.
    hạn batch/concurrency của HF, Groq, Lightning; dynamic batching; circuit
    breaker cho reranker; khởi động sớm nhánh B trong lúc chờ Groq; theo dõi quota
    HF dùng chung.
+5. **Recall cho câu hỏi viện dẫn Điều/Khoản** (chẩn đoán 2026-09-20): với 3
+   câu viện dẫn (Điều 3 khoản 1 / Điều 36 khoản 2 / Khoản 1 Điều 113 Bộ luật
+   Lao động), chunk đáp án nằm ở sparse top 5/10/16 (dense hạng 45 hoặc ngoài
+   top 100), nhưng RRF (trọng số bằng nhau) đẩy nó xuống hạng 10/20/31 của
+   danh sách fused, rồi bị cắt bởi `FUSION_TOP_N=20` và `BRANCH_TOP_N=10` (và
+   MMR) nên không vào union — reranker (kể cả có breadcrumb) không cứu được.
+   Hướng có thể xét sau (chưa quyết, chưa làm): tăng `BRANCH_TOP_N`/
+   `FUSION_TOP_N` (đổi lại latency rerank vì tỉ lệ thuận số passage); đảm bảo
+   top-k sparse luôn vào union; tăng trọng số sparse trong RRF; tắt MMR; hoặc
+   nhận diện viện dẫn bằng regex.
