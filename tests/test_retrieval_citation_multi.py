@@ -275,3 +275,30 @@ def test_fallback_khi_rerank_loi_van_co_extras_va_khong_crash():
     result = asyncio.run(pipe.retrieve(ONE, use_mmr=False))
     assert result
     assert all(c.rerank_score is None for c in result)
+
+
+def test_api_nhieu_dieu_da_go():
+    from production_legal_qa_rag.retrieval import citation
+
+    for name in (
+        "build_article_queries",
+        "citation_article_hits",
+        "MAX_CITATION_ARTICLES",
+        "CITATION_EXTRAS_BUDGET",
+    ):
+        assert not hasattr(citation, name)
+    assert not hasattr(pipeline_module.RetrievalPipeline, "_article_hits")
+
+
+def test_timeout_reranker_union_toi_da_30_passage_la_75s(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import httpx
+
+    from production_legal_qa_rag.config import RerankerSettings
+    from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+
+    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "http://x")
+    monkeypatch.setenv("RERANKER_API_KEY", "k")
+    client = RerankerClient(RerankerSettings(), httpx.AsyncClient())
+    assert client._read_timeout_seconds(2 * 10 + CITATION_SPARSE_TOP_K) == 75.0
