@@ -60,6 +60,7 @@ def _vector_settings(monkeypatch: pytest.MonkeyPatch) -> VectorDBSettings:
     """Tạo config Pinecone từ environment giả."""
     monkeypatch.setenv("PINECONE_API_KEY", "pinecone-test-key")
     monkeypatch.setenv("PINECONE_INDEX_NAME", "legal-index")
+    monkeypatch.setenv("PINECONE_SPARSE_INDEX_NAME", "legal-sparse-index")
     return VectorDBSettings()  # type: ignore[call-arg]
 
 
@@ -377,6 +378,22 @@ class _FakePineconeIndex:
         self._events.append(("upsert", vectors))
 
 
+class _MissingNamespacePineconeIndex(_FakePineconeIndex):
+    """Mô phỏng index mới chưa có default namespace để xoá."""
+
+    def delete(self, *, delete_all: bool) -> None:
+        self._events.append(("delete", delete_all))
+        raise pinecone_client.NotFoundException("Namespace not found")
+
+
+class _MissingIndexPineconeIndex(_FakePineconeIndex):
+    """Mô phỏng lỗi 404 không liên quan namespace cần được giữ nguyên."""
+
+    def delete(self, *, delete_all: bool) -> None:
+        self._events.append(("delete", delete_all))
+        raise pinecone_client.NotFoundException("Index not found")
+
+
 class _FakePineconeClient:
     """Fake Pinecone SDK chỉ giữ calls cần cho contract của vector store."""
 
@@ -543,6 +560,37 @@ def test_vector_store_khong_tao_lai_index_da_ton_tai(
 
     assert all(event != "create" for event, _ in client.events)
     assert client.events == [("Index", "legal-index"), ("delete", True)]
+
+
+def test_vector_store_coi_namespace_trong_la_da_sach(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client = _FakePineconeClient(["legal-index"])
+    client.index = _MissingNamespacePineconeIndex(client.events)
+    store = PineconeVectorStore(
+        _vector_settings(monkeypatch),
+        _embedding_settings(monkeypatch),
+        client,  # type: ignore[arg-type]
+    )
+
+    store.upsert([_embedded_chunk(1)])
+
+    assert [event for event, _ in client.events] == ["Index", "delete", "upsert"]
+
+
+def test_vector_store_khong_an_loi_404_khong_phai_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    client = _FakePineconeClient(["legal-index"])
+    client.index = _MissingIndexPineconeIndex(client.events)
+    store = PineconeVectorStore(
+        _vector_settings(monkeypatch),
+        _embedding_settings(monkeypatch),
+        client,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(pinecone_client.NotFoundException, match="Index not found"):
+        store.upsert([])
 
 
 @pytest.mark.parametrize("hidden_size", [None, 0, -1, "768"])

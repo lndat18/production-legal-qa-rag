@@ -37,6 +37,7 @@ class VectorDBSettings(BaseSettings):
 
     pinecone_api_key: str = Field(validation_alias="PINECONE_API_KEY")
     index_name: str = Field(validation_alias="PINECONE_INDEX_NAME")
+    sparse_index_name: str = Field(validation_alias="PINECONE_SPARSE_INDEX_NAME")
     cloud: str = "aws"
     region: str = "us-east-1"
 
@@ -75,3 +76,19 @@ class LLMSettings(BaseSettings):
     chunk_token_limit: int = 1500
     tpm_limit: int = 8000
     rpm_limit: int = 30
+
+
+class RerankerSettings(BaseSettings):
+    """Config reranker tự host trên LightningAI (retrieval_spec.md mục 9, 12).
+
+    `connect_timeout_seconds` tách khỏi `timeout_seconds` (read) để Studio
+    đang sleep không khiến 1 câu hỏi chờ quá lâu ở bước kết nối.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    endpoint_url: str = Field(validation_alias="RERANKER_ENDPOINT_URL")
+    api_key: str = Field(validation_alias="RERANKER_API_KEY")
+    max_retries: int = 2
+    connect_timeout_seconds: int = 5
+    timeout_seconds: int = 30

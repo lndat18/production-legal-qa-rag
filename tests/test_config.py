@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from production_legal_qa_rag.config import (
     EmbeddingSettings,
     LLMSettings,
+    RerankerSettings,
     VectorDBSettings,
 )
 
@@ -71,6 +72,7 @@ def test_embedding_settings_doc_hf_token_tu_env(monkeypatch: pytest.MonkeyPatch)
 def test_vector_db_settings_doc_dung_bien_moi_truong(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PINECONE_API_KEY", "test-key")
     monkeypatch.setenv("PINECONE_INDEX_NAME", "test-index")
+    monkeypatch.setenv("PINECONE_SPARSE_INDEX_NAME", "test-sparse-index")
     settings = VectorDBSettings()  # type: ignore[call-arg]
     assert settings.pinecone_api_key == "test-key"
     assert settings.index_name == "test-index"
@@ -83,6 +85,7 @@ def test_vector_db_settings_bao_loi_khi_thieu_pinecone_api_key(
 ):
     monkeypatch.delenv("PINECONE_API_KEY", raising=False)
     monkeypatch.setenv("PINECONE_INDEX_NAME", "test-index")
+    monkeypatch.setenv("PINECONE_SPARSE_INDEX_NAME", "test-sparse-index")
     monkeypatch.setattr(
         VectorDBSettings,
         "model_config",
@@ -171,3 +174,36 @@ def test_llm_settings_khong_co_groq_api_key_2_khong_bao_loi(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
     LLMSettings()  # type: ignore[call-arg] # không raise
+
+
+# ==========================================================================
+# VectorDBSettings.sparse_index_name / RerankerSettings (retrieval_spec.md mục 12)
+# ==========================================================================
+
+
+def test_vector_db_settings_doc_sparse_index_name(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PINECONE_API_KEY", "test-key")
+    monkeypatch.setenv("PINECONE_INDEX_NAME", "test-index")
+    monkeypatch.setenv("PINECONE_SPARSE_INDEX_NAME", "sparse-index")
+    assert VectorDBSettings().sparse_index_name == "sparse-index"  # type: ignore[call-arg]
+
+
+def test_reranker_settings_gia_tri_mac_dinh(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "https://example.test/predict")
+    monkeypatch.setenv("RERANKER_API_KEY", "secret")
+    settings = RerankerSettings()  # type: ignore[call-arg]
+    assert settings.max_retries == 2
+    assert settings.connect_timeout_seconds == 5
+    assert settings.timeout_seconds == 30
+
+
+def test_reranker_settings_bao_loi_khi_thieu_api_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "https://example.test/predict")
+    monkeypatch.delenv("RERANKER_API_KEY", raising=False)
+    monkeypatch.setattr(
+        RerankerSettings,
+        "model_config",
+        {**RerankerSettings.model_config, "env_file": None},
+    )
+    with pytest.raises(ValidationError):
+        RerankerSettings()  # type: ignore[call-arg]
