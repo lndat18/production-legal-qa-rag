@@ -12,7 +12,7 @@ import unicodedata
 
 from production_legal_qa_rag.retrieval.models import Candidate, SearchHit
 
-CITATION_SPARSE_TOP_K = 5
+CITATION_SPARSE_TOP_K = 10
 
 # (?<!\w) để "điều" không dính vào cuối từ khác; số Điều là tín hiệu chính,
 # "khoản N" đứng một mình không đủ.
@@ -35,7 +35,9 @@ def citation_extras(sparse_hits: list[SearchHit]) -> list[Candidate]:
 
     Candidate chưa có metadata; `fill_missing` bổ sung sau khi gộp vào union.
     """
+    # rrf_score chỉ có nghĩa với kết quả RRF; extras không qua RRF (điểm BM25
+    # của hit không cùng thang) và không ai đọc trường này sau bước fusion.
     return [
-        Candidate(chunk_id=hit.chunk_id, rrf_score=hit.score)
+        Candidate(chunk_id=hit.chunk_id, rrf_score=0.0)
         for hit in sparse_hits[:CITATION_SPARSE_TOP_K]
     ]

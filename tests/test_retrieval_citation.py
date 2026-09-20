@@ -57,7 +57,10 @@ def test_has_citation_am(query: str):
 
 
 def test_citation_extras_lay_top_k_theo_thu_tu():
-    hits = [SearchHit(chunk_id=f"s{i}", score=10.0 - i) for i in range(8)]
+    hits = [
+        SearchHit(chunk_id=f"s{i}", score=10.0 - i)
+        for i in range(CITATION_SPARSE_TOP_K + 3)
+    ]
     extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == [
         f"s{i}" for i in range(CITATION_SPARSE_TOP_K)
@@ -179,7 +182,7 @@ def test_citation_extras_it_hon_top_k_va_rong():
     hits = [SearchHit(chunk_id="s0", score=1.0), SearchHit(chunk_id="s1", score=0.5)]
     extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == ["s0", "s1"]
-    assert [c.rrf_score for c in extras] == [1.0, 0.5]
+    assert [c.rrf_score for c in extras] == [0.0, 0.0]
     assert citation_extras([]) == []
 
 
@@ -211,3 +214,108 @@ def test_cau_vien_dan_hai_dieu_van_chi_1_lan_extras():
     passages = rr.calls[0][1]
     assert len(passages) == len(set(passages))  # union không trùng
     assert "bc-c50\nnd-c50" in passages
+
+
+def _cited_pipe_with_sparse_ranks():  # type: ignore[no-untyped-def]
+    """Sparse thô của nhánh B: c1..c9 (trùng dense), c50 hạng 10, c51 hạng 11."""
+    assert CITATION_SPARSE_TOP_K == 10
+    sparse = [f"c{i}" for i in range(1, CITATION_SPARSE_TOP_K)]
+    sparse += ["c50", "c51"]
+    known = set(DENSE) | {"c50", "c51"}
+    return _build(DENSE, {CITED: sparse}, known=known)
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_extras_lay_dung_top_k_hang_10_vao_hang_11_khong(use_mmr: bool):
+    pipe, _, rr, _ = _cited_pipe_with_sparse_ranks()
+    asyncio.run(pipe.retrieve(CITED, use_mmr=use_mmr))
+    passages = rr.calls[0][1]
+    assert "bc-c50\nnd-c50" in passages  # hạng thô = CITATION_SPARSE_TOP_K
+    assert "bc-c51\nnd-c51" not in passages  # hạng K + 1
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_union_toi_da_2_branch_top_n_cong_top_k(use_mmr: bool):
+    pipe, _, rr, _ = _cited_pipe_with_sparse_ranks()
+    asyncio.run(pipe.retrieve(CITED, use_mmr=use_mmr))
+    assert len(rr.calls[0][1]) <= 2 * pipeline_module.BRANCH_TOP_N + (
+        CITATION_SPARSE_TOP_K
+    )
+
+
+def test_branch_b_result_la_phan_tu_cuoi():
+    from production_legal_qa_rag.retrieval.pipeline import (
+        _branch_b_result,
+        _BranchResult,
+    )
+
+    only_b = _BranchResult([], [SearchHit(chunk_id="b")])
+    a_and_b = [_BranchResult([], [SearchHit(chunk_id="a")]), only_b]
+    assert _branch_b_result([only_b]) is only_b  # Groq lỗi: chỉ có nhánh B
+    assert _branch_b_result(a_and_b) is only_b  # A + B: lấy B, không lấy A
+
+
+def _distinct_union_pipe(hyde: str | None):  # type: ignore[no-untyped-def]
+    """Nhánh A, nhánh B và extras cho 3 tập chunk khác nhau (BRANCH_TOP_N=1)."""
+    from test_retrieval_pipeline import (
+        FakeDense,
+        FakeEmbedder,
+        FakeHyde,
+        FakeReranker,
+        FakeSparse,
+    )
+
+    from production_legal_qa_rag.retrieval.models import SearchHit as Hit
+    from production_legal_qa_rag.retrieval.pipeline import RetrievalPipeline
+
+    class TwoVectorEmbedder(FakeEmbedder):
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            self.calls.append(list(texts))
+            # Vector cuối (câu hỏi gốc) khác vector đầu (hypo) để chọn dense.
+            return [
+                [1.0, 0.0] if i < len(texts) - 1 else [0.0, 1.0]
+                for i in range(len(texts))
+            ]
+
+    class ByEmbeddingDense(FakeDense):
+        async def query(self, embedding, top_k=20, *, include_values=False):  # type: ignore[no-untyped-def]
+            prefix = "a" if embedding[0] == 1.0 else "b"
+            ids = [f"{prefix}{i}" for i in range(1, 4)]
+            self.include_values_calls.append(include_values)
+            return [Hit(chunk_id=i, score=1.0, metadata=_meta(i)) for i in ids]
+
+    extras_ids = [f"x{i}" for i in range(1, CITATION_SPARSE_TOP_K + 1)]
+    known = {"a1", "a2", "a3", "b1", "b2", "b3", "y1", *extras_ids}
+    reranker = FakeReranker("ok")
+    pipe = pipeline_module.RetrievalPipeline(
+        hyde=FakeHyde(hyde),  # type: ignore[arg-type]
+        embedder=TwoVectorEmbedder(),  # type: ignore[arg-type]
+        dense_search=ByEmbeddingDense([], known),  # type: ignore[arg-type]
+        sparse_index=FakeSparse({"giả định": ["y1"], CITED: extras_ids}),  # type: ignore[arg-type]
+        reranker=reranker,  # type: ignore[arg-type]
+    )
+    assert isinstance(pipe, RetrievalPipeline)
+    return pipe, reranker
+
+
+def test_union_dat_dung_2_branch_top_n_cong_top_k_khi_a_b_extras_khac_nhau(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(pipeline_module, "BRANCH_TOP_N", 1)
+    pipe, rr = _distinct_union_pipe("giả định")
+    asyncio.run(pipe.retrieve(CITED, use_mmr=False))
+    passages = rr.calls[0][1]
+    assert len(passages) == len(set(passages)) == 2 * 1 + CITATION_SPARSE_TOP_K
+    assert "bc-a1\nnd-a1" in passages  # nhánh A
+    assert "bc-b1\nnd-b1" in passages  # nhánh B
+    assert "bc-x10\nnd-x10" in passages  # extras hạng K
+    assert "bc-y1\nnd-y1" not in passages  # sparse của A không cấp extras
+
+
+def test_groq_loi_extras_van_tu_sparse_nhanh_b(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(pipeline_module, "BRANCH_TOP_N", 1)
+    pipe, rr = _distinct_union_pipe(None)
+    asyncio.run(pipe.retrieve(CITED, use_mmr=False))
+    passages = rr.calls[0][1]
+    assert len(passages) == 1 + CITATION_SPARSE_TOP_K  # b1 + 10 extras
+    assert not any(p.startswith("bc-a") for p in passages)
