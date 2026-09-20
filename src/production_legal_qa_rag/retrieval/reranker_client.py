@@ -22,6 +22,10 @@ class _NonRetryableRerankError(Exception):
     """Lỗi cấu hình/payload/response: retry vô ích, fallback ngay."""
 
 
+class _EndpointNotFoundError(_NonRetryableRerankError):
+    """HTTP 404 — ngrok trả 404 khi tunnel offline hoặc Studio đang sleep."""
+
+
 class RerankerClient:
     """Client rerank 1 request cho toàn bộ passage, với retry và validate."""
 
@@ -55,23 +59,44 @@ class RerankerClient:
         if not passages:
             return []
 
+        studio_hint = ""
         for attempt in range(self._settings.max_retries + 1):
             try:
                 return await self._request_scores(query, passages)
+            except _EndpointNotFoundError:
+                logger.error(
+                    "Reranker trả HTTP 404, không retry: tunnel ngrok có thể đã "
+                    "offline hoặc Studio đang sleep. %s",
+                    _RUNBOOK_HINT,
+                )
+                return None
             except _NonRetryableRerankError as error:
                 logger.error("Reranker lỗi cấu hình/payload, không retry: %s", error)
                 return None
-            except Exception as error:  # noqa: BLE001 - rerank không bao giờ raise
+            except (httpx.TransportError, _RetryableStatusError) as error:
                 logger.warning(
                     "Reranker lỗi tạm thời ở lần thử %d/%d: %r",
                     attempt + 1,
                     self._settings.max_retries + 1,
                     error,
                 )
+                studio_hint = _RUNBOOK_HINT
+                if attempt < self._settings.max_retries:
+                    await asyncio.sleep(_BACKOFF_SECONDS * (2**attempt))
+            except Exception:
+                # Lỗi ngoài httpx thường là lỗi lập trình: kèm traceback, không
+                # gợi ý kiểm tra Studio.
+                logger.warning(
+                    "Reranker gặp lỗi không mong đợi ở lần thử %d/%d",
+                    attempt + 1,
+                    self._settings.max_retries + 1,
+                    exc_info=True,
+                )
+                studio_hint = ""
                 if attempt < self._settings.max_retries:
                     await asyncio.sleep(_BACKOFF_SECONDS * (2**attempt))
 
-        logger.warning("Reranker hết retry, dùng fallback. %s", _RUNBOOK_HINT)
+        logger.warning("Reranker hết retry, dùng fallback. %s", studio_hint)
         return None
 
     async def _request_scores(self, query: str, passages: list[str]) -> list[float]:
@@ -84,6 +109,8 @@ class RerankerClient:
         if status in _RETRYABLE_STATUS_CODES:
             raise _RetryableStatusError(f"HTTP {status}")
         if status >= 400:
+            if status == 404:
+                raise _EndpointNotFoundError("HTTP 404")
             raise _NonRetryableRerankError(f"HTTP {status}")
         return _validate_scores(response, expected_count=len(passages))
 

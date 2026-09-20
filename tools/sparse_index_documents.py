@@ -2,7 +2,8 @@
 
 Fit BM25 trên toàn bộ corpus, ghi `bm25_params.json`, rồi xoá và upsert lại
 toàn bộ sparse index. Chạy lại sau mỗi lần `embedding/` build lại dense index.
-Chỉ cần `PINECONE_API_KEY` và `PINECONE_SPARSE_INDEX_NAME` trong `.env`.
+`.env` cần có `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` và
+`PINECONE_SPARSE_INDEX_NAME` (dùng chung cloud/region của `VectorDBSettings`).
 
 Cách dùng:
     uv run python tools/sparse_index_documents.py

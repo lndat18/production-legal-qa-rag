@@ -30,8 +30,9 @@ class LoopBoundClient[ClientT]:
     def get(self) -> ClientT:
         """Trả về client gắn với loop đang chạy (phải gọi từ trong coroutine).
 
-        Client cũ không được đóng tường minh: loop của nó thường đã đóng nên
-        không thể `await close()`, và tài nguyên đã bị huỷ cùng loop đó.
+        Không thread-safe: một instance chỉ được dùng trong một thread.
+        Client cũ khi loop đổi không được đóng tường minh (loop của nó thường
+        đã đóng nên không thể `await close()`), chỉ được GC thu gom.
         """
         if self._fixed_client is not None:
             return self._fixed_client

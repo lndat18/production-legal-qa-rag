@@ -113,10 +113,11 @@ class DenseSearch:
         if not missing:
             return candidates
 
+        missing_ids = set(missing)
         fetched = await self.fetch(missing)
         filled: list[Candidate] = []
         for candidate in candidates:
-            if candidate.chunk_id in missing:
+            if candidate.chunk_id in missing_ids:
                 hit = fetched.get(candidate.chunk_id)
                 if hit is None or hit.metadata is None:
                     logger.warning(
