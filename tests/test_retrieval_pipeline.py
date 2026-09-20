@@ -169,7 +169,7 @@ def test_embed_1_request_cho_hyde_va_query_va_rerank_dung_cau_hoi_goc():
     asyncio.run(pipe.retrieve("hỏi"))
     assert embedder.calls == [["giả định", "hỏi"]]
     assert rr.calls[0][0] == "hỏi"
-    assert rr.calls[0][1] == ["nd-c1", "nd-c2"]
+    assert rr.calls[0][1] == ["bc-c1\nnd-c1", "bc-c2\nnd-c2"]
 
 
 def test_mmr_bat_toi_da_2_luot_fetch_1_moi_nhanh():
@@ -214,7 +214,7 @@ def test_chunk_sparse_khong_co_o_dense_bi_bo_ca_hai_che_do():
         pipe, _, rr, _ = _build(["c1"], {"hỏi": ["c99"]}, known={"c1"})
         result = asyncio.run(pipe.retrieve("hỏi", use_mmr=use_mmr))
         assert [c.chunk_id for c in result] == ["c1"]
-        assert "nd-c99" not in rr.calls[0][1]
+        assert "bc-c99\nnd-c99" not in rr.calls[0][1]
 
 
 def test_groq_loi_chi_chay_nhanh_b():
@@ -231,7 +231,7 @@ def test_union_dedupe_theo_chunk_id_truoc_khi_rerank():
     pipe, _, rr, _ = _build(["c1", "c2"], {"giả định": ["c1"], "hỏi": ["c2"]})
     asyncio.run(pipe.retrieve("hỏi"))
     passages = rr.calls[0][1]
-    assert sorted(passages) == ["nd-c1", "nd-c2"]
+    assert sorted(passages) == ["bc-c1\nnd-c1", "bc-c2\nnd-c2"]
 
 
 def test_reranker_loi_fallback_xen_ke_a_b_voi_score_none_mmr_bat():
@@ -291,3 +291,74 @@ def test_pinecone_sparse_loi_raise_retrieval_error():
     pipe._sparse_index = FakeSparse({}, RetrievalError("pinecone"))  # type: ignore[assignment]
     with pytest.raises(RetrievalError):
         asyncio.run(pipe.retrieve("hỏi"))
+
+
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_passage_rerank_bat_dau_bang_breadcrumb_roi_xuong_dong_roi_content(
+    use_mmr: bool,
+):
+    pipe, _, rr, _ = _build(MANY, {"giả định": MANY[5:], "hỏi": MANY[:8]})
+    asyncio.run(pipe.retrieve("hỏi", use_mmr=use_mmr))
+    passages = rr.calls[0][1]
+    assert passages
+    for passage in passages:
+        breadcrumb, content = passage.split("\n", 1)
+        assert breadcrumb.startswith("bc-c")
+        assert content == breadcrumb.replace("bc-", "nd-")
+
+
+def test_build_rerank_passages_giu_thu_tu_union():
+    from production_legal_qa_rag.retrieval.models import Candidate
+    from production_legal_qa_rag.retrieval.pipeline import build_rerank_passages
+
+    union = [
+        Candidate(chunk_id=i, rrf_score=1.0, metadata=_meta(i)) for i in ("c3", "c1")
+    ]
+    assert build_rerank_passages(union) == ["bc-c3\nnd-c3", "bc-c1\nnd-c1"]
+
+
+def test_retrieved_chunk_content_khong_chua_breadcrumb_va_diem_cao_dung_chunk():
+    pipe, _, rr, _ = _build(["c1", "c2", "c3"], {})
+    result = asyncio.run(pipe.retrieve("hỏi", use_mmr=False))
+    for chunk in result:
+        assert chunk.content == f"nd-{chunk.chunk_id}"
+        assert "bc-" not in chunk.content
+        assert chunk.breadcrumb == f"bc-{chunk.chunk_id}"
+    # FakeReranker chấm giảm dần theo thứ tự passage: passage đầu điểm cao nhất.
+    first_passage = rr.calls[0][1][0]
+    assert result[0].rerank_score == float(len(rr.calls[0][1]))
+    assert first_passage == f"bc-{result[0].chunk_id}\nnd-{result[0].chunk_id}"
+
+
+@pytest.mark.parametrize(
+    ("breadcrumb", "content"),
+    [
+        ("", "nd"),
+        ("Luật > Điều 25 > Khoản 1\n(tiếp)", "nd\n\nxuống dòng"),
+        ("bc {x} % \\n <b>", "{0} nd \u200b"),
+    ],
+)
+def test_build_rerank_passages_khong_hong_voi_breadcrumb_dac_biet(
+    breadcrumb: str, content: str
+):
+    from production_legal_qa_rag.retrieval.models import Candidate
+    from production_legal_qa_rag.retrieval.pipeline import build_rerank_passages
+
+    metadata = PineconeMetadata(
+        content=content,
+        breadcrumb=breadcrumb,
+        source_document="sd",
+        has_table=False,
+    )
+    union = [Candidate(chunk_id="c1", rrf_score=1.0, metadata=metadata)]
+    # Ghép đúng nguyên văn, không strip/format: breadcrumb + "\n" + content.
+    assert build_rerank_passages(union) == [f"{breadcrumb}\n{content}"]
+
+
+def test_build_rerank_passages_rong_va_thieu_metadata():
+    from production_legal_qa_rag.retrieval.models import Candidate
+    from production_legal_qa_rag.retrieval.pipeline import build_rerank_passages
+
+    assert build_rerank_passages([]) == []
+    with pytest.raises(RetrievalError):
+        build_rerank_passages([Candidate(chunk_id="c1", rrf_score=1.0)])

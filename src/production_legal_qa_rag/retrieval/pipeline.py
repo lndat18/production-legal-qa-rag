@@ -131,7 +131,7 @@ class RetrievalPipeline:
     ) -> list[RetrievedChunk]:
         if not union:
             return []
-        passages = [_metadata_of(candidate).content for candidate in union]
+        passages = build_rerank_passages(union)
         scores = await self._reranker.rerank(query, passages)
 
         if scores is None:
@@ -184,6 +184,19 @@ def _interleave(branches: list[list[Candidate]]) -> list[Candidate]:
         if rank < len(branch)
     ]
     return _dedupe_by_chunk_id([ordered])
+
+
+def build_rerank_passages(union: list[Candidate]) -> list[str]:
+    """Dựng passage gửi reranker: `breadcrumb + "\\n" + content`, cùng thứ tự `union`.
+
+    Breadcrumb giúp reranker thấy viện dẫn (Điều/Khoản) mà chỉ `content` không
+    có; nó chỉ nằm ở input reranker, không đi vào `RetrievedChunk.content`.
+    """
+    passages = []
+    for candidate in union:
+        metadata = _metadata_of(candidate)
+        passages.append(f"{metadata.breadcrumb}\n{metadata.content}")
+    return passages
 
 
 def _metadata_of(candidate: Candidate) -> PineconeMetadata:
