@@ -60,6 +60,7 @@ def _vector_settings(monkeypatch: pytest.MonkeyPatch) -> VectorDBSettings:
     """Tạo config Pinecone từ environment giả."""
     monkeypatch.setenv("PINECONE_API_KEY", "pinecone-test-key")
     monkeypatch.setenv("PINECONE_INDEX_NAME", "legal-index")
+    monkeypatch.setenv("PINECONE_SPARSE_INDEX_NAME", "legal-sparse-index")
     return VectorDBSettings()  # type: ignore[call-arg]
 
 
