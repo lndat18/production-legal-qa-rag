@@ -258,3 +258,110 @@ def test_ghim_da_go_khong_con_api_hay_hang_so():
     from production_legal_qa_rag.retrieval import pipeline
 
     assert not hasattr(pipeline, "pin_exact_matches")
+
+
+# ------------------------------------------------------------- bổ sung
+
+
+def test_build_index_canh_bao_source_document_la(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from production_legal_qa_rag.retrieval import sparse_index
+
+    chunks = [
+        {
+            "chunk_id": f"c{i}",
+            "source_document": name,
+            "breadcrumb": f"{name} - Điều 1. T - Khoản 1",
+            "content": "nội dung",
+            "token_count": 3,
+        }
+        for i, name in enumerate([BLLD, "VĂN BẢN LẠ"])
+    ]
+    (tmp_path / "a.json").write_text(json.dumps(chunks), encoding="utf-8")
+    index = type(
+        "I",
+        (),
+        {
+            "delete": lambda self, **k: None,
+            "upsert": lambda self, **k: None,
+        },
+    )()
+    client = type(
+        "C",
+        (),
+        {"list_indexes": lambda self: ["sparse"], "Index": lambda self, n: index},
+    )()
+    from production_legal_qa_rag.config import VectorDBSettings
+
+    for k, v in {
+        "PINECONE_API_KEY": "p",
+        "PINECONE_INDEX_NAME": "d",
+        "PINECONE_SPARSE_INDEX_NAME": "sparse",
+    }.items():
+        monkeypatch.setenv(k, v)
+    with caplog.at_level("WARNING", logger=sparse_index.logger.name):
+        sparse_index.build_index(
+            tmp_path,
+            tmp_path / "p.json",
+            VectorDBSettings(),
+            client,  # type: ignore[arg-type]
+        )
+    assert "VĂN BẢN LẠ" in caplog.text
+    encoder = BM25Encoder.load(tmp_path / "p.json")
+    assert "vb_blld_điều_1_khoản_1" in encoder.params.vocab
+    assert not any(t.startswith("vb_") and "lạ" in t for t in encoder.params.vocab)
+
+
+def test_breadcrumb_terms_van_ban_la_khong_sinh_vb_va_khong_loi():
+    terms = breadcrumb_structural_terms("X - Điều 1. T - Khoản 1", "KHÔNG CÓ")
+    assert terms == ["điều_1", "khoản_1", "điều_1_khoản_1"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("Điều 145 Nghị định 145", None),  # "Nghị định" kèm số trơn không phải alias
+        ("Điều 5 luật BHXH và luật bảo hiểm xã hội", "bhxh"),  # cùng văn bản
+        ("ĐIỀU 5 BỘ LUẬT LAO ĐỘNG", "blld"),
+        ("Điều 5 bộ  luật   lao động", "blld"),  # khoảng trắng thừa
+    ],
+)
+def test_detect_document_bien(query: str, expected: str | None):
+    assert detect_document(query) == expected
+
+
+def test_cau_chi_nen_khoan_khong_sinh_token_van_ban():
+    query = "Khoản 2 Bộ luật Lao động quy định gì"
+    assert extract_citation_numbers(query) == []
+    pipe, sparse = _pipe(["z1"], {})
+    asyncio.run(pipe.retrieve(query, use_mmr=False))
+    assert all(terms == [] for terms in sparse.terms.values())
+
+
+def test_detect_document_chuoi_dai_khong_bung_no():
+    import time
+
+    for query in (
+        "bộ luật lao động " * 5000,
+        "luật " * 40000,
+        "nghị định " * 20000 + "điều kiện",
+        "a" * 200000,
+    ):
+        start = time.perf_counter()
+        detect_document(query)
+        assert time.perf_counter() - start < 3.0
+
+
+def test_timeout_reranker_44_passage_la_110s(monkeypatch: pytest.MonkeyPatch):
+    import httpx
+
+    from production_legal_qa_rag.config import RerankerSettings
+    from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+
+    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "http://x")
+    monkeypatch.setenv("RERANKER_API_KEY", "k")
+    client = RerankerClient(RerankerSettings(), httpx.AsyncClient())
+    assert client._read_timeout_seconds(44) == 110.0
