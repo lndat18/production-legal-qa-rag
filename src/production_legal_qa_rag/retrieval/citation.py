@@ -78,11 +78,6 @@ def extract_citation_numbers(query: str) -> list[int]:
     return list(dict.fromkeys(_find_numbers(unicodedata.normalize("NFC", query))))
 
 
-def has_citation(query: str) -> bool:
-    """Câu hỏi gốc có viện dẫn số Điều không (xem `extract_citation_numbers`)."""
-    return bool(extract_citation_numbers(query))
-
-
 def citation_extras(branch_b_sparse_hits: list[SearchHit]) -> list[Candidate]:
     """Extras cho câu hỏi viện dẫn: `CITATION_SPARSE_TOP_K` hit đầu sparse thô nhánh B.
 

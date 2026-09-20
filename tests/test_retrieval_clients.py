@@ -222,7 +222,7 @@ def test_rerank_4xx_khac_khong_goi_y_ngrok(env: None, caplog: pytest.LogCaptureF
     assert "ngrok" not in caplog.text
 
 
-def test_rerank_loi_la_log_traceback_khong_goi_y_studio(
+def test_rerank_loi_la_khong_retry_log_traceback_khong_goi_y_studio(
     env: None, caplog: pytest.LogCaptureFixture
 ):
     def handler(request: httpx.Request, n: int) -> httpx.Response:
@@ -231,7 +231,7 @@ def test_rerank_loi_la_log_traceback_khong_goi_y_studio(
     with caplog.at_level("WARNING", logger=reranker_client.logger.name):
         scores, calls = _rerank(handler)
     assert scores is None
-    assert calls == [3]  # hành vi retry giữ nguyên
+    assert calls == [1]  # lỗi lạ không retry: fallback ngay
     assert "Traceback" in caplog.text and "bug lập trình" in caplog.text
     assert "Studio" not in caplog.text
 

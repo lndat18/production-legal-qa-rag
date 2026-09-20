@@ -68,7 +68,7 @@ def _reranker(post: Any) -> RerankerClient:
     return RerankerClient(settings, client=SimpleNamespace(post=post))  # type: ignore[arg-type]
 
 
-def test_reranker_exception_bat_ky_duoc_retry_roi_none(
+def test_reranker_exception_bat_ky_khong_retry_tra_none(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
@@ -81,7 +81,7 @@ def test_reranker_exception_bat_ky_duoc_retry_roi_none(
         raise RuntimeError("Event loop is closed")
 
     assert asyncio.run(_reranker(post).rerank("q", ["a"])) is None
-    assert calls == [3]
+    assert calls == [1]  # lỗi ngoài httpx: fallback ngay, không retry
 
 
 def test_reranker_khong_nuot_cancelled_error():

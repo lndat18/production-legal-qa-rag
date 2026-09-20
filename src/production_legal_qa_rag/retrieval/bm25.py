@@ -28,7 +28,7 @@ REBUILD_COMMAND = "uv run python tools/sparse_index_documents.py"
 
 
 class BM25ParamsVersionError(RetrievalError):
-    """`bm25_params.json` thiếu hoặc khác `params_version` kỳ vọng."""
+    """`bm25_params.json` không có, hoặc thiếu/khác `params_version` kỳ vọng."""
 
 
 class BM25Params(BaseModel):
@@ -171,11 +171,18 @@ class BM25Encoder:
         """Đọc tham số từ JSON đã `save`.
 
         Raises:
-            BM25ParamsVersionError: Khi file thiếu/khác `params_version` kỳ
-                vọng (index và params cũ không có token cấu trúc), kèm lệnh
-                rebuild.
+            BM25ParamsVersionError: Khi không có file, hoặc file thiếu/khác
+                `params_version` kỳ vọng (index và params cũ không có token cấu
+                trúc), kèm lệnh rebuild.
         """
-        params = BM25Params.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError as error:
+            raise BM25ParamsVersionError(
+                f"Không tìm thấy {path}. Build sparse index và params bằng: "
+                f"{REBUILD_COMMAND}"
+            ) from error
+        params = BM25Params.model_validate_json(raw)
         if params.params_version != BM25_PARAMS_VERSION:
             raise BM25ParamsVersionError(
                 f"{path} có params_version={params.params_version}, cần "
