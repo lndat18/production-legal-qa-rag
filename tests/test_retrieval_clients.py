@@ -664,3 +664,48 @@ def test_hyde_system_prompt_khong_co_placeholder_format():
     # System prompt dùng nguyên văn (không .format) nên không được chứa {query}.
     assert "{query}" not in HYDE_SYSTEM_PROMPT
     assert HYDE_USER_TEMPLATE.count("{query}") == 1
+
+
+def test_rerank_timeout_truyen_dung_o_moi_lan_retry_connect_error(env: None):
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        seen.append(request.extensions["timeout"])
+        if n < 3:
+            raise httpx.ConnectError("x")
+        return httpx.Response(200, json={"scores": [1.0] * 36})
+
+    scores, calls = _rerank(handler, [f"p{i}" for i in range(36)])
+    assert calls == [3]
+    assert scores == [1.0] * 36
+    assert [t["read"] for t in seen] == [90.0, 90.0, 90.0]
+    assert [t["connect"] for t in seen] == [5.0, 5.0, 5.0]
+
+
+def test_rerank_khong_passage_khong_goi_request_va_khong_loi(env: None):
+    calls = [0]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls[0] += 1
+        return httpx.Response(500)
+
+    async def run() -> Any:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await RerankerClient(RerankerSettings(), http).rerank("q", [])
+
+    assert asyncio.run(run()) == []
+    assert calls == [0]
+
+
+def test_rerank_read_timeout_log_khong_lo_noi_dung_passage_hay_secret(
+    env: None, caplog: pytest.LogCaptureFixture
+):
+    def handler(request: httpx.Request, n: int) -> httpx.Response:
+        raise httpx.ReadTimeout("x")
+
+    passages = ["NOI-DUNG-BI-MAT-1", "NOI-DUNG-BI-MAT-2"]
+    with caplog.at_level("DEBUG", logger=reranker_client.logger.name):
+        _rerank(handler, passages)
+    assert "NOI-DUNG-BI-MAT" not in caplog.text
+    assert "http://rerank.test" not in caplog.text
+    assert "X-API-Key" not in caplog.text
