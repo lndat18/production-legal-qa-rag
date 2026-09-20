@@ -61,7 +61,7 @@ def test_citation_extras_lay_top_k_theo_thu_tu():
         SearchHit(chunk_id=f"s{i}", score=10.0 - i)
         for i in range(CITATION_SPARSE_TOP_K + 3)
     ]
-    extras = citation_extras([36], hits)
+    extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == [
         f"s{i}" for i in range(CITATION_SPARSE_TOP_K)
     ]
@@ -90,17 +90,12 @@ def test_chunk_dap_an_chi_o_sparse_top5_co_trong_union(use_mmr: bool):
 def test_cau_khong_vien_dan_khong_co_extras(
     use_mmr: bool, monkeypatch: pytest.MonkeyPatch
 ):
-    seen: list[list[int]] = []
-    real = pipeline_module.citation_extras
+    def boom(*args: object) -> None:
+        raise AssertionError("citation_extras không được gọi")
 
-    def spy(numbers: list[int], *args: object) -> object:
-        seen.append(numbers)
-        return real(numbers, *args)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(pipeline_module, "citation_extras", spy)
+    monkeypatch.setattr(pipeline_module, "citation_extras", boom)
     pipe, _, rr, _ = _pipe(UNCITED)
     asyncio.run(pipe.retrieve(UNCITED, use_mmr=use_mmr))
-    assert seen == [[]]  # không nhận diện Điều nào -> không extras
     assert "bc-c50\nnd-c50" not in rr.calls[0][1]
     assert len(rr.calls[0][1]) <= 2 * 3
 
@@ -185,10 +180,10 @@ def test_has_citation_am_ranh_gioi(query: str):
 
 def test_citation_extras_it_hon_top_k_va_rong():
     hits = [SearchHit(chunk_id="s0", score=1.0), SearchHit(chunk_id="s1", score=0.5)]
-    extras = citation_extras([36], hits)
+    extras = citation_extras(hits)
     assert [c.chunk_id for c in extras] == ["s0", "s1"]
     assert [c.rrf_score for c in extras] == [0.0, 0.0]
-    assert citation_extras([], hits) == []
+    assert citation_extras([]) == []
 
 
 @pytest.mark.parametrize("use_mmr", [True, False])
