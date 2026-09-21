@@ -1254,9 +1254,7 @@ def test_single_flight_follower_falls_back_when_leader_wrote_nothing() -> None:
 def test_single_flight_not_used_on_answer_hit() -> None:
     hit = CachedAnswer(text="t", citations=[], created_at=datetime.now(UTC))
     sf = _SingleFlight(_Flight(leader=True))
-    _run(
-        _build(single_flight=sf, answer_cache=_AnswerCache({"q": hit})), [_u("q")]
-    )
+    _run(_build(single_flight=sf, answer_cache=_AnswerCache({"q": hit})), [_u("q")])
     assert sf.keys == []
 
 
