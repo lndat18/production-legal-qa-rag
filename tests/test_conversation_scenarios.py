@@ -257,7 +257,8 @@ class _Groq:
             raise reply
         text = reply(kwargs) if callable(reply) else reply
         message = SimpleNamespace(content=text)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+        choice = SimpleNamespace(message=message, finish_reason="stop")
+        return SimpleNamespace(choices=[choice])
 
 
 def _condenser(
@@ -272,9 +273,9 @@ def test_condense_call_parameters_follow_spec() -> None:
     history = [_u("Khoản 1 Điều 113 BLLĐ nói gì?"), _a("Nghỉ hằng năm.")]
     asyncio.run(condenser.condense("Còn Khoản 2?", history))
     call = groq.calls[0]
-    assert call["reasoning_effort"] == "low"
+    assert call["reasoning_effort"] == "medium"
     assert call["temperature"] == 0
-    assert call["max_completion_tokens"] == 512
+    assert call["max_completion_tokens"] == 2048
     assert call["include_reasoning"] is False
     system, user = call["messages"]
     assert system == {"role": "system", "content": CONDENSE_SYSTEM_PROMPT}

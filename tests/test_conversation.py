@@ -172,6 +172,20 @@ def test_condense_detailed_reason_codes() -> None:
     assert run(RuntimeError("429")).reason is CondenseReason.GROQ_ERROR
 
 
+def test_condense_call_params_and_prompt_guards() -> None:
+    from production_legal_qa_rag.conversation.condenser import CONDENSE_SYSTEM_PROMPT
+
+    condenser, fake = _condenser("Khoản 2 Điều 113 Bộ luật Lao động nói gì?")
+    asyncio.run(condenser.condense("Còn Khoản 2?", HISTORY))
+    call = fake.calls[0]
+    # 512 làm reasoning ăn hết content (finish_reason=length, mục 16).
+    assert call["max_completion_tokens"] >= 2048
+    assert call["temperature"] == 0.0
+    assert call["messages"][0]["content"] == CONDENSE_SYSTEM_PROMPT
+    assert "KHÔNG được thêm chủ thể" in CONDENSE_SYSTEM_PROMPT
+    assert "Không tự thêm số Điều/Khoản" in CONDENSE_SYSTEM_PROMPT
+
+
 def test_check_condensed_returns_reason() -> None:
     assert check_condensed("  ", "q", HISTORY) == (None, CondenseReason.EMPTY)
 
