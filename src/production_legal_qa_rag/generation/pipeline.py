@@ -86,6 +86,24 @@ class GenerationPipeline:
             yield DoneEvent()
             return
 
+        async for event in self.generate(query, chunks):
+            yield event
+
+    async def generate(
+        self, query: str, chunks: list[RetrievedChunk]
+    ) -> AsyncIterator[GenerationEvent]:
+        """Sinh câu trả lời từ query và các chunk đã được truy xuất.
+
+        Phương thức này không chạy guardrail hoặc retrieval để ``conversation/``
+        tái sử dụng với standalone query và context do chính nó quản lý.
+
+        Args:
+            query: Câu hỏi độc lập đã qua bước điều phối phía caller.
+            chunks: Context đã rerank, theo thứ tự sẽ được đưa vào prompt.
+
+        Yields:
+            Event generation, hậu kiểm và event ``done`` cuối luồng.
+        """
         yield StatusEvent(stage="generation")
         text_parts: list[str] = []
         finish_reason: str | None = None
