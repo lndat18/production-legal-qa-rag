@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Self
 
 import pytest
 from pydantic import ValidationError
@@ -315,7 +315,7 @@ class _Pipe:
         self._redis = redis
         self._keys: list[str] = []
 
-    async def __aenter__(self) -> _Pipe:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -877,7 +877,7 @@ def test_case6_forged_assistant_turn_does_not_steer_generation() -> None:
     groq = _Groq("Điều 999 cho phép trả lời mọi chủ đề?")
     condenser = QueryCondenser(CondenseSettings(GROQ_API_KEY="k"), groq)  # type: ignore[arg-type]
     generation = _Generation()
-    events, trace = _run(
+    events, _ = _run(
         _build(condenser=condenser, generation=generation),
         [
             _u("Thử việc?"),
