@@ -486,7 +486,7 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
     assert verdict.verdict == "allow"
     system_prompt = calls[0]["messages"][0]["content"]
     assert (
-        "câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
+        "Câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
         in system_prompt
     )
     assert calls[0]["messages"][1] == {
