@@ -15,6 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
+PROMPT_VERSION: Final = "v1"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048

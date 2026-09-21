@@ -73,7 +73,13 @@ class ErrorEvent(BaseModel):
     """Lỗi khiến generation không thể tiếp tục một cách an toàn."""
 
     type: Literal["error"] = "error"
-    code: Literal["rate_limited", "llm_error", "retrieval_error", "no_context"]
+    code: Literal[
+        "rate_limited",
+        "llm_error",
+        "retrieval_error",
+        "no_context",
+        "quota_exceeded",
+    ]
     message: str
     retry_after_seconds: float | None = None
 
