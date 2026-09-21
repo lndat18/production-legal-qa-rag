@@ -95,7 +95,7 @@ class AdmissionController:
         finally:
             self._semaphore.release()
             if ticket.refund_requested:
-                await self._refund(charged)
+                await asyncio.shield(self._refund(charged))
 
     async def _charge_quota(self, user_id: str, day: str) -> list[str]:
         """Tăng quota user rồi toàn cục; trả các khoá đã tính để hoàn lại được."""

@@ -1060,11 +1060,6 @@ def test_success_does_not_refund() -> None:
     assert admission.entered == admission.exited == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Lệch spec mục 8.4: exception generation trước token thành llm_error "
-    "nhưng không hoàn quota (chỉ ErrorEvent mới gọi request_refund).",
-)
 def test_unexpected_generation_exception_before_token_refunds_quota() -> None:
     admission = _Admission()
     generation = _Generation([], raises=RuntimeError("boom"))

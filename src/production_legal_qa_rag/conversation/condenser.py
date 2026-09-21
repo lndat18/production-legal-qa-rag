@@ -123,6 +123,8 @@ def validate_condensed(
 
     Số Điều/Khoản trong kết quả phải có trong ``query`` hoặc ``history``, để
     chặn model bịa viện dẫn (điểm rủi ro lớn nhất của condense).
+
+    Giới hạn: chỉ kiểm số Điều/Khoản; chưa có extractor cho Điểm (a, b, ...).
     """
     lines = [line.strip() for line in raw_output.strip().splitlines() if line.strip()]
     if not lines:

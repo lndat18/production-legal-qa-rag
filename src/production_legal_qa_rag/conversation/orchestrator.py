@@ -264,13 +264,19 @@ class ChatOrchestrator:
             return
         trace.chunk_ids = [chunk.chunk_id for chunk in chunks]
         has_token = False
-        async for event in self._generation.generate(standalone, chunks):
-            has_token = has_token or isinstance(event, TokenEvent)
-            if isinstance(event, ErrorEvent) and not has_token:
+        try:
+            async for event in self._generation.generate(standalone, chunks):
+                has_token = has_token or isinstance(event, TokenEvent)
+                if isinstance(event, ErrorEvent) and not has_token:
+                    ticket.request_refund()
+                if isinstance(event, DoneEvent):
+                    await self._store_answer(standalone, trace)
+                yield event
+        except Exception:
+            # Spec 8.4: lỗi hệ thống trước token thì hoàn quota, rồi thành llm_error.
+            if not has_token:
                 ticket.request_refund()
-            if isinstance(event, DoneEvent):
-                await self._store_answer(standalone, trace)
-            yield event
+            raise
 
     async def _load_chunks(
         self, standalone: str, trace: TurnTrace
