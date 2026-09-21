@@ -17,7 +17,9 @@ from production_legal_qa_rag.conversation.admission import (
     AdmissionDenied,
 )
 from production_legal_qa_rag.conversation.condenser import (
+    CondenseReason,
     QueryCondenser,
+    check_condensed,
     validate_condensed,
 )
 from production_legal_qa_rag.conversation.history import (
@@ -108,8 +110,9 @@ def test_validate_condensed_rules() -> None:
 
 
 class _FakeGroq:
-    def __init__(self, content: str | Exception) -> None:
+    def __init__(self, content: str | Exception, finish_reason: str = "stop") -> None:
         self._content = content
+        self._finish_reason = finish_reason
         self.calls: list[dict[str, Any]] = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
@@ -118,11 +121,18 @@ class _FakeGroq:
         if isinstance(self._content, Exception):
             raise self._content
         message = SimpleNamespace(content=self._content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+        choice = SimpleNamespace(message=message, finish_reason=self._finish_reason)
+        usage = SimpleNamespace(
+            completion_tokens=40,
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=25),
+        )
+        return SimpleNamespace(choices=[choice], usage=usage)
 
 
-def _condenser(content: str | Exception) -> tuple[QueryCondenser, _FakeGroq]:
-    fake = _FakeGroq(content)
+def _condenser(
+    content: str | Exception, finish_reason: str = "stop"
+) -> tuple[QueryCondenser, _FakeGroq]:
+    fake = _FakeGroq(content, finish_reason)
     settings = CondenseSettings(GROQ_API_KEY="k")
     return QueryCondenser(settings, fake), fake  # type: ignore[arg-type]
 
@@ -140,6 +150,30 @@ def test_condense_degrades_to_original_on_error_or_invented_number() -> None:
     assert asyncio.run(condenser.condense("Còn Khoản 2?", HISTORY)) == "Còn Khoản 2?"
     condenser, _ = _condenser("Điều 500 nói gì?")
     assert asyncio.run(condenser.condense("Còn Khoản 2?", HISTORY)) == "Còn Khoản 2?"
+
+
+def test_condense_detailed_reason_codes() -> None:
+    def run(content: str | Exception, finish: str = "stop") -> Any:
+        condenser, _ = _condenser(content, finish)
+        return asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+
+    ok = run("Khoản 2 Điều 113 Bộ luật Lao động nói gì?")
+    assert ok.reason is CondenseReason.OK
+    assert ok.completion_tokens == 40
+    assert ok.reasoning_tokens == 25
+    assert ok.finish_reason == "stop"
+    assert run("").reason is CondenseReason.EMPTY
+    assert run("", "length").reason is CondenseReason.FINISH_LENGTH
+    assert run("ab").reason is CondenseReason.BAD_LENGTH
+    bad = run("Điều 500 nói gì?")
+    assert bad.reason is CondenseReason.UNKNOWN_CITATION
+    assert bad.text == "Còn Khoản 2?"
+    assert bad.raw_output == "Điều 500 nói gì?"
+    assert run(RuntimeError("429")).reason is CondenseReason.GROQ_ERROR
+
+
+def test_check_condensed_returns_reason() -> None:
+    assert check_condensed("  ", "q", HISTORY) == (None, CondenseReason.EMPTY)
 
 
 def test_condense_without_history_skips_call() -> None:

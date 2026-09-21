@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 from groq import AsyncGroq
@@ -52,6 +54,30 @@ MAX_OUTPUT_CHARS: Final = 500
 _WRAPPING_QUOTES: Final = "\"'`“”‘’«»"
 
 
+class CondenseReason(StrEnum):
+    """Mã lý do của một lần condense (conversation_spec.md mục 15.3)."""
+
+    OK = "ok"
+    NO_HISTORY = "no_history"
+    EMPTY = "empty"
+    FINISH_LENGTH = "finish_length"
+    BAD_LENGTH = "bad_length"
+    UNKNOWN_CITATION = "unknown_citation"
+    GROQ_ERROR = "groq_error"
+
+
+@dataclass(frozen=True)
+class CondenseOutcome:
+    """Kết quả một lần condense; ``raw_output`` chỉ dùng cho script đo dev."""
+
+    text: str
+    reason: CondenseReason
+    raw_output: str = ""
+    finish_reason: str | None = None
+    completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
+
+
 class QueryCondenser:
     """Sở hữu client Groq của bước condense."""
 
@@ -80,8 +106,19 @@ class QueryCondenser:
         Returns:
             Câu hỏi độc lập, hoặc chính ``query`` khi lỗi/đầu ra không hợp lệ.
         """
+        return (await self.condense_detailed(query, history)).text
+
+    async def condense_detailed(
+        self, query: str, history: Sequence[ChatMessage]
+    ) -> CondenseOutcome:
+        """Như ``condense`` nhưng kèm mã lý do và số đo (mục 15.3, bước 0).
+
+        Không raise: mọi lỗi degrade về ``query`` với ``reason`` tương ứng.
+        Log warning khi loại đầu ra chỉ có ``reason``, ``finish_reason`` và số
+        token, không có nội dung (mục 12).
+        """
         if not history:
-            return query
+            return CondenseOutcome(text=query, reason=CondenseReason.NO_HISTORY)
         try:
             response = await self._client.get().chat.completions.create(
                 model=self._settings.model_name,
@@ -98,16 +135,47 @@ class QueryCondenser:
                 include_reasoning=_INCLUDE_REASONING,
             )
         except Exception:
-            logger.warning("Groq condense lỗi, dùng câu gốc.", exc_info=True)
-            return query
+            logger.warning(
+                "Groq condense lỗi, dùng câu gốc (reason=%s).",
+                CondenseReason.GROQ_ERROR,
+                exc_info=True,
+            )
+            return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
 
-        candidate = validate_condensed(
-            response.choices[0].message.content or "", query, history
+        choice = response.choices[0]
+        raw_output = choice.message.content or ""
+        finish_reason = choice.finish_reason
+        completion_tokens, reasoning_tokens = _read_usage(response)
+        candidate, reason = check_condensed(raw_output, query, history)
+        if candidate is None and not raw_output.strip() and finish_reason == "length":
+            reason = CondenseReason.FINISH_LENGTH
+        outcome = CondenseOutcome(
+            text=candidate if candidate is not None else query,
+            reason=reason,
+            raw_output=raw_output,
+            finish_reason=finish_reason,
+            completion_tokens=completion_tokens,
+            reasoning_tokens=reasoning_tokens,
         )
         if candidate is None:
-            logger.warning("Đầu ra condense không hợp lệ, dùng câu gốc.")
-            return query
-        return candidate
+            logger.warning(
+                "Đầu ra condense bị loại, dùng câu gốc: reason=%s finish_reason=%s "
+                "completion_tokens=%s reasoning_tokens=%s",
+                reason,
+                finish_reason,
+                completion_tokens,
+                reasoning_tokens,
+            )
+        return outcome
+
+
+def _read_usage(response: object) -> tuple[int | None, int | None]:
+    """Số token completion/reasoning từ ``usage`` (None nếu Groq không trả)."""
+    usage = getattr(response, "usage", None)
+    completion = getattr(usage, "completion_tokens", None)
+    details = getattr(usage, "completion_tokens_details", None)
+    reasoning = getattr(details, "reasoning_tokens", None)
+    return completion, reasoning
 
 
 def build_condense_user_message(query: str, history: Sequence[ChatMessage]) -> str:
@@ -119,7 +187,14 @@ def build_condense_user_message(query: str, history: Sequence[ChatMessage]) -> s
 def validate_condensed(
     raw_output: str, query: str, history: Sequence[ChatMessage]
 ) -> str | None:
-    """Kiểm tra đầu ra condense bằng code; ``None`` nếu không đạt.
+    """Kiểm tra đầu ra condense bằng code; ``None`` nếu không đạt."""
+    return check_condensed(raw_output, query, history)[0]
+
+
+def check_condensed(
+    raw_output: str, query: str, history: Sequence[ChatMessage]
+) -> tuple[str | None, CondenseReason]:
+    """Như ``validate_condensed`` nhưng trả thêm mã lý do loại.
 
     Số Điều/Khoản trong kết quả phải có trong ``query`` hoặc ``history``, để
     chặn model bịa viện dẫn (điểm rủi ro lớn nhất của condense).
@@ -128,17 +203,15 @@ def validate_condensed(
     """
     lines = [line.strip() for line in raw_output.strip().splitlines() if line.strip()]
     if not lines:
-        return None
+        return None, CondenseReason.EMPTY
     candidate = lines[0].strip(_WRAPPING_QUOTES).strip()
     if not MIN_OUTPUT_CHARS <= len(candidate) <= MAX_OUTPUT_CHARS:
-        return None
+        return None, CondenseReason.BAD_LENGTH
     source = "\n".join([query, *(m.content for m in history)])
     if not set(extract_citation_numbers(candidate)) <= set(
         extract_citation_numbers(source)
-    ):
-        return None
-    if not set(extract_citation_khoans(candidate)) <= set(
+    ) or not set(extract_citation_khoans(candidate)) <= set(
         extract_citation_khoans(source)
     ):
-        return None
-    return candidate
+        return None, CondenseReason.UNKNOWN_CITATION
+    return candidate, CondenseReason.OK
