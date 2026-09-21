@@ -260,9 +260,9 @@ class _Groq:
         return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
-def _condenser(reply: str | Exception | Callable[[dict[str, Any]], str]) -> tuple[
-    QueryCondenser, _Groq
-]:
+def _condenser(
+    reply: str | Exception | Callable[[dict[str, Any]], str],
+) -> tuple[QueryCondenser, _Groq]:
     groq = _Groq(reply)
     return QueryCondenser(CondenseSettings(GROQ_API_KEY="k"), groq), groq  # type: ignore[arg-type]
 
@@ -840,9 +840,7 @@ def test_case4_shared_cache_between_direct_and_condensed() -> None:
     )
     _, first = _run(orchestrator, [_u(standalone)])
     assert first.cache_status == "miss" and standalone in cache.store
-    events, second = _run(
-        orchestrator, [_u("Khoản 1?"), _a("..."), _u("Còn Khoản 2?")]
-    )
+    events, second = _run(orchestrator, [_u("Khoản 1?"), _a("..."), _u("Còn Khoản 2?")])
     assert second.cache_status == "answer_hit" and second.outcome == "answered"
     assert generation.queries == [standalone] and retrieve.calls == [standalone]
     assert second.usage is None
@@ -957,7 +955,9 @@ def test_error_prevents_answer_caching() -> None:
 def test_answer_without_citation_or_not_found_phrase_not_cached() -> None:
     cache = _AnswerCache()
     _run(
-        _build(generation=_gen_with(token="Câu trả lời", cite=False), answer_cache=cache),
+        _build(
+            generation=_gen_with(token="Câu trả lời", cite=False), answer_cache=cache
+        ),
         [_u("q")],
     )
     assert cache.sets == 0
@@ -1122,7 +1122,9 @@ def test_denial_mapping_to_error_events(
 
 
 def test_answer_hit_bypasses_admission() -> None:
-    hit = CachedAnswer(text="t [1]", citations=[_CITATION], created_at=datetime.now(UTC))
+    hit = CachedAnswer(
+        text="t [1]", citations=[_CITATION], created_at=datetime.now(UTC)
+    )
     admission = _Admission()
     _, trace = _run(
         _build(answer_cache=_AnswerCache({"q": hit}), admission=admission), [_u("q")]
@@ -1143,9 +1145,7 @@ def test_spec_13_3_ten_concurrent_streams_limits() -> None:
 
     async def one(user: str) -> list[Any]:
         ctx = RequestContext(user_id=user, request_id=user)
-        return [
-            e async for e in orchestrator.stream([_u("q")], ctx, TurnTrace())
-        ]
+        return [e async for e in orchestrator.stream([_u("q")], ctx, TurnTrace())]
 
     async def scenario() -> list[list[Any]]:
         tasks = [asyncio.create_task(one(f"u{i}")) for i in range(10)]
@@ -1157,7 +1157,9 @@ def test_spec_13_3_ten_concurrent_streams_limits() -> None:
     results = asyncio.run(scenario())
     limited = [r for r in results if r[-2].type == "error"]
     assert len(limited) == 2  # 10 - (2 đang chạy + 6 chờ)
-    assert all(r[-2].code == "rate_limited" and r[-2].retry_after_seconds for r in limited)
+    assert all(
+        r[-2].code == "rate_limited" and r[-2].retry_after_seconds for r in limited
+    )
     assert generation.max_active == 2
     assert len(generation.queries) == 8
     # Hai người bị từ chối được hoàn quota.
@@ -1219,7 +1221,9 @@ def test_single_flight_leader_produces_and_releases() -> None:
 
 
 def test_single_flight_follower_replays_leader_answer() -> None:
-    hit = CachedAnswer(text="từ leader", citations=[_CITATION], created_at=datetime.now(UTC))
+    hit = CachedAnswer(
+        text="từ leader", citations=[_CITATION], created_at=datetime.now(UTC)
+    )
     flight = _Flight(leader=False, answer=hit)
     sf, generation, admission = _SingleFlight(flight), _Generation(), _Admission()
     events, trace = _run(
