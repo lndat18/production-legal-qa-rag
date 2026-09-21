@@ -15,12 +15,13 @@ Từ 1 câu hỏi tiếng Việt, trả lời **dựa hoàn toàn trên context*
 - Định nghĩa **luồng event** (mục 2) làm hợp đồng giữa `generation/` và lớp API.
 - Xử lý lỗi/rate limit (Groq free tier).
 
-**Không làm:** multi-turn / query rewriting / session (spec riêng, xử lý ở lớp điều
-phối sau; `generate()` giữ stateless); verifier hoặc self-check bằng LLM lần 2 (để
+**Không làm:** multi-turn / query rewriting / session (làm ở `conversation/`, xem
+`conversation/conversation_spec.md`; `generation/` giữ stateless, không nhận history —
+mục 16); verifier hoặc self-check bằng LLM lần 2 (để
 dành cho ReAct/multi-agent); moderation độc hại (hate/self-harm — không phù hợp bài
 toán); cache; lớp HTTP/SSE (FastAPI, spec riêng); RAGAS (phase sau); tối ưu latency
-nâng cao. **Không dùng LangServe** (deprecated từ 2024-11-18, dự án không dùng
-LangChain).
+nâng cao (cache: làm ở `cache/`, xem `cache/cache_spec.md`). **Không dùng LangServe**
+(deprecated từ 2024-11-18, dự án không dùng LangChain).
 
 **Tiêu chí quan trọng nhất:** với câu hỏi trong miền mà context chứa đáp án, câu trả
 lời đúng nội dung context, không bịa số Điều/con số, mọi khẳng định pháp lý có `[n]`
@@ -234,7 +235,9 @@ mặc định vẫn chạy được với 1 key):
 
 SDK `max_retries=2` xử lý lỗi tạm; xác nhận SDK có tự retry 429 và sleep theo
 `retry-after` không, nếu có thì cân nhắc `max_retries=0` cho 429 ở generation (chờ
-lâu trong luồng stream là trải nghiệm tệ). Không log nội dung câu hỏi/context/secret.
+lâu trong luồng stream là trải nghiệm tệ). Không log nội dung câu hỏi/context/secret ra
+log ứng dụng (stdout); nội dung chỉ được ghi vào bảng `chatlog` có kiểm soát truy cập
+(`chatlog/chatlog_spec.md`).
 
 ## 10. Ngân sách rate limit (Groq free, `gpt-oss-120b`: 30 RPM, 1K RPD, 8K TPM, 200K TPD)
 
@@ -314,5 +317,33 @@ Chạy thật (`generation/test.py`, reranker server đang chạy — runbook re
 4. Stream + `include_reasoning=False`/usage ở chunk cuối: xác nhận bằng API thật.
 5. Cảnh báo `warning` đến sau khi user đã đọc xong; nếu thấy không đủ (câu sai vẫn
    lọt), cân nhắc chặn trước khi stream (đổi UX) hoặc verifier bằng agent (phase sau).
-6. Multi-turn/query rewriting, lớp API FastAPI + SSE, ReAct/multi-agent (spec riêng).
+6. Multi-turn/query rewriting → `conversation/conversation_spec.md`; lớp API →
+   `api/api_spec.md`; ReAct/multi-agent (spec riêng, chưa làm).
 7. Chất lượng câu trả lời (faithfulness, answer relevancy): RAGAS ở phase sau.
+
+## 16. Mở rộng cho lớp chat (2026-09-21)
+
+Thay đổi nhỏ để `conversation/` dùng lại được các phần của `generation/`; **không đổi
+hành vi single-turn hiện có** (`answer_stream(query)` vẫn chạy như mục 7).
+
+1. **`generate(query, chunks)` public** (`GenerationPipeline.generate`): tách bước 3–4 của
+   mục 7 thành phương thức riêng, phát `status(generation)`, `token*`, `citations`,
+   `warning*`, `done` (hoặc `error` + `done`). `answer_stream` gọi lại nó sau khi
+   guardrail + retrieve. Kết quả chunk cần cho đánh giá do `conversation/evaluation.py`
+   giữ (nó tự gọi `retrieve`).
+2. **Guardrail có ngữ cảnh:** `InputGuardrail.check_input(query, recent_user_turns=())`.
+   Tham số mới tuỳ chọn, tối đa 2 câu `user` trước đó, đặt trong khối "Câu hỏi trước (chỉ
+   để hiểu ngữ cảnh)" ở message `user` của prompt guardrail; chính sách `allow` /
+   `out_of_scope` / `injection` giữ nguyên, thêm 1 dòng: câu follow-up mơ hồ nhưng câu
+   trước thuộc miền → `allow`. Guardrail luôn phân loại **câu gốc**, không phải câu đã
+   condense. Cập nhật kiểm tra "prompt khớp từng ký tự" theo prompt mới.
+3. **`PROMPT_VERSION`** (hằng số, khởi điểm `"v1"`) trong `generator.py`; bắt buộc tăng khi
+   đổi `GENERATION_SYSTEM_PROMPT`, `_USER_TEMPLATE` hoặc quy tắc `output_check` — nằm trong
+   khoá cache (`cache/cache_spec.md` mục 4).
+4. **`ErrorEvent.code` thêm `quota_exceeded`** (vượt quota user/ngày hoặc ngân sách toàn
+   cục do `AdmissionController` quyết định). `overloaded` dùng lại `rate_limited` +
+   `retry_after_seconds`.
+5. **Generator không nhận history** (`conversation_spec.md` mục 3): câu trả lời là hàm
+   thuần của `(standalone_query, chunks)`, để cache đúng và tiết kiệm TPM.
+6. Mục 10 (ngân sách): thêm call condense (`gpt-oss-20b`, chỉ từ lượt thứ 2) — model và
+   ngân sách riêng, không ảnh hưởng 8K TPM của `120b`.
