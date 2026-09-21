@@ -1067,6 +1067,13 @@ def test_unexpected_generation_exception_before_token_refunds_quota() -> None:
     assert admission.tickets[0].refund_requested
 
 
+def test_unexpected_exception_after_token_does_not_refund() -> None:
+    admission = _Admission()
+    generation = _Generation([TokenEvent(text="x")], raises=RuntimeError("boom"))
+    _run(_build(generation=generation, admission=admission), [_u("q")])
+    assert not admission.tickets[0].refund_requested
+
+
 def test_unexpected_exception_becomes_llm_error_then_done() -> None:
     admission, cache = _Admission(), _AnswerCache()
     generation = _Generation([TokenEvent(text="x")], raises=RuntimeError("boom"))
@@ -1175,6 +1182,48 @@ def test_llm_error_before_token_refunds_real_quota() -> None:
     generation = _Generation([ErrorEvent(code="llm_error", message="m"), DoneEvent()])
     _run(_build(generation=generation, admission=controller), [_u("q")])
     assert all(v == 0 for v in redis.counts.values())
+
+
+def test_exception_before_token_refunds_real_quota() -> None:
+    controller, redis = _real_admission()
+    generation = _Generation([], raises=RuntimeError("boom"))
+    events, _ = _run(_build(generation=generation, admission=controller), [_u("q")])
+    assert events[-2].code == "llm_error"
+    assert redis.counts and all(v == 0 for v in redis.counts.values())
+
+
+def test_exception_after_token_keeps_real_quota() -> None:
+    controller, redis = _real_admission()
+    generation = _Generation([TokenEvent(text="x")], raises=RuntimeError("boom"))
+    _run(_build(generation=generation, admission=controller), [_u("q")])
+    assert redis.counts and all(v == 1 for v in redis.counts.values())
+
+
+def test_admission_refund_survives_cancellation_thanks_to_shield() -> None:
+    class SlowRedis(_Redis):
+        async def decr(self, key: str) -> None:
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            await super().decr(key)
+
+    redis = SlowRedis()
+    controller = _controller(redis)
+
+    async def body() -> None:
+        async with controller.slot("u") as ticket:
+            ticket.request_refund()
+
+    async def scenario() -> None:
+        task = asyncio.create_task(body())
+        await asyncio.sleep(0)  # đang ở giữa việc hoàn quota
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert all(v == 0 for v in redis.counts.values())
+
+    asyncio.run(scenario())
 
 
 def test_client_disconnect_releases_slot_and_skips_cache() -> None:
