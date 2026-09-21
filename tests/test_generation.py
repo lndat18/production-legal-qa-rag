@@ -12,6 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from production_legal_qa_rag.generation.generator import (
     GENERATION_SYSTEM_PROMPT,
+    PROMPT_VERSION,
     AnswerGenerator,
     GenerationDelta,
     build_context,
@@ -25,6 +26,7 @@ from production_legal_qa_rag.generation.guardrail import (
 from production_legal_qa_rag.generation.models import (
     Citation,
     DoneEvent,
+    ErrorEvent,
     GenerationEvent,
     GuardrailVerdict,
 )
@@ -149,6 +151,31 @@ def test_event_flow_allow_streams_citations_then_done() -> None:
     ]
     assert retrieve_calls == ["Được nghỉ bao nhiêu ngày?"]
     assert generator.calls == [("Được nghỉ bao nhiêu ngày?", [_chunk()])]
+
+
+def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval() -> None:
+    pipeline, generator, retrieve_calls = _pipeline(
+        chunks=[_chunk()],
+        deltas=[GenerationDelta(text="Được nghỉ 12 ngày [1].")],
+    )
+
+    async def collect() -> list[GenerationEvent]:
+        return [
+            event
+            async for event in pipeline.generate("Câu hỏi độc lập", [_chunk()])
+        ]
+
+    events = asyncio.run(collect())
+
+    assert [event.type for event in events] == [
+        "status",
+        "token",
+        "citations",
+        "done",
+    ]
+    assert events[0].stage == "generation"
+    assert retrieve_calls == []
+    assert generator.calls == [("Câu hỏi độc lập", [_chunk()])]
 
 
 @pytest.mark.parametrize(
@@ -313,6 +340,10 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
+def test_prompt_version_starts_at_v1_for_cache_keying() -> None:
+    assert PROMPT_VERSION == "v1"
+
+
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
     calls: list[dict[str, Any]] = []
 
@@ -420,6 +451,54 @@ def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
     assert calls[0]["messages"][1] == {"role": "user", "content": "Kể chuyện cười"}
 
 
+def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
+    calls: list[dict[str, Any]] = []
+
+    async def create(**kwargs: Any) -> Any:
+        calls.append(kwargs)
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"verdict":"allow","reason":"Trong miền."}'
+                    )
+                )
+            ]
+        )
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    settings = SimpleNamespace(
+        api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+
+    verdict = asyncio.run(
+        InputGuardrail(
+            settings,
+            client=client,  # type: ignore[arg-type]
+        ).check_input(
+            "Còn trường hợp này?",
+            recent_user_turns=("Lượt cũ nhất", "Lượt gần", "Lượt mới nhất"),
+        )
+    )
+
+    assert verdict.verdict == "allow"
+    system_prompt = calls[0]["messages"][0]["content"]
+    assert (
+        "câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
+        in system_prompt
+    )
+    assert calls[0]["messages"][1] == {
+        "role": "user",
+        "content": (
+            "Câu hỏi trước (chỉ để hiểu ngữ cảnh):\n"
+            "Lượt gần\nLượt mới nhất\n\n"
+            "Câu hỏi: Còn trường hợp này?"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "response", ["not json", "", '{"verdict":"other","reason":"x"}']
 )
@@ -491,7 +570,20 @@ def test_output_check_refusal_without_citation_or_number_has_no_warning() -> Non
 def test_generation_event_union_rejects_invalid_schema() -> None:
     adapter = TypeAdapter(GenerationEvent)
 
+    assert adapter.validate_python(
+        {
+            "type": "error",
+            "code": "quota_exceeded",
+            "message": "Đã dùng hết hạn mức hôm nay.",
+        }
+    ) == ErrorEvent(
+        code="quota_exceeded", message="Đã dùng hết hạn mức hôm nay."
+    )
     with pytest.raises(ValidationError):
         adapter.validate_python({"type": "unknown"})
+    with pytest.raises(ValidationError):
+        adapter.validate_python(
+            {"type": "error", "code": "unknown", "message": "Không hợp lệ."}
+        )
     with pytest.raises(ValidationError):
         Citation(n=1, chunk_id="id", source_document="doc")  # type: ignore[call-arg]
