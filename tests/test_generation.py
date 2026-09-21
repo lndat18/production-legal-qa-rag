@@ -162,7 +162,9 @@ def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval()
     )
 
     async def collect() -> list[GenerationEvent]:
-        return [event async for event in pipeline.generate("Câu hỏi độc lập", [_chunk()])]
+        return [
+            event async for event in pipeline.generate("Câu hỏi độc lập", [_chunk()])
+        ]
 
     events = asyncio.run(collect())
 
