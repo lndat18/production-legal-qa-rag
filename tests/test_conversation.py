@@ -123,7 +123,7 @@ class _FakeGroq:
 
 def _condenser(content: str | Exception) -> tuple[QueryCondenser, _FakeGroq]:
     fake = _FakeGroq(content)
-    settings = CondenseSettings(api_key="k")
+    settings = CondenseSettings(GROQ_API_KEY="k")
     return QueryCondenser(settings, fake), fake  # type: ignore[arg-type]
 
 
