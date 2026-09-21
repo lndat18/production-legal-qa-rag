@@ -153,17 +153,16 @@ def test_event_flow_allow_streams_citations_then_done() -> None:
     assert generator.calls == [("Được nghỉ bao nhiêu ngày?", [_chunk()])]
 
 
-def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval() -> None:
+def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval() -> (
+    None
+):
     pipeline, generator, retrieve_calls = _pipeline(
         chunks=[_chunk()],
         deltas=[GenerationDelta(text="Được nghỉ 12 ngày [1].")],
     )
 
     async def collect() -> list[GenerationEvent]:
-        return [
-            event
-            async for event in pipeline.generate("Câu hỏi độc lập", [_chunk()])
-        ]
+        return [event async for event in pipeline.generate("Câu hỏi độc lập", [_chunk()])]
 
     events = asyncio.run(collect())
 
@@ -576,9 +575,7 @@ def test_generation_event_union_rejects_invalid_schema() -> None:
             "code": "quota_exceeded",
             "message": "Đã dùng hết hạn mức hôm nay.",
         }
-    ) == ErrorEvent(
-        code="quota_exceeded", message="Đã dùng hết hạn mức hôm nay."
-    )
+    ) == ErrorEvent(code="quota_exceeded", message="Đã dùng hết hạn mức hôm nay.")
     with pytest.raises(ValidationError):
         adapter.validate_python({"type": "unknown"})
     with pytest.raises(ValidationError):
