@@ -559,6 +559,49 @@ def test_orchestrator_gates_low_relevance_chunks_as_no_context() -> None:
     assert trace.chunk_ids == []
 
 
+def test_orchestrator_logs_max_score_when_gate_blocks(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """18.2.2 (revise): log `max_rerank_score` khi gate chặn `no_context`.
+
+    Chỉ log số liệu (điểm số, ngưỡng, số chunk), không log nội dung câu hỏi
+    (mục 12 conversation_spec.md).
+    """
+    from production_legal_qa_rag.retrieval.relevance import MIN_RERANK_SCORE
+
+    blocked_score = MIN_RERANK_SCORE - 1.5
+
+    async def weak_retrieve(query: str) -> list[RetrievedChunk]:
+        return [
+            RetrievedChunk(
+                chunk_id="c1",
+                source_document="d",
+                breadcrumb="Điều 1",
+                content="x",
+                rerank_score=blocked_score,
+            )
+        ]
+
+    secret_query = "câu hỏi bí mật không được lộ ra log"
+    orchestrator = ChatOrchestrator(
+        guardrail=_FakeGuardrail(),  # type: ignore[arg-type]
+        condenser=_FakeCondenser("x"),  # type: ignore[arg-type]
+        generation=_FakeGeneration(),  # type: ignore[arg-type]
+        admission=_NoopAdmission(),  # type: ignore[arg-type]
+        retrieve=weak_retrieve,
+        answer_cache=_MemoryAnswerCache(),
+        replay=_replay,
+    )
+    with caplog.at_level(
+        "INFO", logger="production_legal_qa_rag.conversation.orchestrator"
+    ):
+        _run(orchestrator, [_user(secret_query)])
+    assert "Gate độ liên quan chặn no_context" in caplog.text
+    assert str(blocked_score) in caplog.text
+    assert str(MIN_RERANK_SCORE) in caplog.text
+    assert secret_query not in caplog.text
+
+
 def test_orchestrator_invalid_conversation_propagates() -> None:
     orchestrator = _orchestrator(
         guardrail=_FakeGuardrail(),

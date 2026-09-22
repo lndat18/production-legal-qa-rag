@@ -51,7 +51,10 @@ from production_legal_qa_rag.generation.models import (
 from production_legal_qa_rag.generation.pipeline import GenerationPipeline
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 from production_legal_qa_rag.retrieval.pipeline import retrieve as default_retrieve
-from production_legal_qa_rag.retrieval.relevance import is_low_relevance
+from production_legal_qa_rag.retrieval.relevance import (
+    MIN_RERANK_SCORE,
+    is_low_relevance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +301,19 @@ class ChatOrchestrator:
                 )
         # 18.2.2: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
         # retrieve() không lọc gì — retrieval_spec.md mục 16 điểm 8).
-        if not chunks or is_low_relevance(chunks):
+        if not chunks:
+            return [], ErrorEvent(code="no_context", message=_NO_CONTEXT_MESSAGE)
+        if is_low_relevance(chunks):
+            # Quan sát (reviewer PR #41): log để theo dõi gate có chặn sát ngưỡng
+            # hay không trong vận hành thật (không log nội dung câu hỏi, mục 12).
+            scores = [c.rerank_score for c in chunks if c.rerank_score is not None]
+            logger.info(
+                "Gate độ liên quan chặn no_context: max_rerank_score=%s "
+                "ngưỡng=%s n_chunks=%d.",
+                max(scores) if scores else None,
+                MIN_RERANK_SCORE,
+                len(chunks),
+            )
             return [], ErrorEvent(code="no_context", message=_NO_CONTEXT_MESSAGE)
         if not cached and self._retrieval_cache is not None:
             await self._retrieval_cache.set(standalone, chunks)
