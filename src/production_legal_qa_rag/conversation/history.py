@@ -29,9 +29,17 @@ GUARDRAIL_CONTEXT_TURNS: Final = 2
 _CITATION_MARK = re.compile(r"\[\d+\]")
 _ELLIPSIS: Final = "…"
 
-# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa", "đã nói", "trước đó",
-# "lúc nãy"/"khi nãy"/"hồi nãy" — đồng nghĩa khẩu ngữ của "vừa rồi").
-_BACK_REFERENCE = r"(?:ở\s*trên|vừa|đã\s*nói|trước\s*đó|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
+# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa rồi/nói/nêu/trả lời/trích
+# dẫn", "đã nói", "trước đó", "lúc nãy"/"khi nãy"/"hồi nãy" — đồng nghĩa khẩu ngữ của
+# "vừa rồi"). "vừa" PHẢI đi kèm hậu tố tham chiếu (rồi/nói/nêu/trả lời/trích dẫn) —
+# không để bare, vì "vừa" còn có nghĩa khác không liên quan tới hội thoại cũ ("vừa mới
+# ban hành", "vừa sinh con", "vừa đủ"...), nếu để bare sẽ chặn oan câu hỏi pháp luật mới
+# bất kỳ có chứa "vừa" (phát hiện khi review PR #40, false-positive thật: "Tóm tắt giúp
+# tôi các quy định vừa ban hành về nghỉ phép năm.").
+_BACK_REFERENCE = (
+    r"(?:ở\s*trên|vừa\s*(?:rồi|nói|nêu|trả\s*lời|trích\s*dẫn)"
+    r"|đã\s*nói|trước\s*đó|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
+)
 # Mẫu regex nhận diện meta-request về lịch sử hội thoại (conversation_spec.md
 # mục 18.2.3): "tóm tắt"/"nhắc lại" + cụm tham chiếu ngược, "(ý|điểm|phần) ...
 # (bạn|vừa|đã) ... (nói|nêu|trả lời)", hoặc gọi thẳng "bạn" (địa chỉ hệ thống)

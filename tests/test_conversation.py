@@ -150,6 +150,19 @@ def test_is_meta_history_request_does_not_block_valid_followups() -> None:
         assert not is_meta_history_request(_window_with_history(query)), query
 
 
+def test_is_meta_history_request_does_not_block_new_questions_with_bare_vua() -> None:
+    """Biên (PR #40 review): "vừa" bare không được chặn oan câu hỏi mới có nghĩa
+    khác ("vừa mới ban hành", "vừa sinh con") không liên quan lịch sử hội thoại.
+    "vừa" chỉ được coi là tham chiếu ngược khi đi kèm hậu tố (rồi/nói/nêu/trả
+    lời/trích dẫn)."""
+    for query in (
+        "Tóm tắt giúp tôi các quy định vừa ban hành về nghỉ phép năm.",
+        "Tóm tắt giúp tôi quyền lợi của lao động nữ vừa sinh con.",
+        "Nhắc lại cho tôi nghị định mới nhất vừa ban hành về lương tối thiểu vùng.",
+    ):
+        assert not is_meta_history_request(_window_with_history(query)), query
+
+
 def test_is_meta_history_request_matches_direct_address_variants() -> None:
     """Biên: gọi thẳng "bạn" + vừa/đã + nói/nêu/trả lời -> meta-request, dù
     không có tiền tố "tóm tắt"/"nhắc lại"/"ý/điểm/phần" (phát hiện khi review
