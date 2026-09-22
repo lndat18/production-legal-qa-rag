@@ -26,7 +26,11 @@ from production_legal_qa_rag.conversation.admission import (
     AdmissionTicket,
 )
 from production_legal_qa_rag.conversation.condenser import QueryCondenser
-from production_legal_qa_rag.conversation.history import HistoryWindow, build_window
+from production_legal_qa_rag.conversation.history import (
+    HistoryWindow,
+    build_window,
+    is_meta_history_request,
+)
 from production_legal_qa_rag.conversation.models import (
     ChatMessage,
     RequestContext,
@@ -67,6 +71,11 @@ _RETRIEVAL_ERROR_MESSAGE: Final = (
     "Không thể tra cứu văn bản lúc này. Vui lòng thử lại sau."
 )
 _NO_CONTEXT_MESSAGE: Final = "Không tìm thấy văn bản phù hợp để trả lời câu hỏi này."
+META_REQUEST_MESSAGE: Final = (
+    "Hệ thống không lưu và không xem lại được các câu trả lời trước đó trong "
+    "cuộc hội thoại này, nên không thể tóm tắt hay nhắc lại nội dung đã nói. "
+    "Vui lòng đặt một câu hỏi pháp luật cụ thể, độc lập với các câu trả lời trước."
+)
 
 type RetrieveCallable = Callable[[str], Awaitable[list[RetrievedChunk]]]
 type ReplayCallable = Callable[[CachedAnswer], AsyncIterator[GenerationEvent]]
@@ -180,6 +189,15 @@ class ChatOrchestrator:
         self, window: HistoryWindow, ctx: RequestContext, trace: TurnTrace
     ) -> AsyncIterator[GenerationEvent]:
         yield StatusEvent(stage="guardrail")
+        if is_meta_history_request(window):
+            trace.verdict = GuardrailVerdict(
+                verdict="out_of_scope", reason="meta_request_lich_su_hoi_thoai"
+            )
+            trace.standalone_query = window.query
+            trace.outcome = "refused"
+            yield RefusalEvent(reason="out_of_scope", message=META_REQUEST_MESSAGE)
+            yield DoneEvent()
+            return
         verdict, standalone = await self._guard_and_condense(window)
         trace.verdict = verdict
         trace.standalone_query = standalone

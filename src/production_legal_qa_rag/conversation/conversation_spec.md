@@ -285,7 +285,7 @@ Module không đọc `.env` trực tiếp. Cập nhật `.env.example` (`REDIS_U
 | Module            | Trách nhiệm                                                                    |
 | ----------------- | ------------------------------------------------------------------------------ |
 | `models.py`       | `ChatMessage`, `RequestContext`, `TurnTrace` (`EvaluationResult`: phase sau)   |
-| `history.py`      | `build_window`, `SOURCES_FOOTER_MARKER`, làm sạch history                      |
+| `history.py`      | `build_window`, `SOURCES_FOOTER_MARKER`, làm sạch history, `is_meta_history_request` (18.2.3) |
 | `condenser.py`    | `QueryCondenser` (prompt, gọi Groq, kiểm tra đầu ra, fallback)                 |
 | `admission.py`    | `AdmissionController`, `AdmissionDenied`                                       |
 | `orchestrator.py` | `ChatOrchestrator.stream` (mục 7); inject guardrail, condenser, cache, retrieve, generation, admission |
@@ -982,6 +982,30 @@ model, message riêng theo case như `guardrail.py` đã làm với `OUT_OF_SCOP
   này ≥ 3/3 lần (0 call Groq, `trace.chunk_ids` rỗng, không qua retrieval/generation).
   Chạy lại toàn bộ `conversation/test.py --groups all`: không ca hợp lệ nào (đặc biệt ca
   2 "Còn Khoản 2?", ca 7 chuỗi đại từ mơ hồ) bị chặn oan bởi heuristic mới.
+
+**Kết quả đo (2026-09-22):** logic regex là code thuần, không phụ thuộc LLM, nên độ tin
+cậy 3/3 lần được xác nhận bằng **test đơn vị** (`tests/test_conversation.py`, không gọi
+Groq): `test_is_meta_history_request_matches_ca9_examples` khớp đúng cả 2 ví dụ mục 13.4
+ca 9 ("Tóm tắt lại các câu trả lời ở trên cho tôi.", "Ý thứ 3 bạn vừa nói là gì?");
+`test_is_meta_history_request_does_not_block_citation_queries` xác nhận câu có số
+Điều/Khoản (kể cả có từ khoá "tóm tắt"/"nhắc lại") không bị chặn;
+`test_is_meta_history_request_requires_history` xác nhận lượt đầu không áp dụng;
+`test_is_meta_history_request_does_not_block_valid_followups` xác nhận 6 câu hồi quy
+khác (ca 2, ca 1, ca 7, ca 3, đa chủ thể) không bị chặn oan. `test_orchestrator_blocks_meta_history_request_before_guardrail`
+xác nhận bằng fake orchestrator: stream chỉ có `status(guardrail)` → `refusal` → `done`,
+`guardrail.seen == []`, `condenser.calls == 0`, không gọi retrieve/generate.
+
+Đo end-to-end 1 lần qua `conversation/test.py --groups all` (13 hội thoại, Groq +
+Pinecone thật): ca 9 ("Tóm tắt lại các câu trả lời ở trên cho tôi.") bị chặn đúng ở bước
+này — `Outcome: refused`, `Chunk: 0 []`, `Tổng thời gian: 0.00s` (nhanh hơn hẳn ca
+injection/out_of_scope khác vốn mất 0.74-1.28s do vẫn phải gọi Groq guardrail), không
+thấy status `retrieval`/`generation`, không có dòng "Token (prompt/completion/reasoning)"
+(chỉ xuất hiện khi generation chạy) — xác nhận 0 call Groq. Không ca hợp lệ nào trong 12
+ca còn lại bị chặn oan, đặc biệt: ca 2 "Còn Khoản 2 thì sao?" (2 biến thể, ca gốc và ca
+chung cache B) vẫn được condense và trả lời đúng; ca 7 chuỗi đại từ mơ hồ "Vậy lương thử
+việc tối thiểu là bao nhiêu?" vẫn được condense và trả lời; ca "Đa chủ thể - loại hợp
+đồng" ("Còn hợp đồng không xác định thời hạn thì sao?") vẫn được condense và trả lời.
+Đạt tiêu chí nghiệm thu.
 
 #### 18.2.2 Retrieval-relevance gate dựa trên `rerank_score`
 

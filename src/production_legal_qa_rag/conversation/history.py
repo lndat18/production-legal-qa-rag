@@ -7,12 +7,17 @@ dùng làm *dữ liệu* trong prompt condense/guardrail, không bao giờ làm 
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Sequence
 from typing import Final
 
 from pydantic import BaseModel
 
 from production_legal_qa_rag.conversation.models import ChatMessage
+from production_legal_qa_rag.retrieval.citation import (
+    extract_citation_khoans,
+    extract_citation_numbers,
+)
 
 # Khối "Nguồn" do `api/` nối vào câu trả lời; hằng số ở đây để `api/` import.
 SOURCES_FOOTER_MARKER: Final = "\n\n---\n**Nguồn**\n"
@@ -23,6 +28,21 @@ GUARDRAIL_CONTEXT_TURNS: Final = 2
 
 _CITATION_MARK = re.compile(r"\[\d+\]")
 _ELLIPSIS: Final = "…"
+
+# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa", "đã nói", "trước đó").
+_BACK_REFERENCE = r"(?:ở\s*trên|vừa|đã\s*nói|trước\s*đó)"
+# Mẫu regex nhận diện meta-request về lịch sử hội thoại (conversation_spec.md
+# mục 18.2.3): "tóm tắt"/"nhắc lại" + cụm tham chiếu ngược, hoặc "(ý|điểm|phần)
+# ... (bạn|vừa|đã) ... (nói|nêu|trả lời)". Khoảng cách .{0,40}/.{0,20} đủ rộng
+# cho câu tiếng Việt tự nhiên, không quá rộng để tránh khớp nhầm đoạn dài.
+_META_HISTORY_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(rf"tóm\s*tắt.{{0,40}}{_BACK_REFERENCE}", re.IGNORECASE),
+    re.compile(rf"nhắc\s*lại.{{0,40}}{_BACK_REFERENCE}", re.IGNORECASE),
+    re.compile(
+        r"(?:ý|điểm|phần).{0,20}(?:bạn|vừa|đã).{0,20}(?:nói|nêu|trả\s*lời)",
+        re.IGNORECASE,
+    ),
+)
 
 
 class InvalidConversationError(ValueError):
@@ -45,6 +65,27 @@ class HistoryWindow(BaseModel):
         """Tối đa ``GUARDRAIL_CONTEXT_TURNS`` câu user gần nhất trước ``query``."""
         user_turns = [m.content for m in self.history if m.role == "user"]
         return user_turns[-GUARDRAIL_CONTEXT_TURNS:]
+
+
+def is_meta_history_request(window: HistoryWindow) -> bool:
+    """``True`` nếu ``window.query`` là meta-request về lịch sử hội thoại.
+
+    Lớp phòng thủ code-based (regex, không LLM), chạy trước guardrail/condense
+    (conversation_spec.md mục 18.2.3): ``generate()`` không nhận history nên
+    không thể trả lời loại câu hỏi này (ví dụ "Tóm tắt lại các câu trả lời ở
+    trên cho tôi."). Chỉ áp dụng khi có history (lượt đầu luôn ``False``) và
+    câu hỏi không chứa số Điều/Khoản nào (tránh chặn oan "Nhắc lại giúp tôi
+    Điều 35 nói gì" — có số Điều thì là tra cứu thật, không phải meta-request).
+
+    Args:
+        window: Cửa sổ history đã dựng bởi ``build_window``.
+    """
+    if not window.has_history:
+        return False
+    query = unicodedata.normalize("NFC", window.query)
+    if not any(pattern.search(query) for pattern in _META_HISTORY_PATTERNS):
+        return False
+    return not extract_citation_numbers(query) and not extract_citation_khoans(query)
 
 
 def build_window(messages: Sequence[ChatMessage]) -> HistoryWindow:
