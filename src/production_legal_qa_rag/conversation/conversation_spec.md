@@ -1521,7 +1521,7 @@ Cả 2 giải pháp dưới đây là cải tiến UX chủ động (không ph�
 (ưu tiên #1 dự án). Mỗi mục là 1 vòng `develop-cycle` độc lập (≤ 50 phút), nhánh git riêng,
 tạo từ nhánh chứa 18.2.1 đã hoàn tất (hoặc từ `main` sau khi 18.2.1 merge).
 
-#### 19.3.1 Generation: kết luận trước + trích dẫn blockquote nguyên văn (B4 + B6)
+#### 19.3.1 Generation: kết luận trước + trích dẫn blockquote nguyên văn (B4 + B6) — đã implement (2026-09-23)
 
 **Giải pháp:** thêm 2 quy tắc mới vào `GENERATION_SYSTEM_PROMPT` (`generation/generator.py`).
 Đánh số tạm **13, 14** (nối sau quy tắc 12 của 18.2.1, giả định 18.2.1 merge trước — nếu
@@ -1567,6 +1567,49 @@ chối/liệt kê" cho ca thuộc quy tắc 5/9 — không nới các quy tắc 
   luận giả tạo" ở ca biên (gần đủ điều kiện quy tắc 9 nhưng chưa hẳn) — nếu quan sát thấy
   vi phạm, ưu tiên nới lỏng yêu cầu B4 (chấp nhận thứ tự cũ ở ca biên) hơn là nới quy tắc
   5/9.
+
+**Kết quả (2026-09-23):** implement ở nhánh `feat/generation-presentation-style`,
+`PROMPT_VERSION` `"v4"` → `"v5"`. Đo qua `conversation/test.py` (Groq thật, orchestrator
+đầy đủ), `--groups core` (2 lần) và `--groups general` (1-2 lần, một phần bị chặn bởi giới
+hạn token/ngày dùng chung của tài khoản Groq — xem dưới).
+
+- **Vòng đo 1 phát hiện lỗi thật ở quy tắc 14 (đã sửa ngay trong vòng này, không phải
+  vòng `REVISE` riêng):** với đúng văn bản quy tắc 14 nêu ở trên, model đặt kết luận lên
+  đầu đúng như kỳ vọng, nhưng ở câu ngay sau khối blockquote, model thay ký hiệu `[n]`
+  bằng dấu ngoặc toàn góc `【n】` (tái hiện 2/2 lần, ca "Vậy chồng thì sao?" — thai sản/
+  chồng) — vi phạm định dạng trích nguồn của quy tắc 2, khiến `output_check.py` (regex
+  chỉ khớp `\[(\d+)\]`) không nhận ra citation nào, `NGUỒN THAM KHẢO` hiển thị rỗng dù nội
+  dung câu trả lời đúng. **Sửa:** thêm 1 câu vào cuối quy tắc 14 (đã cập nhật vào bản quy
+  tắc ở trên và trong code): "Ngay sau khối trích dẫn (dòng cuối cùng bắt đầu bằng `> `)
+  vẫn phải thêm đúng ký hiệu nguồn dạng `[n]` như quy tắc 2 quy định, dùng đúng dấu ngoặc
+  vuông ASCII `[` và `]` — không thay bằng bất kỳ ký hiệu ngoặc nào khác." Đo lại (3 lần)
+  xác nhận hết lỗi, citation trở lại đúng `[n]`.
+- **B4 (kết luận trước) — đạt:** ca "Kế thừa Điều" (Khoản 2 Điều 113), ca "Đại từ" (chồng
+  nghỉ thai sản, 3 lần), ca "Đa chủ thể - loại hợp đồng" (hợp đồng không xác định thời
+  hạn) đều đặt nội dung/kết luận chính ở câu đầu tiên rồi mới tới căn cứ chi tiết.
+- **B4, ngoại lệ quy tắc 5/9 — đạt, không bị nới:** ca "Đổi chủ đề" (thuế TNCN, thiếu yếu
+  tố cư trú — ca gốc mục 18.2.1) chạy lại 2 lần (qua `core` và biến thể "30 triệu" không
+  có lượt trước qua `general`) đều giữ đúng câu/đoạn đầu tiên là liệt kê RIÊNG BIỆT từng
+  trường hợp (cư trú/không cư trú, loại thu nhập) theo gạch đầu dòng — không bị quy tắc 13
+  biến thành một kết luận chắc chắn giả tạo. Không tự tính ra một số tiền cuối cùng (quy
+  tắc 10 không đổi, vẫn giữ đúng).
+- **B6 (blockquote nguyên văn) — đạt:** ca "Đại từ" (chồng nghỉ thai sản) dùng đúng khối
+  blockquote (`> ...`) trích nguyên văn Khoản 2 Điều 53/Khoản 4 Điều 54 Luật Bảo hiểm xã
+  hội, kèm đúng `[n]` ngay sau khối, khớp context (Pinecone fetch xác nhận nguyên văn khớp
+  100%, tương tự điều tra 18.2.5). Không bắt buộc dùng cho mọi câu — ca "Kế thừa Điều"
+  chọn trích trong câu văn xuôi bằng ngoặc kép thay vì blockquote (đúng tinh thần "không
+  bắt buộc").
+- **Không phá vỡ ca PASS nào đã có:** ca 1-4 `generation_spec.md` mục 14 (đo lại tương
+  đương qua `core`/`general`), ca 2/5 mục 17, ca 9/thuế TNCN của 18.2.1 (đo lại qua biến
+  thể "30 triệu"). Ca injection (mục 17 ca 5) không đổi, vẫn bị guardrail chặn đúng.
+- **Giới hạn của vòng đo:** ca "Tính toán số học dễ sai" (`general`) không đo lại được lần
+  cuối vì tài khoản Groq (org B, `gpt-oss-120b`) hết ngân sách token/ngày dùng chung (TPD
+  200K, dùng chung với các vòng đo của PR khác trong cùng ngày) — chờ ~15-25 phút mỗi lần
+  cửa sổ rolling 24h giải phóng đủ token vẫn không đủ cho lần đo cuối. Quy tắc 10 không bị
+  sửa ở vòng này nên rủi ro hồi quy thấp, không coi là chặn tiêu chí nghiệm thu B4/B6.
+  Không phát hiện ca nào vi phạm "kết luận giả tạo" ở ca biên trong toàn bộ các lần đo —
+  rủi ro đã nêu ở trên chưa xảy ra trên thực tế, nhưng mẫu đo còn nhỏ (chưa đủ `--groups
+  all`), để lại làm quan sát tiếp nếu phát hiện thêm ca lệch trong vận hành.
 
 #### 19.3.2 Disclaimer ngày cập nhật dữ liệu (B10)
 

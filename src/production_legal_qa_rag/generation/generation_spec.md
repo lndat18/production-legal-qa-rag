@@ -115,7 +115,7 @@ bằng 1 dòng trống. `chunks` rỗng → **không gọi Groq**, phát `error(
 ### 5.2. Prompt
 
 Cấu trúc: system = quy tắc cố định; user = context + câu hỏi. Prompt khởi điểm
-(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v4"`** (`generator.py`):
+(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v5"`** (`generator.py`):
 quy tắc 9-10 thêm ở mục 17 (2026-09-22, sửa lỗi phát hiện sau khi tune condense — ca "2
 kịch bản mâu thuẫn + tính sai thuế"); quy tắc 10 sửa thêm 1 câu và quy tắc 11-12 thêm ở
 mục 18 (2026-09-22, ranh giới phạm vi Khoản — ca "tóm tắt câu trả lời cũ" bịa từ 5 chunk
@@ -123,6 +123,14 @@ rời rạc, ca "thuế TNCN" kết hợp 2 Khoản luỹ tiến ra 1 số cuố
 trường hợp chỉ kết hợp 1 Khoản với số liệu trong câu hỏi, không chỉ "hai Khoản khác nhau")
 và thêm ví dụ minh hoạ few-shot ở mục 20 (2026-09-22, đợt 2/3 — sau khi thử
 `reasoning_effort=medium` ở đợt 1/3 không đạt), khoá cache đã đổi theo `PROMPT_VERSION`.
+Quy tắc 13-14 thêm theo `conversation_spec.md` mục 19.3.1 (2026-09-23, B4 kim tự tháp
+ngược + B6 blockquote trích dẫn nguyên văn — cải tiến UX thuần tuý, không tăng bề mặt
+bịa đặt). Quy tắc 14 ban đầu (đo qua `conversation/test.py`) khiến model thay `[n]` bằng
+ký hiệu ngoặc toàn góc `【n】` ngay sau khối blockquote (citation không còn được
+`output_check.py` nhận diện, `NGUỒN THAM KHẢO` rỗng) — sửa bằng cách thêm 1 câu bắt buộc
+rõ ràng: ngay sau khối trích dẫn vẫn phải dùng đúng `[n]` dấu ngoặc vuông ASCII như quy
+tắc 2, không thay bằng ký hiệu ngoặc khác; đo lại xác nhận hết lỗi (xem
+`conversation_spec.md` mục 19.3.1 để có số liệu đo đầy đủ).
 
 ```
 [system]
@@ -187,6 +195,21 @@ Quy tắc:
     lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
     có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
     cũ.
+13. Khi câu trả lời có một nội dung/kết luận rõ ràng theo "Văn bản" (không thuộc diện quy
+    tắc 5 từ chối hay quy tắc 9 liệt kê nhiều trường hợp): nêu ngay nội dung/kết luận đó
+    trong 1-2 câu đầu tiên, rồi mới trình bày căn cứ pháp lý chi tiết. Nếu câu trả lời
+    thuộc diện quy tắc 5 (từ chối/chỉ trả lời một phần) hoặc quy tắc 9 (liệt kê nhiều
+    trường hợp): câu/đoạn đầu tiên phải đúng là nội dung từ chối/liệt kê đó — không thay
+    bằng một kết luận chắc chắn giả tạo để trông có vẻ dứt khoát hơn thực tế.
+14. Khi trích dẫn nguyên văn một câu hoặc đoạn ngắn (không quá khoảng 2 dòng) trực tiếp từ
+    "Văn bản" để làm bằng chứng, đặt đúng nguyên văn câu/đoạn đó trong khối trích dẫn
+    markdown (mỗi dòng bắt đầu bằng "> "), không diễn giải hay chỉnh sửa bên trong khối
+    này; phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích
+    dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời — chỉ dùng khi có một câu
+    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. Ngay
+    sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm đúng ký hiệu nguồn
+    dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc vuông ASCII "[" và "]" — không
+    thay bằng bất kỳ ký hiệu ngoặc nào khác (kể cả các dấu ngoặc toàn góc/kiểu chữ khác).
 
 Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung "Văn bản" thật):
 
@@ -554,17 +577,57 @@ generation).
   43/50 trong ngày, còn 7 chỗ trống); dừng đo ở đây theo đúng giới hạn ngân sách đã dặn,
   không chạy `--groups regression`/`--groups general` đầy đủ hay `--groups all`.
 
-## 19. Kế hoạch tiếp theo (chưa implement) — trình bày kết luận trước + blockquote trích dẫn
+## 19. Trình bày kết luận trước + blockquote trích dẫn (2026-09-23, đã implement)
 
 `conversation_spec.md` mục 19.3.1 (đợt đánh giá chiến lược bổ sung 2026-09-22) đề xuất
 thêm quy tắc 13-14 vào `GENERATION_SYSTEM_PROMPT` (`generator.py`): kết luận/nội dung
 chính đặt ở 1-2 câu đầu (trừ ca từ chối/liệt kê nhiều trường hợp), và trích dẫn nguyên
 văn câu/đoạn ngắn từ "Văn bản" trong khối markdown blockquote (`> ...`) tách biệt phần
 diễn giải. Là cải tiến UX/trình bày, không thêm nội dung mới; đặt sau mục 18 trong thứ tự
-ưu tiên (18 xử lý lỗi chính xác, nghiêm trọng hơn). Bump `PROMPT_VERSION` khi implement.
-Chưa có nhánh git chạy, chưa đo — chỉ ghi chú kế hoạch tại đây theo yêu cầu mục 5 khi viết
-`conversation_spec.md` mục 19. Cập nhật mục 5.2 và ghi kết quả đo vào mục này sau khi có
-code.
+ưu tiên (18 xử lý lỗi chính xác, nghiêm trọng hơn). Đã implement ở nhánh
+`feat/generation-presentation-style`, `PROMPT_VERSION` bump `"v4"` → `"v5"`. Nội dung đầy
+đủ 2 quy tắc ở mục 5.2.
+
+**Vòng đo 1 (rule 14 gốc, theo đúng văn bản đề xuất ở `conversation_spec.md`):** ca "Vậy
+chồng thì sao?" (thai sản/chồng) — model đưa kết luận lên đầu đúng như kỳ vọng, nhưng thay
+ký hiệu trích dẫn `[n]` bằng dấu ngoặc toàn góc `【n】` ngay sau khối blockquote (tái hiện
+2/2 lần chạy) → `output_check.py` không nhận diện được citation (regex chỉ khớp
+`\[(\d+)\]`), `NGUỒN THAM KHẢO` rỗng dù câu trả lời có nội dung đúng. Đây là quy hồi thật
+về quy tắc 2 (định dạng trích nguồn), không phải hành vi mong muốn.
+
+**Sửa:** thêm 1 câu vào cuối quy tắc 14, yêu cầu rõ ràng: ngay sau khối trích dẫn vẫn phải
+dùng đúng `[n]` (ngoặc vuông ASCII) như quy tắc 2, không thay bằng ký hiệu ngoặc khác. Đo
+lại xác nhận hết lỗi — citation trở lại đúng định dạng `[n]`, `NGUỒN THAM KHẢO` hiển thị
+đúng.
+
+**Vòng đo 2 (rule 14 đã sửa) qua `conversation/test.py`, Groq thật:**
+
+- `--groups core` (2 lần): ca "Kế thừa Điều" (Khoản 2 Điều 113) — trích nguyên văn ngắn
+  bằng dấu ngoặc kép trong câu (không cần blockquote, đúng tinh thần "không bắt buộc dùng
+  cho mọi câu"), kết luận đặt ngay câu đầu, `[1]` đúng định dạng. Ca "Đại từ" (chồng nghỉ
+  thai sản) — kết luận 1 câu đầu, sau đó liệt kê chi tiết rồi 1 khối blockquote trích
+  nguyên văn Khoản 2 Điều 53 kèm đúng `[n]` ngay sau khối (3 lần chạy, ổn định). Ca "Đổi
+  chủ đề" (thuế TNCN, thiếu yếu tố cư trú — ca thuộc quy tắc 9) — câu/đoạn đầu tiên vẫn
+  đúng là liệt kê từng trường hợp theo gạch đầu dòng, KHÔNG bị quy tắc 13 biến thành một
+  kết luận giả tạo. Ca "Injection" — không liên quan, vẫn bị guardrail chặn đúng như
+  trước.
+- `--groups general` (1-2 lần, một phần bị chặn bởi giới hạn token/ngày dùng chung của tài
+  khoản Groq — xem ghi chú dưới): ca "Đa chủ thể - loại hợp đồng" (hợp đồng không xác định
+  thời hạn) — kết luận đặt ngay câu đầu. Ca "Phân loại thiếu - thuế TNCN" (30 triệu, không
+  có lượt trước) — câu/đoạn đầu tiên đúng là liệt kê 4 trường hợp (tiền lương cư trú/không
+  cư trú, thu nhập khác, tiền bản quyền) theo yêu cầu quy tắc 9, không có kết luận giả tạo;
+  không tự tính ra một số tiền cuối cùng (giữ đúng quy tắc 10, dù prompt user không đổi gì
+  ở quy tắc này). Ca "Tính toán số học dễ sai" (làm thêm giờ) không đo lại được lần cuối vì
+  hết ngân sách token/ngày dùng chung của tài khoản Groq (org B, `gpt-oss-120b`, TPD 200K —
+  bị nhiều vòng đo trong ngày của các PR khác dùng gần hết); quy tắc 10 không bị sửa ở vòng
+  này nên rủi ro hồi quy thấp, không coi là chặn tiêu chí nghiệm thu.
+- Không phá vỡ ca PASS nào đã có: ca 1-4 mục 14 (đã đo lại tương đương qua `general`/
+  `core`), ca 2/5 mục 17, ca 9/thuế TNCN của mục 18 (đo lại qua biến thể "30 triệu" ở
+  `general`, giữ đúng liệt kê, không có kết luận giả tạo).
+
+**Kết luận:** đạt tiêu chí nghiệm thu `conversation_spec.md` mục 19.3.1 — kết luận đặt
+đầu câu trả lời ở mọi ca có kết luận rõ ràng đo được; ca thuộc quy tắc 5/9 giữ đúng câu/
+đoạn đầu là từ chối/liệt kê; có nhiều ca dùng đúng khối blockquote kèm `[n]` khớp context.
 
 ## 20. Siết quy tắc 10 cho ca thuế TNCN — 3 đợt (2026-09-22)
 

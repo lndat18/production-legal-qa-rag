@@ -342,7 +342,7 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v4"
+    assert PROMPT_VERSION == "v5"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -486,6 +486,52 @@ def test_generation_prompt_forbids_recalling_previous_conversation_answers() -> 
         in GENERATION_SYSTEM_PROMPT
     )
     assert "trông giống như đang tóm tắt hội thoại\n    cũ." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_has_inverted_pyramid_conclusion_first_rule() -> None:
+    """Mục 19.3.1 (B4, kim tự tháp ngược) quy tắc 13: khi câu trả lời có một nội
+    dung/kết luận rõ ràng (không thuộc diện quy tắc 5 từ chối hay quy tắc 9 liệt kê
+    nhiều trường hợp), nêu ngay kết luận đó trong 1-2 câu đầu rồi mới trình bày căn cứ
+    chi tiết. Ca thuộc quy tắc 5/9 thì câu đầu tiên vẫn phải đúng là nội dung từ chối/
+    liệt kê, không được thay bằng một kết luận giả tạo.
+    """
+    assert (
+        "Khi câu trả lời có một nội dung/kết luận rõ ràng theo"
+        ' "Văn bản" (không thuộc diện quy\n    tắc 5 từ chối hay quy tắc 9 liệt kê'
+        " nhiều trường hợp): nêu ngay nội dung/kết luận đó\n    trong 1-2 câu đầu tiên,"
+        " rồi mới trình bày căn cứ pháp lý chi tiết." in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "câu/đoạn đầu tiên phải đúng là nội dung từ chối/liệt kê đó — không thay\n"
+        "    bằng một kết luận chắc chắn giả tạo để trông có vẻ dứt khoát hơn thực tế."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
+    """Mục 19.3.1 (B6, blockquote trích dẫn nguyên văn) quy tắc 14: khi trích nguyên
+    văn một câu/đoạn ngắn (tối đa khoảng 2 dòng) làm bằng chứng, đặt trong khối
+    blockquote markdown (mỗi dòng bắt đầu "> "), không diễn giải bên trong khối; phần
+    giải thích đặt ở văn xuôi thường ngay sau, tách biệt. Không bắt buộc dùng cho mọi
+    câu trả lời.
+    """
+    assert (
+        "Khi trích dẫn nguyên văn một câu hoặc đoạn ngắn (không quá khoảng 2 dòng)"
+        ' trực tiếp từ\n    "Văn bản" để làm bằng chứng, đặt đúng nguyên văn câu/đoạn đó'
+        ' trong khối trích dẫn\n    markdown (mỗi dòng bắt đầu bằng "> "), không diễn'
+        " giải hay chỉnh sửa bên trong khối\n    này" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích\n"
+        "    dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'Ngay\n    sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm'
+        " đúng ký hiệu nguồn\n    dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc"
+        ' vuông ASCII "[" và "]" — không\n    thay bằng bất kỳ ký hiệu ngoặc nào khác'
+        in GENERATION_SYSTEM_PROMPT
+    )
 
 
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
