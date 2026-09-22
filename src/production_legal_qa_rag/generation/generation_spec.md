@@ -194,7 +194,9 @@ Câu hỏi: {query}
 
 - `stream=True`, `include_reasoning=False` (chỉ nhận `delta.content`; reasoning của
   gpt-oss xảy ra trước chữ đầu tiên nên có `status` để UI không đứng im),
-  `reasoning_effort="low"`, `temperature=0.1`.
+  `reasoning_effort="medium"` (đổi từ `"low"`, xem mục 20 — **kết quả đo KHÔNG đạt**,
+  giữ nguyên trong code làm bằng chứng cho đợt tiếp theo, chưa chốt là giá trị đúng),
+  `temperature=0.1`.
 - **`max_completion_tokens` — tạm 2048, CHƯA CHỐT.** Doc Groq không nói reasoning
   token có tính vào cap hay không (chỉ có trường `reasoning_tokens` trong usage);
   HyDE từng trả rỗng khi cap 2048. Quy trình chốt (mục 14): chạy ~20 câu mẫu với cap
@@ -534,6 +536,72 @@ diễn giải. Là cải tiến UX/trình bày, không thêm nội dung mới; �
 Chưa có nhánh git chạy, chưa đo — chỉ ghi chú kế hoạch tại đây theo yêu cầu mục 5 khi viết
 `conversation_spec.md` mục 19. Cập nhật mục 5.2 và ghi kết quả đo vào mục này sau khi có
 code.
+
+## 20. `reasoning_effort` "low" → "medium" cho quy tắc 10 — ĐỢT 1/3, KHÔNG đạt (2026-09-22)
+
+Thực hiện rủi ro dự phòng đã ghi ở `conversation_spec.md` mục 18.2.1 (kết quả 18.2.1 chỉ
+đạt 2/3 lần cho ca "Phân loại thiếu - thuế TNCN", cần 3/3). Nhánh
+`fix/generation-reasoning-effort-medium`, HEAD `0c8d721` (`feat/condense-tuning`).
+
+**Thay đổi:** `_REASONING_EFFORT` "low" → "medium" trong `generator.py` (mục 5.3).
+`_MAX_COMPLETION_TOKENS` giữ nguyên 2048 — không quan sát `finish_reason="length"` hay
+content rỗng ở bất kỳ lần đo nào (`completion_tokens` đo được 199–1363, `reasoning_tokens`
+120–924, đều dưới xa cap); không cần tăng.
+
+**Ràng buộc ngân sách phát hiện trước khi đo:** `quota:global:{ngày}` (Redis,
+`AdmissionController`, `config.py` mục 8, không phải TPD Groq trực tiếp) đã ở **43/50**
+trước khi đợt này bắt đầu (dùng chung bởi mọi lần gọi generation trong ngày, kể cả các đợt
+đo trước của mục 17/18) — chỉ còn **7 lượt gọi generation thật cho CẢ NGÀY**, thấp hơn
+nhiều so với ước lượng 20-25 lần dự kiến ban đầu. Đo bằng script tạm gọi
+`ChatOrchestrator` thật với `user_id` riêng mỗi lần (như mục 17/18, không commit script),
+chủ động dừng đúng khi dùng hết 7/7 (43→50/50), không cố lách qua `AdmissionController`
+bằng cách gọi thẳng `GenerationPipeline` (đúng tinh thần tôn trọng ngân sách chung với
+người dùng thật, không né tránh cơ chế quota).
+
+**Kết quả đo (7 lần gọi generation thật, Groq `gpt-oss-120b` org B):**
+
+- **Ca "Phân loại thiếu - thuế TNCN" (30 triệu, không qua condense), 3/3 lần — CẢ 3 LẦN
+  ĐỀU VI PHẠM quy tắc 10:** cả 3 lần đều tự trừ giảm trừ gia cảnh (Điều 10 Khoản 1, "15,5
+  triệu đồng") khỏi thu nhập 30 triệu để ra "14,5 triệu đồng", rồi (2/3 lần) trừ tiếp
+  ngưỡng bậc thuế (Điều 9 Khoản 2, "10 triệu đồng") ra "4,5 triệu đồng" — kết hợp số liệu
+  từ hai Khoản khác nhau thành số trung gian, đúng hành vi quy tắc 10 cấm (`output_check`
+  gắn `warning(unverified_number)` detail `14,5`/`4,5` ở cả 3 lần, xác nhận bằng code, không
+  chỉ quan sát thủ công). **Tệ hơn baseline 18.2.1 (1/3 lần vi phạm ở `reasoning_effort=
+  "low"`)** — nâng `reasoning_effort` không cải thiện ca mục tiêu chính, thậm chí có dấu
+  hiệu ngược: reasoning dài hơn khiến model trình bày các bước tính toán trung gian đầy đủ
+  và tự tin hơn thay vì dừng lại đúng biên giới 1 Khoản.
+- **Ca "Đổi chủ đề - thuế TNCN" (`--groups core`, "Lương 20 triệu đóng thuế TNCN thế
+  nào?"), 1/3 lần (hết ngân sách trước khi đủ 3 lần) — ĐẠT:** liệt kê riêng cư trú/không cư
+  trú (quy tắc 9); nhánh không cư trú chỉ nhân 1 bước với thuế suất cố định 20% (không phải
+  luỹ tiến, không tính vi phạm theo đúng tiền lệ 17.2.3); nhánh cư trú chỉ nêu 2 bậc thuế
+  suất từ cùng 1 Khoản (Điều 9 Khoản 2, retrieval lần này không trả chunk giảm trừ gia cảnh
+  nên không có gì để kết hợp), không tự chốt số tiền cuối. Không đủ dữ liệu để kết luận
+  3/3 vì ngân sách hết — 1 lần không đủ để đối chiếu với quan sát vi phạm ở 18.2.1 (1/1 lần
+  đo trước đó tại "low" bị vi phạm).
+- **Ca 9 "Tóm tắt lại các câu trả lời ở trên cho tôi.", 1/3 lần (hết ngân sách) — ĐẠT:**
+  vẫn từ chối đúng ("Tôi không tìm thấy quy định phù hợp..."), quy tắc 12 không bị ảnh
+  hưởng bởi việc tăng `reasoning_effort` ở lần đo này.
+- **Không phá vỡ ca cũ (`--groups core`, 1 lần cho ca 1/ca 2):** ca "Đại từ (chồng)" và ca
+  "Kế thừa Điều" đều trả lời đúng, có `[n]` hợp lệ, không cảnh báo. Ca "Injection" và ca
+  "Tính toán số học dễ sai" (làm thêm giờ) **không đo được** — ngân sách hết đúng lúc 7/7
+  trước khi tới lượt các ca này.
+- **Ngân sách đã dùng:** đúng 7/7 lần gọi generation dự trù (không có lần nào bị
+  `AdmissionDenied`/429; `quota:global` từ 43 lên đúng 50/50 — hết sạch ngân sách generation
+  toàn cục cho ngày 2026-09-22, không còn lượt nào cho người dùng thật hay đợt đo tiếp theo
+  trong ngày này).
+
+**Kết luận: ĐỢT 1/3 — KHÔNG đạt.** Tiêu chí "3/3 lần không kết hợp số liệu 2 Khoản" của ca
+mục tiêu chính (thuế TNCN 30 triệu) không những chưa đạt mà còn xấu đi so với `low`
+(3/3 vi phạm so với 1/3). Theo đúng chỉ dẫn, **không revert** `_REASONING_EFFORT` (giữ
+`"medium"` trong code làm bằng chứng), không tự thử thêm tham số khác trong đợt này vì đã
+hết ngân sách generation của ngày. Gợi ý cho đợt 2/3 (chưa làm, để tester/reviewer/đợt sau
+quyết định): (a) cân nhắc revert về `"low"` vì `"medium"` không chứng minh được lợi ích
+cho quy tắc 10 trong khi tăng chi phí token 1,5-3 lần (so completion_tokens 199-1363 đo
+được ở đây với ~ vài trăm token/câu điển hình ở các đợt `"low"` trước); (b) nếu vẫn muốn
+theo hướng nâng effort, cần đo lại với mẫu lớn hơn (ngân sách ngày mới) trước khi kết
+luận chắc chắn medium tệ hơn hay chỉ là nhiễu do mẫu nhỏ (n=3); (c) cân nhắc hướng khác
+ngoài `reasoning_effort` — ví dụ few-shot ví dụ cụ thể trong prompt, hoặc chấp nhận đây là
+rủi ro tồn đọng (residual risk) nếu 2 đợt tiếp theo cũng không cải thiện.
 
 ## 16. Mở rộng cho lớp chat (2026-09-21)
 

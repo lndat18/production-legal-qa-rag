@@ -494,7 +494,7 @@ def test_answer_generator_calls_groq_with_stream_contract() -> None:
     assert calls[0]["model"] == "generation-model"
     assert calls[0]["stream"] is True
     assert calls[0]["include_reasoning"] is False
-    assert calls[0]["reasoning_effort"] == "low"
+    assert calls[0]["reasoning_effort"] == "medium"
     assert calls[0]["temperature"] == 0.1
     assert calls[0]["max_completion_tokens"] == 2048
     assert deltas == [

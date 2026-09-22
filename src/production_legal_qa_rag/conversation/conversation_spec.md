@@ -937,7 +937,9 @@ thứ hai, ngoài phạm vi hiện tại (`generation_spec.md` mục 6). Quy t�
   "làm thêm giờ" (đã đạt ở 17.2.3).
 - **Rủi ro dự phòng (không làm ngay):** như 17.2.3 đã ghi — nếu quy tắc 10-12 vẫn chưa
   đủ, cân nhắc nâng `reasoning_effort` "low" → "medium" (đo lại `max_completion_tokens`
-  và ngân sách TPM cùng lúc, tách vòng riêng).
+  và ngân sách TPM cùng lúc, tách vòng riêng). **Đã thử ở đợt riêng (nhánh
+  `fix/generation-reasoning-effort-medium`, 2026-09-22), KHÔNG đạt** — xem kết quả đo và
+  gợi ý tiếp theo ở `generation_spec.md` mục 20.
 
 #### 18.2.3 Conversation: chặn sớm meta-request về lịch sử hội thoại (code-based, trước guardrail/condense)
 
