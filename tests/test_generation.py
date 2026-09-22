@@ -342,7 +342,7 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v2"
+    assert PROMPT_VERSION == "v3"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -380,6 +380,71 @@ def test_generation_prompt_has_no_multi_step_calculation_rule() -> None:
         in GENERATION_SYSTEM_PROMPT
     )
     assert "hội) là nơi tính cụ thể." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_forbids_combining_two_khoan_into_final_number() -> None:
+    """Mục 18.2.1 quy tắc 10 (sửa thêm 1 câu): cấm rõ ràng việc cộng/trừ/nhân/chia
+    hay kết hợp số liệu từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai
+    bậc của biểu thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung
+    cấp đủ dữ liệu để tính (ca gốc: thuế TNCN 30 triệu bị kết hợp Điều 9 Khoản 2 +
+    Điều 10 Khoản 1 thành một số tiền cuối cùng).
+    """
+    assert (
+        "Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "vào để tính." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_has_no_cross_topic_chunk_merging_rule() -> None:
+    """Mục 18.2.1 quy tắc 11: cấm ghép các đoạn thuộc Điều/Khoản khác chủ đề pháp lý,
+    không liên quan trực tiếp tới nhau và tới câu hỏi, thành một câu trả lời liền
+    mạch như thể chúng bổ sung cho nhau; chỉ dùng đoạn liên quan trực tiếp, hoặc từ
+    chối theo quy tắc 5 nếu không có đoạn nào liên quan trực tiếp.
+    """
+    assert (
+        'Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp'
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "KHÔNG cố ghép nối\n    chúng thành một câu trả lời liền mạch như thể chúng bổ sung cho nhau."
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "nếu không có đoạn nào liên\n    quan trực tiếp, dùng đúng câu từ chối ở quy tắc 5."
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "không tự suy luận để ghép thành câu trả lời đầy đủ."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_forbids_recalling_previous_conversation_answers() -> None:
+    """Mục 18.2.1 quy tắc 12: model chỉ thấy "Văn bản" và "Câu hỏi" hiện tại, không
+    được xem lại các câu trả lời trước đó; nếu câu hỏi là meta-request (tóm tắt/nhắc
+    lại nội dung đã nói trước đó) thay vì một câu hỏi pháp luật độc lập, phải từ chối
+    theo quy tắc 5, không được dùng "Văn bản" hiện tại để dựng câu trả lời trông giống
+    như đang tóm tắt hội thoại cũ (ca gốc: "tóm tắt lại các câu trả lời ở trên").
+    """
+    assert (
+        "Bạn KHÔNG được xem lại các câu trả lời trước đó trong cuộc hội thoại"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert '"tóm tắt lại các câu\n    trả lời ở trên"' in GENERATION_SYSTEM_PROMPT
+    assert (
+        'từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại'
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "trông giống như đang tóm tắt hội thoại\n    cũ." in GENERATION_SYSTEM_PROMPT
 
 
 def test_answer_generator_calls_groq_with_stream_contract() -> None:

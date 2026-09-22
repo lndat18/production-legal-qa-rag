@@ -391,6 +391,7 @@ khởi tạo 1 lần, dùng lại cho mọi query.
 | `citation.py`           | `extract_citation_numbers/khoans`, `citation_extras`, `parse_breadcrumb`, `DOCUMENTS`, `detect_document`, `structural_terms`/`breadcrumb_structural_terms` (chung 1 hàm định dạng token) |
 | `reranker_client.py`    | HTTP client, timeout/retry/validate/fallback                                                                                                                                                                                 |
 | `pipeline.py`           | `retrieve()` điều phối, sở hữu client                                                                                                                                                                                 |
+| `relevance.py`          | `MIN_RERANK_SCORE`, `is_low_relevance(chunks)` — tín hiệu độ liên quan dựa trên `rerank_score`; **không** được `retrieve()` gọi, chỉ export cho `conversation/orchestrator.py` tự quyết định `no_context` (mục 16 điểm 8, `conversation_spec.md` mục 18.2.2) |
 
 `tools/sparse_index_documents.py` tách biệt khỏi `retrieve()`. `retrieval/test.py`
 là script thử tay gọi reranker/pipeline thật (không thuộc kiến trúc chính thức).
@@ -463,3 +464,13 @@ top 5. Ghi lại hạng/điểm từng câu để theo dõi (không phải đi�
    thuật ngữ, không phải retrieval — xem `conversation/conversation_spec.md` mục 17.1.1,
    17.2.2); chỉ ghi lại làm phương án dự phòng nếu sau khi sửa condense mà vẫn trượt
    (`conversation_spec.md` mục 17.5.1).
+8. **`relevance.py` (mới, 2026-09-22, `conversation_spec.md` mục 18.2.2) — gate độ liên
+   quan bằng `rerank_score`:** module này **không đổi hợp đồng `retrieve()`** (vẫn luôn
+   trả top `FINAL_TOP_K` theo rerank, không lọc gì — giữ nguyên mục 1 "không có nhánh xử
+   lý riêng, không nới `FINAL_TOP_K`"); quyết định "coi 5 chunk là không đủ liên quan →
+   từ chối" là chính sách của `conversation/orchestrator.py`, không phải của `retrieve()`.
+   `rerank_score` là **logit thô** của `AITeamVN/Vietnamese_Reranker` (không qua sigmoid,
+   xem `reranker_server/server.py`), chưa có ngưỡng nào được hiệu chỉnh trong dự án trước
+   đây — `MIN_RERANK_SCORE` đo lần đầu ở 18.2.2 trên rất ít ca (~4-5), rủi ro chưa đủ dữ
+   liệu để tin cậy cao, có thể cần hiệu chỉnh lại ở phase RAGAS hoặc khi có nhãn
+   `expected_chunks` đã duyệt (mục 15.5 `conversation_spec.md`).

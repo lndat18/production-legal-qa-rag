@@ -115,9 +115,12 @@ bằng 1 dòng trống. `chunks` rỗng → **không gọi Groq**, phát `error(
 ### 5.2. Prompt
 
 Cấu trúc: system = quy tắc cố định; user = context + câu hỏi. Prompt khởi điểm
-(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v2"`** (`generator.py`):
+(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v3"`** (`generator.py`):
 quy tắc 9-10 thêm ở mục 17 (2026-09-22, sửa lỗi phát hiện sau khi tune condense — ca "2
-kịch bản mâu thuẫn + tính sai thuế"), khoá cache đã đổi theo `PROMPT_VERSION`.
+kịch bản mâu thuẫn + tính sai thuế"); quy tắc 10 sửa thêm 1 câu và quy tắc 11-12 thêm ở
+mục 18 (2026-09-22, ranh giới phạm vi Khoản — ca "tóm tắt câu trả lời cũ" bịa từ 5 chunk
+rời rạc, ca "thuế TNCN" kết hợp 2 Khoản luỹ tiến ra 1 số cuối), khoá cache đã đổi theo
+`PROMPT_VERSION`.
 
 ```
 [system]
@@ -159,7 +162,26 @@ Quy tắc:
     chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
     hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
     mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
-    hội) là nơi tính cụ thể.
+    hội) là nơi tính cụ thể. Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số
+    liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu
+    thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu
+    vào để tính.
+11. Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp
+    lý nhất quán, không liên quan trực tiếp tới nhau và tới câu hỏi (ví dụ các đoạn nói
+    về những chế độ, nghĩa vụ khác nhau không cùng một mạch nội dung): KHÔNG cố ghép nối
+    chúng thành một câu trả lời liền mạch như thể chúng bổ sung cho nhau. Chỉ dùng đoạn
+    (hoặc các đoạn) thực sự liên quan trực tiếp tới câu hỏi; nếu không có đoạn nào liên
+    quan trực tiếp, dùng đúng câu từ chối ở quy tắc 5. Nếu câu hỏi cần tổng hợp nhiều
+    Khoản hoặc nhiều Điều khác nhau mới trả lời được trọn vẹn: chỉ trả lời phần nằm gọn
+    trong một đoạn/Khoản duy nhất nếu có, và nói rõ phần còn lại chưa xác định được vì
+    mỗi đoạn chỉ quy định một phần, không tự suy luận để ghép thành câu trả lời đầy đủ.
+12. Bạn KHÔNG được xem lại các câu trả lời trước đó trong cuộc hội thoại — chỉ thấy đúng
+    phần "Văn bản" và "Câu hỏi" hiện tại. Nếu câu hỏi yêu cầu nhắc lại, tóm tắt, hay giải
+    thích thêm về một nội dung/câu trả lời đã nói TRƯỚC ĐÓ (ví dụ "tóm tắt lại các câu
+    trả lời ở trên", "ý thứ 3 bạn vừa nói là gì?") thay vì hỏi một câu hỏi pháp luật độc
+    lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
+    có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
+    cũ.
 
 [user]
 Văn bản:
@@ -414,6 +436,104 @@ trực tiếp `ChatOrchestrator` như `conversation/test.py`). Tổng 7 lần g�
   giữ đúng phạm vi). Ngân sách Groq: 7 lần gọi generation (~13K token tổng, org B) + các
   lần gọi condense của ca 1/ca 2 (model `gpt-oss-20b`, org riêng) — trong hạn mức 8-10 lần
   gọi generation đã định trước.
+
+## 18. Ranh giới phạm vi Khoản trong prompt generation (2026-09-22)
+
+Chi tiết vấn đề, phân tích nguyên nhân và tiêu chí nghiệm thu nằm ở
+`conversation/conversation_spec.md` mục 18 (đọc trước khi implement). Tóm tắt phần thuộc
+package `generation/`:
+
+- **`GENERATION_SYSTEM_PROMPT` sửa quy tắc 10, thêm quy tắc 11-12** (mục 5.2): quy tắc 10
+  thêm một câu cấm rõ ràng "không kết hợp số liệu từ hai đoạn/Khoản khác nhau để ra một
+  con số cuối cùng"; quy tắc 11 cấm ghép nối các đoạn không cùng chủ đề pháp lý nhất quán
+  thành một câu trả lời liền mạch (chỉ dùng đoạn thực sự liên quan, còn lại từ chối theo
+  quy tắc 5); quy tắc 12 cấm dùng "Văn bản" hiện tại để dựng câu trả lời trông như đang
+  tóm tắt/nhắc lại một câu trả lời cũ trong hội thoại (generation không có history nên
+  không thể biết "câu trả lời ở trên" là gì). Nội dung đề xuất nguyên văn và lý do (ca
+  "Tóm tắt lại các câu trả lời ở trên" trả lời bịa từ 5 chunk rời rạc; ca "thu nhập 30
+  triệu đóng thuế TNCN" kết hợp 2 bậc luỹ tiến) nằm ở `conversation_spec.md` mục 18.2.1.
+- Bắt buộc tăng `PROMPT_VERSION` lên `"v3"` theo quy ước mục 16.3.
+- **Không sửa `output_check.py`:** cùng lý do đã chốt ở mục 17 — kiểm tra "các chunk có
+  cùng chủ đề pháp lý nhất quán hay không" là kiểm tra ngữ nghĩa, ngoài phạm vi (mục 6).
+
+**Kết quả đo (2026-09-22, nhánh `fix/generation-khoan-boundary`):** đo qua
+`ChatOrchestrator` thật (Groq `gpt-oss-120b` org B + Pinecone), qua `conversation/test.py`
+(`--query`/`--previous-user`/`--previous-assistant` cho các ca đo lặp lại nhiều lần, mỗi
+lần `user_id` riêng để tránh chạm `USER_DAILY_LLM_ANSWERS`; `--groups core` chạy nguyên
+nhóm 1 lần cho hồi quy). Tổng 11 lần gọi generation (không tính lần bị chặn bởi
+`USER_DAILY_LLM_ANSWERS` khi dùng chung `user_id` mặc định của `--query`, không tốn
+generation).
+
+- **Ca 9 "Tóm tắt lại các câu trả lời ở trên cho tôi."** (có lượt trước "Thời gian thử
+  việc tối đa là bao lâu?" / "Tối đa 60 ngày với công việc cần trình độ cao đẳng."), 3
+  lần độc lập: **đạt 3/3 lần** — cả 3 lần đều trả lời đúng "Tôi không tìm thấy quy định
+  phù hợp trong các văn bản hiện có.", không còn hiện tượng tổng hợp 5 chunk rời rạc
+  (định nghĩa Điều 3, Điều 39, Điều 67...) thành một câu trả lời trông như đang tóm tắt
+  hội thoại cũ. Đạt tiêu chí nghiệm thu (quy tắc 12 hoạt động đúng thiết kế ở cả 3 lần).
+- **Ca "Phân loại thiếu - thuế TNCN"** ("Thu nhập 30 triệu đồng một tháng thì đóng thuế
+  thu nhập cá nhân bao nhiêu?", không qua condense), 3 lần độc lập:
+  - Lần 1: tự trừ giảm trừ gia cảnh (15,5 triệu, Điều 10 Khoản 1) rồi tính đủ bậc luỹ
+    tiến (Điều 9 Khoản 2) ra một số tiền thuế cuối cùng "1,45 triệu đồng" — **VI PHẠM**
+    quy tắc 10 (kết hợp số liệu 2 Khoản khác nhau ra 1 số cuối).
+  - Lần 2: liệt kê tách bạch mức thuế theo từng bậc, kết luận bằng câu "tổng số thuế
+    thực tế cần cộng lại theo quy định" — không tự chốt một số tiền cuối cùng, chỉ trích
+    dẫn 1 Khoản (Điều 9 Khoản 2) cho phần thuế suất — **đạt** quy tắc 10.
+  - Lần 3: trình bày bước trừ giảm trừ gia cảnh (Điều 10 Khoản 1, số liệu từ câu hỏi +
+    1 Khoản, không phải "hai Khoản khác nhau" nên không vi phạm riêng bước này) và tách
+    riêng 2 mức thuế suất theo bậc (cùng trích trong 1 chunk Điều 9 Khoản 2), kết luận
+    "Áp dụng các mức thuế trên sẽ cho ra số thuế phải nộp" — không tự tính ra số cuối
+    cùng — **đạt** quy tắc 10.
+  - **Kết luận ca thuế TNCN (30 triệu): đạt 2/3 lần, KHÔNG đạt 3/3 như tiêu chí nghiệm
+    thu yêu cầu** ("không còn kết hợp số liệu 2 Khoản luỹ tiến ra 1 số cuối cùng ở BẤT
+    KỲ lần nào trong 3 lần"). Có cải thiện so với 17.2.3 (khi đó 2/4 lần liên quan thuế
+    TNCN luỹ tiến vi phạm, ~50%) xuống còn 1/3 (~33%), nhưng chưa đạt ngưỡng cao hơn đã
+    chốt ở 18.2.1.
+- **Quan sát bổ sung (ngoài tiêu chí bắt buộc, từ `--groups core`):** ca "Đổi chủ đề (ca
+  3)" ("Lương 20 triệu đóng thuế TNCN thế nào?", cùng lớp câu hỏi thuế TNCN) vẫn tính
+  "Thuế TNCN phải nộp = 4,5 triệu đồng × 5% = 0,225 triệu đồng" — kết hợp số liệu Điều 10
+  Khoản 1 (giảm trừ gia cảnh) và Điều 9 Khoản 2 (thuế suất) thành 1 số cuối cùng, **vi
+  phạm quy tắc 10** dù thu nhập chỉ rơi vào đúng 1 bậc thuế (không phải trường hợp "hai
+  bậc luỹ tiến" nêu trong ví dụ của quy tắc, nhưng vẫn là "hai đoạn/Khoản khác nhau" theo
+  đúng câu chữ quy tắc). Ca này không nằm trong tiêu chí nghiệm thu bắt buộc của 18.2.1
+  (chỉ yêu cầu không vỡ ca 1/2/5), nhưng củng cố kết luận: quy tắc 10 mới cải thiện chưa
+  triệt để với câu hỏi thuế TNCN có đủ dữ liệu để tính.
+- **Ca "Tính toán số học dễ sai" (làm thêm giờ)** ("Lương tháng 10 triệu, làm thêm giờ
+  vào ngày nghỉ 4 tiếng thì được trả thêm bao nhiêu tiền?", không qua condense), 1 lần:
+  vẫn **đạt** — model chỉ nêu công thức và tỷ lệ 200% (Điều 98/Điều 55), nói rõ thiếu số
+  giờ làm việc bình thường nên không tự suy ra số tiền cụ thể. Không bị phá vỡ.
+- **Không phá vỡ ca PASS đã có** (`--groups core`, 1 lần):
+  - Ca 1 "Đại từ (chồng)": vẫn trả lời đúng, có `[n]` hợp lệ. Nghi vấn lệch trích dẫn đã
+    ghi ở `conversation_spec.md` mục 18.1.4 (nêu "Điều 53" trong câu nhưng `[1]` trỏ tới
+    Điều 54) vẫn còn nguyên trạng — không phải lỗi mới do quy tắc 10-12, ngoài phạm vi
+    18.2.1 (thuộc 18.2.5, chưa điều tra).
+  - Ca 2 "Kế thừa Điều": vẫn trả lời đúng, có `[n]` hợp lệ, không cảnh báo sai.
+  - Ca 5 "Injection": vẫn bị guardrail chặn trước generation (không tốn quota
+    generation), không đổi hành vi.
+- **Kết luận chung:** quy tắc 12 (chặn meta-request lịch sử hội thoại ở lớp prompt) đạt
+  tuyệt đối 3/3 ở ca 9 — giải quyết trọn vẹn lỗi nghiêm trọng nhất của mục 18.1.1. Quy
+  tắc 10 sửa (cấm kết hợp số liệu 2 Khoản) đạt một phần: cải thiện rõ so với 17.2.3 nhưng
+  vẫn có 1/3 lần vi phạm ở đúng ca mục tiêu, và quan sát thêm 1 ca khác (ca 3 "Đổi chủ
+  đề") cũng vi phạm ở lần đo duy nhất — CHƯA đạt tiêu chí "3/3 lần" đã chốt ở 18.2.1.
+  Không có ca PASS nào trong 3 ca hồi quy bắt buộc (ca 1, ca 2, ca 5) bị vỡ do quy tắc
+  10-12 mới; ca "làm thêm giờ" cũng không bị vỡ. Đúng tinh thần trung thực đã yêu cầu:
+  không tự nâng `reasoning_effort` để cố đạt 3/3 (rủi ro dự phòng đã ghi rõ "không làm
+  ngay, tách vòng riêng" ở `conversation_spec.md` mục 18.2.1) — để lại quyết định bước
+  tiếp theo (chấp nhận một phần, hay mở vòng riêng nâng `reasoning_effort`) cho
+  tester/reviewer. Ngân sách Groq: 11 lần gọi generation (quota toàn cục tăng từ 33 lên
+  43/50 trong ngày, còn 7 chỗ trống); dừng đo ở đây theo đúng giới hạn ngân sách đã dặn,
+  không chạy `--groups regression`/`--groups general` đầy đủ hay `--groups all`.
+
+## 19. Kế hoạch tiếp theo (chưa implement) — trình bày kết luận trước + blockquote trích dẫn
+
+`conversation_spec.md` mục 19.3.1 (đợt đánh giá chiến lược bổ sung 2026-09-22) đề xuất
+thêm quy tắc 13-14 vào `GENERATION_SYSTEM_PROMPT` (`generator.py`): kết luận/nội dung
+chính đặt ở 1-2 câu đầu (trừ ca từ chối/liệt kê nhiều trường hợp), và trích dẫn nguyên
+văn câu/đoạn ngắn từ "Văn bản" trong khối markdown blockquote (`> ...`) tách biệt phần
+diễn giải. Là cải tiến UX/trình bày, không thêm nội dung mới; đặt sau mục 18 trong thứ tự
+ưu tiên (18 xử lý lỗi chính xác, nghiêm trọng hơn). Bump `PROMPT_VERSION` khi implement.
+Chưa có nhánh git chạy, chưa đo — chỉ ghi chú kế hoạch tại đây theo yêu cầu mục 5 khi viết
+`conversation_spec.md` mục 19. Cập nhật mục 5.2 và ghi kết quả đo vào mục này sau khi có
+code.
 
 ## 16. Mở rộng cho lớp chat (2026-09-21)
 

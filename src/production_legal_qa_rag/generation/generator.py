@@ -15,7 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v2"
+PROMPT_VERSION: Final = "v3"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048
@@ -58,7 +58,26 @@ Quy tắc:
     chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
     hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
     mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
-    hội) là nơi tính cụ thể."""
+    hội) là nơi tính cụ thể. Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số
+    liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu
+    thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu
+    vào để tính.
+11. Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp
+    lý nhất quán, không liên quan trực tiếp tới nhau và tới câu hỏi (ví dụ các đoạn nói
+    về những chế độ, nghĩa vụ khác nhau không cùng một mạch nội dung): KHÔNG cố ghép nối
+    chúng thành một câu trả lời liền mạch như thể chúng bổ sung cho nhau. Chỉ dùng đoạn
+    (hoặc các đoạn) thực sự liên quan trực tiếp tới câu hỏi; nếu không có đoạn nào liên
+    quan trực tiếp, dùng đúng câu từ chối ở quy tắc 5. Nếu câu hỏi cần tổng hợp nhiều
+    Khoản hoặc nhiều Điều khác nhau mới trả lời được trọn vẹn: chỉ trả lời phần nằm gọn
+    trong một đoạn/Khoản duy nhất nếu có, và nói rõ phần còn lại chưa xác định được vì
+    mỗi đoạn chỉ quy định một phần, không tự suy luận để ghép thành câu trả lời đầy đủ.
+12. Bạn KHÔNG được xem lại các câu trả lời trước đó trong cuộc hội thoại — chỉ thấy đúng
+    phần "Văn bản" và "Câu hỏi" hiện tại. Nếu câu hỏi yêu cầu nhắc lại, tóm tắt, hay giải
+    thích thêm về một nội dung/câu trả lời đã nói TRƯỚC ĐÓ (ví dụ "tóm tắt lại các câu
+    trả lời ở trên", "ý thứ 3 bạn vừa nói là gì?") thay vì hỏi một câu hỏi pháp luật độc
+    lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
+    có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
+    cũ."""
 
 _USER_TEMPLATE: Final = "Văn bản:\n{context}\n\nCâu hỏi: {query}"
 
