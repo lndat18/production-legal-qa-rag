@@ -19,6 +19,7 @@ from production_legal_qa_rag.conversation.admission import (
 from production_legal_qa_rag.conversation.condenser import (
     CondenseReason,
     QueryCondenser,
+    build_condense_user_message,
     check_condensed,
     validate_condensed,
 )
@@ -184,6 +185,54 @@ def test_condense_call_params_and_prompt_guards() -> None:
     assert call["messages"][0]["content"] == CONDENSE_SYSTEM_PROMPT
     assert "KHÔNG được thêm chủ thể" in CONDENSE_SYSTEM_PROMPT
     assert "Không tự thêm số Điều/Khoản" in CONDENSE_SYSTEM_PROMPT
+
+
+def test_condense_prompt_has_gendered_term_rule_and_few_shot() -> None:
+    """Mục 17.2.2: quy tắc 6 + few-shot "Vậy chồng thì sao?" phải có trong prompt,
+    để condense không mượn thuật ngữ pháp lý riêng cho một giới tính sang chủ thể
+    khác giới (ca gốc: "nghỉ thai sản" bị mượn cho "chồng").
+    """
+    from production_legal_qa_rag.conversation.condenser import CONDENSE_SYSTEM_PROMPT
+
+    # Quy tắc 6 (nội dung, không phải chỉ số thứ tự): nêu rõ không sao chép thuật
+    # ngữ chuyên biệt theo giới sang chủ thể khác nhóm.
+    assert "chỉ áp dụng cho một nhóm chủ thể cụ thể" in CONDENSE_SYSTEM_PROMPT
+    assert "KHÔNG" in CONDENSE_SYSTEM_PROMPT
+    assert "sao chép nguyên thuật ngữ chuyên biệt đó sang chủ thể mới" in (
+        CONDENSE_SYSTEM_PROMPT
+    )
+    # Few-shot mới minh hoạ đúng ca hồi quy (spec mục 17.1.1/17.2.2).
+    assert "Vậy chồng thì sao?" in CONDENSE_SYSTEM_PROMPT
+    assert (
+        "Chồng của lao động nữ sinh con có được nghỉ và hưởng chế độ gì, "
+        "trong bao lâu?" in CONDENSE_SYSTEM_PROMPT
+    )
+    # Few-shot mới không tự đặt tên chế độ theo giới cho chủ thể mới: không được
+    # để lộ nguyên cụm "nghỉ thai sản" trong phần Đầu ra minh hoạ cho "chồng".
+    few_shot = CONDENSE_SYSTEM_PROMPT.split("Câu hỏi cuối: Vậy chồng thì sao?")[1]
+    assert "nghỉ thai sản" not in few_shot
+
+
+def test_condense_gendered_term_scenario_passes_citation_check() -> None:
+    """Đầu ra mong đợi cho ca "Vậy chồng thì sao?" (đo Groq thật, mục 16 dòng 7)
+    phải đi qua được ``check_condensed`` (không có số Điều/Khoản bịa) và
+    ``build_condense_user_message`` phải dựng đúng message không lỗi cú pháp.
+    """
+    history = [
+        _user("Nghỉ thai sản được mấy tháng?"),
+        _assistant("Lao động nữ được nghỉ thai sản 6 tháng."),
+    ]
+    query = "Vậy chồng thì sao?"
+    message = build_condense_user_message(query, history)
+    assert "Nghỉ thai sản được mấy tháng?" in message
+    assert message.endswith(f"Câu hỏi cuối: {query}")
+
+    expected_output = (
+        "Chồng của lao động nữ sinh con có được nghỉ và hưởng chế độ gì, trong bao lâu?"
+    )
+    candidate, reason = check_condensed(expected_output, query, history)
+    assert reason is CondenseReason.OK
+    assert candidate == expected_output
 
 
 def test_check_condensed_returns_reason() -> None:
