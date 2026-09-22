@@ -471,6 +471,14 @@ top 5. Ghi lại hạng/điểm từng câu để theo dõi (không phải đi�
    từ chối" là chính sách của `conversation/orchestrator.py`, không phải của `retrieve()`.
    `rerank_score` là **logit thô** của `AITeamVN/Vietnamese_Reranker` (không qua sigmoid,
    xem `reranker_server/server.py`), chưa có ngưỡng nào được hiệu chỉnh trong dự án trước
-   đây — `MIN_RERANK_SCORE` đo lần đầu ở 18.2.2 trên rất ít ca (~4-5), rủi ro chưa đủ dữ
-   liệu để tin cậy cao, có thể cần hiệu chỉnh lại ở phase RAGAS hoặc khi có nhãn
-   `expected_chunks` đã duyệt (mục 15.5 `conversation_spec.md`).
+   đây — `MIN_RERANK_SCORE` đo lần đầu ở 18.2.2 trên rất ít ca (~4-5) và chỉ 1 lần/câu.
+   **REVISE (2026-09-22, PR #41):** đo lại 3 lần/câu trên 15 câu (12 câu hợp lệ + 3 câu
+   rìa corpus) phát hiện `retrieval/hyde.py` (`temperature = 0.2`) gây dao động
+   `rerank_score` đáng kể (spread quan sát tới ~2.8 điểm) ở câu có tín hiệu rìa/yếu, dù ổn
+   định (spread ~0) ở câu có tín hiệu mạnh (viện dẫn Khoản, từ khoá trùng corpus). Không
+   tìm được ngưỡng an toàn tuyệt đối cho 2/3 câu rìa đã đo — `MIN_RERANK_SCORE` đổi thành
+   `-6.8` chấp nhận rủi ro tồn đọng đã ghi rõ (`conversation_spec.md` mục 18.2.2). Rủi ro
+   chưa đủ dữ liệu để tin cậy cao vẫn còn, có thể cần hiệu chỉnh lại ở phase RAGAS, khi có
+   nhãn `expected_chunks` đã duyệt (mục 15.5 `conversation_spec.md`), hoặc khi giải quyết
+   tận gốc nhiễu HyDE (đo trung bình nhiều lần gọi, hoặc hạ `temperature` HyDE — cả hai
+   ngoài phạm vi 18.2.2).

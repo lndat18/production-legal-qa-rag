@@ -1113,6 +1113,212 @@ xong.
   Không làm gate này quá "thông minh" (không thử nhiều ngưỡng/thống kê phức tạp) — đúng
   tinh thần tránh over-engineering.
 
+**Kết quả đo (2026-09-22, thực hiện trước khi code, gọi trực tiếp `retrieve()`/
+`condense()` qua script dev tạm, không commit — rẻ hơn chạy hết `conversation/test.py`
+vì không tốn quota generation):**
+
+Không có `retrieval/test.py` riêng (đã kiểm tra bằng `find`, chỉ có `conversation/test.py`)
+nên đo bằng script gọi thẳng `retrieval.pipeline.retrieve()` (và `QueryCondenser.condense()`
+cho 2 câu cần condense, đúng đường production).
+
+*4 câu viện dẫn Khoản biết chắc liên quan (3 câu lấy từ `retrieval_spec.md` mục 15, thêm
+1 câu Khoản 2 Điều 113 cho đủ cặp ca 2):*
+
+| Câu | max rerank_score | min rerank_score |
+| --- | ----------------: | ----------------: |
+| "Khoản 1 Điều 113 Bộ luật Lao động nói gì?" | 1.0748 | -3.6691 |
+| "Khoản 2 Điều 113 Bộ luật Lao động nói gì?" | 1.0332 | -0.8097 |
+| "Điều 36 khoản 2 Bộ luật Lao động" | 0.8793 | -2.5550 |
+| "Điều 3 khoản 1 của luật thuế TNCN quy định gì?" | 1.1451 | -0.0832 |
+
+*8 câu hợp lệ khác, không viện dẫn Khoản (lấy từ `conversation/test.py`, kể cả câu
+đã qua condense thật như ca 1 "chồng") — đo thêm để tránh chốt ngưỡng chỉ dựa trên câu
+viện dẫn Khoản (rủi ro chặn oan câu hỏi tự nhiên không có số Điều/Khoản):*
+
+| Câu | max rerank_score |
+| --- | ----------------: |
+| "Thời gian thử việc tối đa là bao lâu?" | -0.4643 |
+| "Chồng của lao động nữ sinh con có được nghỉ và hưởng chế độ gì, trong bao lâu?" (ca 1, đã condense) | -3.9651 |
+| "Hợp đồng lao động xác định thời hạn tối đa bao lâu?" | -0.1465 |
+| "Hợp đồng lao động không xác định thời hạn có thời hạn tối đa bao lâu?" | 0.6240 |
+| "Lương 20 triệu đóng thuế TNCN thế nào?" (ca 3) | -3.8193 |
+| "Thu nhập 30 triệu đồng một tháng thì đóng thuế thu nhập cá nhân bao nhiêu?" | -3.0935 |
+| "Lương tháng 10 triệu, làm thêm giờ vào ngày nghỉ 4 tiếng thì được trả thêm bao nhiêu tiền?" | -4.0964 |
+| "Vậy lương thử việc tối thiểu là bao nhiêu?" (ca 7, chuỗi đại từ) | 1.1994 |
+
+*Ca 9 (biết chắc KHÔNG liên quan), qua đúng đường condense thật:*
+
+| Câu gốc | Câu condense (fallback về câu gốc, `reason=finish_length`) | max rerank_score |
+| --- | --- | ----------------: |
+| "Tóm tắt lại các câu trả lời ở trên cho tôi." | "Tóm tắt lại các câu trả lời ở trên cho tôi." | -8.7521 |
+| "Ý thứ 3 bạn vừa nói là gì?" | "Ý thứ 3 bạn vừa nói là gì?" | -7.0697 |
+
+**Phát hiện quan trọng làm thay đổi cách chọn ngưỡng so với dự kiến ban đầu:** câu hợp lệ
+*không viện dẫn Khoản* có `max rerank_score` thấp hơn nhiều so với câu viện dẫn Khoản (ví
+dụ "làm thêm giờ" chỉ -4.0964, "chồng" -3.9651) — logit thô của reranker không phải xác
+suất, âm không đồng nghĩa "không liên quan". Nếu chỉ hiệu chỉnh trên 4 câu viện dẫn Khoản
+(min 0.8793) sẽ chọn ngưỡng quá cao, chặn oan các câu hợp lệ kiểu này. Vì vậy `MIN_RERANK_SCORE`
+được chọn dựa trên **toàn bộ 12 câu hợp lệ đã đo** (không chỉ 4 câu viện dẫn Khoản):
+min(max-score) của câu hợp lệ = **-4.0964**; max(max-score) của ca 9 (2 biến thể) =
+**-7.0697**. Chọn **`MIN_RERANK_SCORE = -6.0`** — thiên về bảo thủ (gần phía ca 9 hơn:
+margin ~1.07 với ca 9 cao nhất, ~1.90 với câu hợp lệ thấp nhất, tức là rủi ro chặn oan
+được ưu tiên giảm nhiều hơn rủi ro bỏ sót ca không liên quan, đúng chỉ dẫn "thà bỏ sót còn
+hơn chặn oan").
+
+**Đo lại sau khi code xong**, chạy `conversation/test.py --groups all` (13 hội thoại, Groq
++ Pinecone thật, quota nội bộ đã nới tạm `GLOBAL_DAILY_LLM_ANSWERS=500`): ca 9 nhận
+`error(no_context)` ngay sau `status(retrieval)`, không có `status(generation)`, không có
+dòng token usage (0 call Groq generation), tổng thời gian 30.95s (thời gian rerank CPU, không
+phải generation). Ca 10 ("Còn cái đó thì sao?", không có history) **cũng** bị gate chặn
+(`error(no_context)`, 25.13s) — không tính là chặn oan vì kỳ vọng gốc của ca 10 (mục 13.4)
+vốn đã là "generator trả 'không tìm thấy quy định phù hợp'" (không có câu trả lời thật để
+mất), gate chỉ làm phần đó xảy ra sớm hơn, rẻ hơn (không tốn quota generation). **11 ca còn
+lại đều `answered` hoặc `refused` (bởi guardrail, trước khi tới gate) đúng như trước khi có
+gate — 0 ca hợp lệ bị chặn oan**, bao gồm cả ca 1 (chồng, max -3.9651), ca "làm thêm giờ"
+(max -4.0964), ca 7 (chuỗi đại từ mơ hồ) — đúng những câu có điểm thấp nhất trong nhóm hợp
+lệ đã đo, xác nhận ngưỡng -6.0 có margin an toàn thực tế, không chỉ trên giấy.
+
+**Kết luận (đã sửa lại — xem "CẬP NHẬT" ngay dưới):** ~~đạt tiêu chí nghiệm thu, **merge
+được**~~. `MIN_RERANK_SCORE = -6.0` đã implement ở `retrieval/relevance.py` ban đầu, nhưng
+bị reviewer PR #41 REVISE vì đo chỉ **1 lần/câu**, không tính nhiễu HyDE.
+
+**CẬP NHẬT (2026-09-22, sau REVISE của reviewer PR #41) — đo lại đúng cách, đổi
+`MIN_RERANK_SCORE`:**
+
+**Vấn đề gốc rễ (reviewer tìm được):** `retrieval/hyde.py` gọi Groq với
+`temperature = 0.2` (không phải 0) để sinh hypothetical document — hypothetical document
+(và do đó `rerank_score`) của **cùng một câu hỏi** dao động giữa các lần gọi khác nhau.
+Mọi số liệu đo ngưỡng trước đó (kể cả bảng ở trên) chỉ đo **1 lần/câu**, không phản ánh
+đúng rủi ro thật: một câu hợp lệ có thể có `max rerank_score` cao ở lần gọi này nhưng thấp
+hơn ngưỡng ở lần gọi khác — "chặn oan" ngẫu nhiên, không tái lập được bằng cách đo lại 1
+lần.
+
+**Quy trình đo lại:** script dev tạm (`retrieval.pipeline.retrieve()` trực tiếp, không qua
+generation — rẻ, không tốn quota Groq answer), gọi **3 lần/câu** trên: 4 câu viện dẫn
+Khoản + 8 câu hợp lệ khác (bộ câu cũ, giữ nguyên) + 2 biến thể ca 9 + 3 câu rìa corpus mới
+(bảo hiểm thất nghiệp, tai nạn lao động, kỷ luật lao động — theo yêu cầu xác minh của
+reviewer). Không commit script.
+
+**Xác nhận 3 chủ đề rìa corpus có/không có luật riêng trong `data/raw/`** (đọc trực tiếp
+nội dung `.docx` bằng `python-docx`, không đoán):
+
+| Chủ đề | Luật riêng trong corpus? | Bằng chứng |
+| --- | --- | --- |
+| Bảo hiểm thất nghiệp | **Không** | `Luật bảo hiểm xã hội.docx` chỉ có chương về ốm đau/thai sản/hưu trí/tử tuất (Chương V, VI) — không có mục "bảo hiểm thất nghiệp"; cụm "trợ cấp thất nghiệp" xuất hiện **0 lần** trong toàn bộ corpus. "Bảo hiểm thất nghiệp" chỉ được nhắc thoáng qua trong các Điều về chậm/trốn đóng (Điều 38-41) và tên quỹ (Điều 118) — không có Điều nào quy định điều kiện/mức hưởng. Đúng là luật riêng (Luật Việc làm) không có trong `data/raw/`. |
+| Tai nạn lao động | **Không** | Bộ luật Lao động hợp nhất có Chương IX "AN TOÀN, VỆ SINH LAO ĐỘNG" nhưng chỉ 3 Điều (132-134), toàn quy định chung (trách nhiệm tuân thủ, chương trình quốc gia) — không có Điều nào về điều kiện/chế độ/bồi thường tai nạn lao động cụ thể. Cụm "tai nạn lao động" xuất hiện rải rác (nghĩa vụ bồi thường, điều tra) nhưng không có quy định chi tiết. Luật riêng (Luật An toàn, vệ sinh lao động) không có trong `data/raw/`. |
+| Kỷ luật lao động | **Có** | Bộ luật Lao động hợp nhất có hẳn **Chương VIII "KỶ LUẬT LAO ĐỘNG, TRÁCH NHIỆM VẬT CHẤT"** (47 lần nhắc "kỷ luật lao động" trong văn bản) — được cover đầy đủ, **không phải ca biên**. |
+
+→ 2/3 chủ đề (bảo hiểm thất nghiệp, tai nạn lao động) là **ca biên hợp lệ thật** (corpus
+chỉ nhắc thoáng qua, không có luật riêng — không phải lỗi chất lượng retrieval). Câu "kỷ
+luật lao động" loại khỏi phân tích ngưỡng vì có nội dung đầy đủ trong corpus.
+
+**Số liệu đo lại đầy đủ (3 lần/câu, `max rerank_score` mỗi lần):**
+
+*4 câu viện dẫn Khoản (ổn định qua cả 3 lần — token cấu trúc/extras chi phối, ít nhạy với
+nhiễu HyDE):*
+
+| Câu | min | max | spread |
+| --- | ---: | ---: | ---: |
+| "Khoản 1 Điều 113 Bộ luật Lao động nói gì?" | 1.0748 | 1.5012 | 0.4264 |
+| "Khoản 2 Điều 113 Bộ luật Lao động nói gì?" | 1.0332 | 1.0332 | 0.0000 |
+| "Điều 36 khoản 2 Bộ luật Lao động" | 0.3618 | 0.8793 | 0.5175 |
+| "Điều 3 khoản 1 của luật thuế TNCN quy định gì?" | 1.1451 | 1.1451 | 0.0000 |
+
+*8 câu hợp lệ khác (đa số ổn định; "chồng" dao động nhẹ 0.4967):*
+
+| Câu | min | max | spread |
+| --- | ---: | ---: | ---: |
+| "Thời gian thử việc tối đa là bao lâu?" | -0.4643 | -0.4643 | 0.0000 |
+| "Chồng của lao động nữ sinh con..." (ca 1) | -3.9651 | -3.4684 | 0.4967 |
+| "Hợp đồng lao động xác định thời hạn tối đa bao lâu?" | -0.1465 | -0.1465 | 0.0000 |
+| "Hợp đồng lao động không xác định thời hạn..." | 0.6240 | 0.6240 | 0.0000 |
+| "Lương 20 triệu đóng thuế TNCN thế nào?" (ca 3) | -3.8193 | -3.8193 | 0.0000 |
+| "Thu nhập 30 triệu đồng một tháng..." | -3.0935 | -3.0935 | 0.0000 |
+| "Lương tháng 10 triệu, làm thêm giờ..." | **-4.0964** | -4.0964 | 0.0000 |
+| "Vậy lương thử việc tối thiểu là bao nhiêu?" (ca 7) | 1.1994 | 1.1994 | 0.0000 |
+
+→ **min(min qua 3 lần) của 12 câu hợp lệ cũ = -4.0964** ("làm thêm giờ", hoàn toàn ổn định
+— 0 spread qua 3 lần, KHÔNG phải may mắn).
+
+*Ca 9 (biết chắc không liên quan) — 2 biến thể, đo trên câu literal (không qua condense
+thật như lần đo đầu, do script đo trực tiếp; chênh lệch không đáng kể so với -7.0697 đo
+qua condense trước đó):*
+
+| Câu | min | max | spread |
+| --- | ---: | ---: | ---: |
+| "Tóm tắt lại các câu trả lời ở trên cho tôi." | -8.7521 | -8.7521 | 0.0000 |
+| "Ý thứ 3 bạn vừa nói là gì?" | -7.0371 | -7.0371 | 0.0000 |
+
+→ **max(max qua 3 lần) của ca 9 = -7.0371**, hoàn toàn ổn định (0 spread qua 3 lần).
+
+*3 câu rìa corpus (mới, theo yêu cầu reviewer):*
+
+| Câu | min | max | spread |
+| --- | ---: | ---: | ---: |
+| "Điều kiện hưởng trợ cấp thất nghiệp là gì?" | **-5.9692** | -3.1486 | **2.8206** |
+| "Bị tai nạn lao động trên đường đi làm có được coi là tai nạn lao động không?" | **-6.2113** | -4.0244 | **2.1868** |
+| "Người lao động vi phạm kỷ luật lao động bị xử lý như thế nào?" (có luật riêng, không tính vào ngưỡng) | -0.7616 | -0.7616 | 0.0000 |
+
+→ Xác nhận đúng quan sát của reviewer: câu "tai nạn lao động trên đường đi làm" dao động
+`[-6.2113, -4.0244]` — 1/3 lần đo (-6.2113) **thấp hơn ngưỡng cũ -6.0**, đúng là bị "chặn
+oan thật" ở ngưỡng cũ. Câu "trợ cấp thất nghiệp" dao động còn mạnh hơn: `[-5.9692,
+-3.1486]`, spread 2.82.
+
+**Phát hiện quan trọng: không có khoảng an toàn đủ rộng.** Khoảng trống thật giữa
+`max(ca 9) = -7.0371` và `min(2 câu rìa thực sự biên) = -6.2113` chỉ rộng **~0.83** —
+trong khi biên độ nhiễu quan sát được ở 2 câu rìa này là **2.19-2.82**. Theo đúng nguyên
+tắc "margin nên tối thiểu gấp rưỡi-gấp đôi biên độ nhiễu" (tức cần margin >= ~3.3-5.6),
+**không có ngưỡng nào trong khoảng này đạt độ an toàn mong muốn** cho riêng 2 câu rìa. Gợi
+ý ban đầu của reviewer (`~-7.5`) cũng **không khả thi**: `-7.5 < -7.0371` (max của ca 9b)
+nghĩa là ca 9b sẽ **lọt qua gate** (không bị chặn) — chính reviewer cũng chưa có số đo
+`max(ca 9)` khi đề xuất con số này.
+
+**Quyết định (chấp nhận rủi ro tồn đọng đã ghi rõ, không mở rộng phạm vi vòng sửa này):**
+chọn **`MIN_RERANK_SCORE = -6.8`** — nằm trong khoảng hẹp `(-7.0371, -6.2113]`, thiên về
+phía không chặn oan câu hợp lệ (margin ~0.59-0.83 với 2 câu rìa) hơn là chặn chắc ca 9
+(margin ~0.24 với ca 9b) — đúng tinh thần "thà bỏ sót còn hơn chặn oan" đã chốt trong dự
+án. Đây **không phải** một ngưỡng "an toàn tuyệt đối" theo đúng nghĩa margin >= 1.5-2 lần
+nhiễu — là lựa chọn tốt nhất có thể trong dữ liệu đã đo, với rủi ro tồn đọng ghi rõ dưới
+đây.
+
+**Rủi ro tồn đọng (residual risk, không giải quyết trong vòng sửa này):**
+
+1. 2 câu rìa corpus ("trợ cấp thất nghiệp", "tai nạn lao động trên đường đi làm") vẫn có
+   khả năng bị chặn oan ngẫu nhiên ở một số lần gọi không may (dù margin ~0.6-0.8 lớn hơn
+   ngưỡng cũ, biên độ nhiễu đã đo 2.2-2.8 vẫn lớn hơn margin này) — hậu quả nhẹ: người
+   dùng nhận "không tìm thấy quy định phù hợp" cho một câu hỏi mà corpus vốn chỉ nhắc
+   thoáng qua (không có luật riêng), không phải một câu trả lời sai/bịa.
+2. Ca 9 (meta-request) có margin mỏng (~0.24) với ngưỡng mới ở biến thể "Ý thứ 3..." — nếu
+   một lần gọi HyDE hiếm hoi đẩy điểm lên trên -6.8, ca 9 sẽ lọt gate này. **Không phải rủi
+   ro nghiêm trọng**: ca 9 vẫn có 2 lớp phòng thủ độc lập khác trong kiến trúc (guardrail
+   `generation/guardrail.py`, và quy tắc 12 của `GENERATION_SYSTEM_PROMPT` đã merge ở
+   18.2.1, đo 3/3 đạt — mục 20 `generation_spec.md`) — gate này chỉ là lớp phòng thủ thứ 3,
+   rẻ nhất, không phải tuyến duy nhất.
+3. **Nguyên nhân gốc chưa xử lý:** nhiễu tới từ `temperature = 0.2` của HyDE
+   (`retrieval/hyde.py`). Hai phương án giải quyết triệt để, cả hai **NGOÀI phạm vi vòng
+   sửa này** (đổi `retrieval/hyde.py` là mở rộng phạm vi so với giải pháp gốc 18.2.2, cần
+   quyết định riêng của người dùng):
+   - **Đo trung bình nhiều lần gọi `retrieve()` trước khi gate quyết định** (ví dụ 2-3
+     lần, lấy trung bình `max rerank_score`) — giảm nhiễu nhưng tăng latency/chi phí
+     reranker (vốn đã chậm, ~20-40s/lần gọi trên CPU free tier LightningAI theo quan sát
+     khi đo) và tăng gọi Groq HyDE (tốn quota) cho MỌI câu hỏi, không chỉ câu biên.
+   - **Hạ `temperature` của HyDE về 0** (hoặc gần 0) — loại bỏ nhiễu tận gốc, rẻ hơn
+     phương án trên (không tăng số lần gọi), nhưng có thể ảnh hưởng đa dạng cách diễn đạt
+     hypothetical document (rủi ro chưa đo — cần vòng đo riêng nếu được chấp thuận).
+   Đề xuất: nếu người dùng muốn giải quyết triệt để, ưu tiên phương án hạ `temperature`
+   HyDE (rẻ hơn), làm ở vòng riêng có đo trước/sau.
+
+**Tiêu chí nghiệm thu (đo lại):** với ngưỡng `-6.8`, 15/15 câu hợp lệ đã đo (12 câu hợp lệ
+cũ + 2 câu rìa thực sự biên + 1 câu rìa có luật riêng) có `min(qua 3 lần) > -6.8`; ca 9 (2
+biến thể) có `max(qua 3 lần) < -6.8` — **cả hai vế đạt trên dữ liệu đã đo**, nhưng margin
+mỏng ở biên (mục "Rủi ro tồn đọng" trên) nên **không coi là an toàn tuyệt đối** — khác lần
+đo ban đầu (margin ~1.07-1.90, không có ca rìa).
+
+**Kết luận:** `MIN_RERANK_SCORE` đổi từ `-6.0` sang `-6.8` ở `retrieval/relevance.py`.
+Merge với rủi ro tồn đọng đã ghi rõ ở trên (không phải "an toàn tuyệt đối", là lựa chọn
+tốt nhất từ dữ liệu thật đã đo — đúng tinh thần "quan sát trước, không đoán" nhưng KHÔNG
+che giấu giới hạn của phép đo).
+
 #### 18.2.4 Condense: retry 1 lần khi `reason=FINISH_LENGTH`
 
 **Vấn đề:** 18.1.3 — kích hoạt bước C đã dự tính sẵn ở mục 15.3 nhưng chưa làm
@@ -1197,8 +1403,8 @@ xét lại chỉ khi có bằng chứng guardrail false-negative thật trong v�
 | `generation/generator.py` | `generation/` | Sửa quy tắc 10, thêm quy tắc 11-12 vào `GENERATION_SYSTEM_PROMPT`; `PROMPT_VERSION` "v2"→"v3" (18.2.1) |
 | `generation/generation_spec.md` | `generation/` | Cập nhật mục 5.2, mục 17 sau khi đo 18.2.1 |
 | `conversation/history.py` | `conversation/` | Hàm mới `is_meta_history_request` (18.2.3) |
-| `conversation/orchestrator.py` | `conversation/` | Nhánh chặn sớm meta-request (18.2.3) + hằng số `META_REQUEST_MESSAGE`; gọi `is_low_relevance` trong `_load_chunks` (18.2.2) |
-| `retrieval/relevance.py` | `retrieval/` | Module mới: `MIN_RERANK_SCORE`, `is_low_relevance` (18.2.2) |
+| `conversation/orchestrator.py` | `conversation/` | Nhánh chặn sớm meta-request (18.2.3) + hằng số `META_REQUEST_MESSAGE`; gọi `is_low_relevance` trong `_load_chunks` (18.2.2); log `logger.info` khi gate chặn `no_context` (`max_rerank_score`, ngưỡng, số chunk — không log nội dung câu hỏi) sau REVISE PR #41 |
+| `retrieval/relevance.py` | `retrieval/` | Module mới: `MIN_RERANK_SCORE`, `is_low_relevance` (18.2.2); đổi `MIN_RERANK_SCORE` -6.0 → -6.8 sau REVISE PR #41 (đo lại nhiều lần/câu) |
 | `retrieval/retrieval_spec.md` | `retrieval/` | Ghi chú module `relevance.py` mới — không đổi hợp đồng `retrieve()` (18.2.2) |
 | `conversation/condenser.py` | `conversation/` | Retry 1 lần khi `reason=FINISH_LENGTH` trong `condense_detailed` (18.2.4) |
 | `conversation/conversation_spec.md` | `conversation/` | Mục 18 (mục này); cập nhật mục 15.3 (đánh dấu bước C đã làm) sau khi đo 18.2.4 |
