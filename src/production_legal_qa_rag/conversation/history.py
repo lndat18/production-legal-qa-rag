@@ -29,12 +29,16 @@ GUARDRAIL_CONTEXT_TURNS: Final = 2
 _CITATION_MARK = re.compile(r"\[\d+\]")
 _ELLIPSIS: Final = "…"
 
-# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa", "đã nói", "trước đó").
-_BACK_REFERENCE = r"(?:ở\s*trên|vừa|đã\s*nói|trước\s*đó)"
+# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa", "đã nói", "trước đó",
+# "lúc nãy"/"khi nãy"/"hồi nãy" — đồng nghĩa khẩu ngữ của "vừa rồi").
+_BACK_REFERENCE = r"(?:ở\s*trên|vừa|đã\s*nói|trước\s*đó|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
 # Mẫu regex nhận diện meta-request về lịch sử hội thoại (conversation_spec.md
-# mục 18.2.3): "tóm tắt"/"nhắc lại" + cụm tham chiếu ngược, hoặc "(ý|điểm|phần)
-# ... (bạn|vừa|đã) ... (nói|nêu|trả lời)". Khoảng cách .{0,40}/.{0,20} đủ rộng
-# cho câu tiếng Việt tự nhiên, không quá rộng để tránh khớp nhầm đoạn dài.
+# mục 18.2.3): "tóm tắt"/"nhắc lại" + cụm tham chiếu ngược, "(ý|điểm|phần) ...
+# (bạn|vừa|đã) ... (nói|nêu|trả lời)", hoặc gọi thẳng "bạn" (địa chỉ hệ thống)
+# + "vừa"/"đã" + "nói/nêu/trả lời" (vd. "Bạn vừa nói gì vậy?" — không cần tiền
+# tố "tóm tắt"/"nhắc lại"/"ý/điểm/phần" mới là meta-request). Khoảng cách
+# .{0,40}/.{0,20} đủ rộng cho câu tiếng Việt tự nhiên, không quá rộng để tránh
+# khớp nhầm đoạn dài.
 _META_HISTORY_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     re.compile(rf"tóm\s*tắt.{{0,40}}{_BACK_REFERENCE}", re.IGNORECASE),
     re.compile(rf"nhắc\s*lại.{{0,40}}{_BACK_REFERENCE}", re.IGNORECASE),
@@ -42,6 +46,7 @@ _META_HISTORY_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
         r"(?:ý|điểm|phần).{0,20}(?:bạn|vừa|đã).{0,20}(?:nói|nêu|trả\s*lời)",
         re.IGNORECASE,
     ),
+    re.compile(r"bạn.{0,20}(?:vừa|đã).{0,20}(?:nói|nêu|trả\s*lời)", re.IGNORECASE),
 )
 
 

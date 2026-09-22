@@ -140,8 +140,49 @@ def test_is_meta_history_request_does_not_block_valid_followups() -> None:
         "Còn với người khuyết tật thì sao?",
         "Lương 20 triệu đóng thuế TNCN thế nào?",
         "Còn hợp đồng không xác định thời hạn thì sao?",
+        # "nói" một mình (không đi kèm "bạn"/"tóm tắt"/"nhắc lại") không phải
+        # tín hiệu meta-request, kể cả khi có history.
+        "Luật nói gì về việc chấm dứt hợp đồng?",
+        # "tóm tắt" không đi kèm cụm tham chiếu ngược (ở trên/vừa/đã nói/trước
+        # đó/lúc nãy...) trong khoảng cách quy định -> câu hỏi mới hợp lệ.
+        "Tóm tắt và cho tôi biết thêm về mức phạt chậm đóng bảo hiểm xã hội.",
     ):
         assert not is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_matches_direct_address_variants() -> None:
+    """Biên: gọi thẳng "bạn" + vừa/đã + nói/nêu/trả lời -> meta-request, dù
+    không có tiền tố "tóm tắt"/"nhắc lại"/"ý/điểm/phần" (phát hiện khi review
+    diff 18.2.3: cách hỏi tự nhiên "Bạn vừa nói gì vậy?" ban đầu lọt qua)."""
+    for query in (
+        "Bạn vừa nói gì vậy?",
+        "Bạn vừa nói gì thế?",
+        "Bạn đã trả lời gì cho câu trước?",
+    ):
+        assert is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_matches_lúc_nãy_synonym() -> None:
+    """Biên: "lúc nãy"/"khi nãy"/"hồi nãy" là đồng nghĩa khẩu ngữ của "vừa rồi",
+    ban đầu chưa nằm trong cụm tham chiếu ngược nên "nhắc lại ... lúc nãy nói
+    gì" lọt qua; đã bổ sung vào `_BACK_REFERENCE`."""
+    for query in (
+        "Nhắc lại xem lúc nãy nói gì",
+        "Nhắc lại giúp tôi khi nãy nói gì",
+    ):
+        assert is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_blocks_compound_query_with_back_reference() -> None:
+    """Biên: câu ghép vừa có "tóm tắt" + cụm tham chiếu ngược vừa có ý hỏi mới
+    vẫn bị chặn (hành vi có chủ đích: phần "tóm tắt" không thể trả lời được vì
+    `generate()` không nhận history, nên toàn bộ câu ghép bị từ chối thay vì cố
+    tách phần hỏi mới ra)."""
+    assert is_meta_history_request(
+        _window_with_history(
+            "Tóm tắt câu trả lời vừa rồi và cho tôi biết thêm về mức phạt."
+        )
+    )
 
 
 # ------------------------------------------------------------------- condenser
