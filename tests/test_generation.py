@@ -341,8 +341,8 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
-def test_prompt_version_starts_at_v1_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v1"
+def test_prompt_version_bumped_for_cache_keying() -> None:
+    assert PROMPT_VERSION == "v2"
 
 
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
