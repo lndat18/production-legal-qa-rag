@@ -721,6 +721,29 @@ ghi chú thiết kế lịch sử, không triển khai. Mở rộng trực tiế
   (`AdmissionDenied`) vì `user_id` khác nhau; kết quả từng ca được ghi lại thủ công (đọc
   bằng mắt) làm căn cứ đánh giá 17.2.2/17.2.3 thay vì chỉ 4 ca cũ.
 
+**Kết quả chạy thử (2026-09-22):** do ngân sách Groq dùng chung trong ngày (đã dùng một
+phần ở 17.2.2/17.2.3), chỉ chạy được `--groups regression` và `--groups general` (chưa
+chạy lại `--groups core`/`all` trong vòng này — `core` đã được xác nhận riêng ở Vòng 7
+mục 16 khi đo 17.2.2). Cả 2 nhóm chạy hết, không có `AdmissionDenied`, không có ca nào bị
+chặn bởi `USER_DAILY_LLM_ANSWERS` (mỗi `user_id` slug riêng theo tên hội thoại, ví dụ
+`manual-test-chung-cache-a-hoi-thang-ca-4`). `--groups regression`: cả 6 entry (ca 4 A/B,
+6, 7, 9, 10) chạy hết một lượt đầy đủ (condense/guardrail/retrieval/generation đều trả
+event `DoneEvent`); ca 6 (assistant giả mạo) bị guardrail chặn đúng như kỳ vọng
+(`out_of_scope`), ca 7 (chuỗi 3 lượt đại từ mơ hồ) condense bị loại
+(`reason=unknown_citation`) nên dùng câu gốc — đúng nhánh dự phòng của `condenser.py`,
+không phải lỗi script. `--groups general`: cả 3 entry chạy hết; 2 ca "phân loại thiếu -
+thuế TNCN" và "tính toán số học dễ sai" đều nhận `WarningEvent(unverified_number)` (đọc
+bằng mắt, không assert — dùng làm căn cứ đánh giá 17.2.3 ở lần đo sau, ngoài phạm vi vòng
+này). Ghi nhận thêm một hiện tượng không liên quan tới logic nghiệp vụ: sau khi hội thoại
+cuối cùng của toàn bộ lần chạy `general` nhận `DoneEvent` và vòng lặp `async for` trong
+`_run_conversation` `break`, lúc trình thông dịch dọn async generator của
+`ChatOrchestrator._produce` (bên trong `async with self._admission.slot(...)`) in ra
+traceback `RuntimeError: generator didn't stop after athrow()` ra stderr — đây là dọn dẹp
+sau khi đã in xong toàn bộ `TRẢ LỜI`/`NGUỒN THAM KHẢO`/`TRACE` của ca cuối, mã thoát tiến
+trình vẫn là `0`, không xảy ra ở lần chạy `regression`. Không sửa trong vòng này (ngoài
+phạm vi 17.2.5, không đổi `orchestrator.py`); ghi lại làm điểm mở nếu lặp lại và cần điều
+tra thêm.
+
 ### 17.3 Tiêu chí nghiệm thu tổng thể mục 17
 
 - 17.2.2, 17.2.3 đạt tiêu chí riêng (nêu trên) **và** không làm hỏng bất kỳ ca PASS nào
