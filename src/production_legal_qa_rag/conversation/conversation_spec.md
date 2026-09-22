@@ -983,6 +983,76 @@ model, message riêng theo case như `guardrail.py` đã làm với `OUT_OF_SCOP
   Chạy lại toàn bộ `conversation/test.py --groups all`: không ca hợp lệ nào (đặc biệt ca
   2 "Còn Khoản 2?", ca 7 chuỗi đại từ mơ hồ) bị chặn oan bởi heuristic mới.
 
+**Kết quả đo (2026-09-22):** logic regex là code thuần, không phụ thuộc LLM, nên độ tin
+cậy 3/3 lần được xác nhận bằng **test đơn vị** (`tests/test_conversation.py`, không gọi
+Groq): `test_is_meta_history_request_matches_ca9_examples` khớp đúng cả 2 ví dụ mục 13.4
+ca 9 ("Tóm tắt lại các câu trả lời ở trên cho tôi.", "Ý thứ 3 bạn vừa nói là gì?");
+`test_is_meta_history_request_does_not_block_citation_queries` xác nhận câu có số
+Điều/Khoản (kể cả có từ khoá "tóm tắt"/"nhắc lại") không bị chặn;
+`test_is_meta_history_request_requires_history` xác nhận lượt đầu không áp dụng;
+`test_is_meta_history_request_does_not_block_valid_followups` xác nhận 6 câu hồi quy
+khác (ca 2, ca 1, ca 7, ca 3, đa chủ thể) không bị chặn oan. `test_orchestrator_blocks_meta_history_request_before_guardrail`
+xác nhận bằng fake orchestrator: stream chỉ có `status(guardrail)` → `refusal` → `done`,
+`guardrail.seen == []`, `condenser.calls == 0`, không gọi retrieve/generate.
+
+Đo end-to-end 1 lần qua `conversation/test.py --groups all` (13 hội thoại, Groq +
+Pinecone thật): ca 9 ("Tóm tắt lại các câu trả lời ở trên cho tôi.") bị chặn đúng ở bước
+này — `Outcome: refused`, `Chunk: 0 []`, `Tổng thời gian: 0.00s` (nhanh hơn hẳn ca
+injection/out_of_scope khác vốn mất 0.74-1.28s do vẫn phải gọi Groq guardrail), không
+thấy status `retrieval`/`generation`, không có dòng "Token (prompt/completion/reasoning)"
+(chỉ xuất hiện khi generation chạy) — xác nhận 0 call Groq. Không ca hợp lệ nào trong 12
+ca còn lại bị chặn oan, đặc biệt: ca 2 "Còn Khoản 2 thì sao?" (2 biến thể, ca gốc và ca
+chung cache B) vẫn được condense và trả lời đúng; ca 7 chuỗi đại từ mơ hồ "Vậy lương thử
+việc tối thiểu là bao nhiêu?" vẫn được condense và trả lời; ca "Đa chủ thể - loại hợp
+đồng" ("Còn hợp đồng không xác định thời hạn thì sao?") vẫn được condense và trả lời.
+Đạt tiêu chí nghiệm thu ở lần đo ban đầu này (0 call Groq, không chặn oan 12 ca đã biết).
+
+**CẬP NHẬT (2026-09-22, sau 3 vòng develop-cycle) — TẠM DỪNG, CHƯA MERGE, rủi ro tồn
+đọng:** PR #40 (`feat/conversation-meta-request-guard`) trải qua 3 vòng REVISE liên tiếp,
+mỗi vòng reviewer tìm thấy **cùng một lớp lỗi** (alternative "bare" thiếu ràng buộc ngữ
+cảnh trong `_BACK_REFERENCE`/`_META_HISTORY_PATTERNS`) ở một vị trí khác:
+
+1. Vòng 1: "vừa" bare chặn oan "Tóm tắt giúp tôi các quy định vừa ban hành về nghỉ phép
+   năm." → sửa bằng ràng buộc hậu tố (`vừa\s*(?:rồi|nói|nêu|trả lời|trích dẫn)`).
+2. Vòng 2: "đã nói" bare chặn oan "Tóm tắt xem Nghị định 90 đã nói gì..." → bỏ hẳn khỏi
+   danh sách, thêm helper `_near_ref_verb()` ràng buộc theo khoảng cách cho "ở trên"/
+   "trước đó".
+3. Vòng 3 (giới hạn cuối): lỗi chuyển sang lớp khác hẳn — không phải khoảng cách mà là
+   **chủ thể của hành động nói**: "Tóm tắt nội dung khách hàng vừa trả lời phỏng vấn báo
+   chí..." hay "Nhắc lại giúp tôi nội dung sếp tôi vừa nói..." vẫn bị chặn oan vì "vừa
+   nói/nêu/trả lời" khớp bất kể ai là người nói (khách hàng, sếp, bên thứ ba khác), không
+   riêng "trợ lý trong hội thoại này". Vá bằng blacklist chủ thể bên thứ ba là danh sách
+   mở, không hội tụ.
+
+Theo đúng giới hạn 3 vòng của `develop-cycle.md` và chỉ dẫn của người dùng ("giải quyết 3
+lần không xong thì qua task khác, đánh dấu vào spec"): **dừng tại đây, PR #40 KHÔNG
+merge**, giữ nguyên trạng thái mở trên GitHub để tham khảo lịch sử thử nghiệm, không xoá.
+`feat/condense-tuning` **không có** giải pháp 18.2.3 — ca 9 tiếp tục dựa vào lớp phòng thủ
+prompt (quy tắc 12, đã merge ở mục 18.2.1/PR #39) làm tuyến phòng thủ duy nhất cho lớp lỗi
+này; quy tắc 12 đã đo 3/3 đạt (mục 20 `generation_spec.md`) nên rủi ro thực tế được giảm
+nhẹ, KHÔNG phải hoàn toàn không có phòng thủ.
+
+**Nguyên nhân gốc (đánh giá của reviewer, đáng tin):** cách tiếp cận "danh sách alternation
+mở + ràng buộc khoảng cách" về bản chất không thể phân biệt "ai đang nói" bằng regex thuần
+— cần một trong các hướng thiết kế lại sau (chưa làm, để ngỏ cho vòng sau nếu muốn tiếp
+tục):
+
+1. **Whitelist mẫu câu cố định:** thay alternation mở bằng danh sách ~10-15 mẫu câu đầy đủ
+   thường gặp (khớp gần trọn vẹn câu, không phải cụm từ rời rạc) — giảm false-positive
+   nhưng tăng false-negative (câu diễn đạt khác không khớp).
+2. **Neo vào đầu câu/cụm gọi trực tiếp:** chỉ coi là meta-request nếu cụm tham chiếu nằm
+   ở đầu câu hoặc gắn liền chủ ngữ "bạn" (loại bỏ được case chủ thể thứ ba vì họ luôn có
+   danh từ/tên riêng chỉ định trước động từ, không phải "bạn").
+3. **Chuyển quyết định cho guardrail LLM sẵn có** thay vì regex: guardrail đã nhận
+   `recent_user_turns` (mục 6), có thể mở rộng chính sách guardrail để tự phân loại
+   meta-request thay vì thêm lớp regex riêng — đánh đổi: tốn 1 call Groq (guardrail) thay
+   vì 0 call, nhưng đây vốn là chi phí guardrail luôn phải trả cho mọi câu hỏi, không phải
+   chi phí phát sinh thêm.
+
+Không tự chọn hướng nào ở đây — cần người dùng quyết định có đáng đầu tư tiếp (lớp phòng
+thủ thứ 2 cho 1 loại lỗi đã có quy tắc 12 phòng thủ một phần) hay chấp nhận rủi ro tồn đọng
+vĩnh viễn và đóng vấn đề này lại.
+
 #### 18.2.2 Retrieval-relevance gate dựa trên `rerank_score`
 
 **Vấn đề:** 18.1.1 — lớp phòng thủ thứ ba, rẻ nhất (không LLM), chặn sớm hơn ở biên
@@ -1108,7 +1178,9 @@ xét lại chỉ khi có bằng chứng guardrail false-negative thật trong v�
 
 - 18.2.1, 18.2.3, 18.2.2, 18.2.4 đạt tiêu chí riêng (nêu trên) **và** không làm hỏng bất
   kỳ ca PASS nào đã có (ca 2, ca 5 của mục 17; ca 1/2/3/4 của `generation_spec.md` mục 14;
-  ca "làm thêm giờ" của mục 17.2.3).
+  ca "làm thêm giờ" của mục 17.2.3). **18.2.3: TẠM DỪNG sau 3 vòng develop-cycle (xem ghi
+  chú "CẬP NHẬT" cuối mục 18.2.3), không merge, không tính vào tiêu chí đạt/không đạt của
+  mục 18 này** — ca 9 vẫn được phòng thủ một phần bởi quy tắc 12 (18.2.1, đã merge).
 - Sau khi 18.2.1, 18.2.2, 18.2.3 có code (18.2.4 độc lập, không phụ thuộc thứ tự): chạy
   lại `conversation/test.py --groups all` đủ 13 ca, đặc biệt ca 9 và ca "Phân loại thiếu -
   thuế TNCN": đổi kết luận từ FAIL sang PASS, hoặc ghi rõ lý do còn FAIL — không bắt buộc
