@@ -321,6 +321,34 @@ Chạy thật (`generation/test.py`, reranker server đang chạy — runbook re
    `api/api_spec.md`; ReAct/multi-agent (spec riêng, chưa làm).
 7. Chất lượng câu trả lời (faithfulness, answer relevancy): RAGAS ở phase sau.
 
+## 17. Sửa lỗi phát hiện sau khi tune condense (2026-09-22)
+
+Chi tiết vấn đề, phân tích nguyên nhân và tiêu chí nghiệm thu nằm ở
+`conversation/conversation_spec.md` mục 17 (đọc trước khi implement). Tóm tắt phần thuộc
+package `generation/`:
+
+1. ~~Bug cú pháp `generation/pipeline.py`~~ — **báo động giả, đã kiểm chứng không phải
+   bug** (Python 3.14, PEP 758, cho phép `except TypeError, ValueError:` không cần
+   ngoặc). Không sửa gì. Xem `conversation_spec.md` mục 17.0.
+2. **`GENERATION_SYSTEM_PROMPT` thêm quy tắc 9-10** (sau quy tắc 8 hiện có, mục 5.2):
+   câu hỏi thiếu thông tin phân loại quan trọng (cư trú/không cư trú, loại hợp đồng...)
+   phải liệt kê riêng biệt từng trường hợp thay vì tự chọn/trộn; không tự thực hiện tính
+   toán nhiều bước (biểu thuế luỹ tiến...) để ra một con số cuối cùng, chỉ nêu nguyên văn
+   tỷ lệ/mức theo "Văn bản" (đúng tinh thần quy tắc 3 đã có). Nội dung đề xuất nguyên văn
+   và lý do (ca "Lương 20 triệu đóng thuế TNCN thế nào?" cho 2 kịch bản mâu thuẫn + tính
+   sai thuế) nằm ở `conversation_spec.md` mục 17.2.3. Bắt buộc tăng `PROMPT_VERSION` lên
+   `"v2"` theo quy ước mục 16.3. Sau khi đo đạt (theo tiêu chí ở `conversation_spec.md`
+   mục 17.2.3), cập nhật mục 5.2 ở đây (chép nguyên văn prompt mới) và ghi lại kết quả đo
+   ở dưới mục này.
+3. **Không sửa `output_check.py`:** đã điều tra vì sao `warning(unverified_number)`
+   không xuất hiện ở một lần chạy ca thuế TNCN dù lần trước có — kết luận không phải bug
+   (mọi tỷ lệ/ngưỡng luỹ tiến đều là số thật trong context, chỉ khác nhau do model có lúc
+   chốt số tiền cuối có lúc không); không mở rộng kiểm tra sang logic tính toán (đúng mục
+   6 "kiểm tra ngữ nghĩa... ngoài phạm vi, để dành phase sau"). Xem
+   `conversation_spec.md` mục 17.1.3.
+
+Kết quả đo (điền sau khi implement 17.2.3): _chưa đo_.
+
 ## 16. Mở rộng cho lớp chat (2026-09-21)
 
 Thay đổi nhỏ để `conversation/` dùng lại được các phần của `generation/`; **không đổi

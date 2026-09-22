@@ -456,3 +456,10 @@ top 5. Ghi lại hạng/điểm từng câu để theo dõi (không phải đi�
    sớm nhánh B, circuit breaker reranker, quota HF); hạ `RERANK_SECONDS_PER_PASSAGE`
    khi có GPU.
 6. Phương án Agentic cho câu cả Điều/Điểm trở lên/nhiều Điều (spec riêng).
+7. **Mở rộng truy vấn theo từ đồng nghĩa pháp lý — hoãn (2026-09-22):** ca follow-up đổi
+   chủ thể giới tính ("Vậy chồng thì sao?" sau câu hỏi về "nghỉ thai sản") cho thấy câu
+   hỏi đúng thuật ngữ nhưng ít từ khoá trùng corpus có thể vẫn trượt retrieval. Đã quyết
+   định **không** sửa `retrieval/` cho ca này (nguyên nhân gốc nằm ở condense sinh sai
+   thuật ngữ, không phải retrieval — xem `conversation/conversation_spec.md` mục 17.1.1,
+   17.2.2); chỉ ghi lại làm phương án dự phòng nếu sau khi sửa condense mà vẫn trượt
+   (`conversation_spec.md` mục 17.5.1).

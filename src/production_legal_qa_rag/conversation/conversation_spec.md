@@ -421,6 +421,11 @@ bịa số) vẫn chốt được.
 
 ### 15.6 Ràng buộc
 
+**Phạm vi ràng buộc (làm rõ 2026-09-22):** toàn bộ mục 15.6 chỉ áp dụng cho công việc
+tune prompt condense mô tả ở mục 15 (đã kết luận "đạt một phần" ở mục 16). Dòng "không
+sửa `generation/`, `retrieval/`" **không** áp dụng cho mục 17 (sửa lỗi phát hiện sau khi
+tune condense) — mục 17 được phép sửa `generation/`/`retrieval/`, tự nêu rõ phạm vi riêng.
+
 - Không cho số Điều/Khoản mới ngoài hội thoại (quy tắc 2 của prompt giữ nguyên); lỗi
   bịa số sửa bằng prompt, không nới kiểm tra.
 - Giữ `HISTORY_MAX_TURNS = 3`, `HISTORY_ASSISTANT_MAX_CHARS = 600` trừ khi số đo chứng
@@ -469,3 +474,261 @@ nâng gói. Toàn bộ vòng đo dùng ~130 call, gần hết TPD hôm nay.
 - Prompt condense đóng băng: chính là `CONDENSE_SYSTEM_PROMPT` trong `condenser.py`, đã
   chép nguyên văn ở mục 5.
 - Nhãn `expected_chunks` đã được người dùng duyệt chưa: chưa (`draft: true`).
+
+## 17. Sửa lỗi retrieval/generation phát hiện sau khi tune condense (2026-09-22)
+
+Bối cảnh: chạy `conversation/test.py` (4 hội thoại mẫu, Groq + Pinecone thật) sau khi
+đóng băng prompt condense (mục 15-16). Kết quả: ca 2 (kế thừa Điều) và ca 5 (injection)
+PASS; ca 1 (đại từ, đổi chủ thể nam/nữ) và ca 3 (đổi chủ đề sang thuế TNCN) FAIL. Mục
+này phân tích nguyên nhân gốc và chốt giải pháp. **Đã đọc thêm để viết mục này:**
+`retrieval/retrieval_spec.md`, `retrieval/hyde.py`, `retrieval/pipeline.py`,
+`retrieval/citation.py`, `generation/generation_spec.md`, `generation/output_check.py`,
+`generation/pipeline.py`, `generation/guardrail.py`.
+
+### 17.0 Phát hiện phụ khi đọc code — đã kiểm chứng là báo động giả, KHÔNG cần sửa
+
+Lần soạn mục 17 đầu tiên ghi nhầm `generation/pipeline.py` dòng 176
+(`except TypeError, ValueError:`) là `SyntaxError` chặn import (dựa theo cú pháp Python 2,
+không hợp lệ ở nhiều bản Python 3). Đã kiểm chứng lại trực tiếp trên interpreter thật của
+dự án (`.venv/bin/python`, `>=3.14` theo `pyproject.toml`): `ast.parse` không báo lỗi,
+`python -c "import production_legal_qa_rag.generation.pipeline"` chạy OK, `ruff check`
+pass. Nguyên nhân: **PEP 758** (Python 3.14) cho phép `except A, B:` không cần ngoặc,
+tương đương `except (A, B):` — cú pháp này hợp lệ và đúng ý ở dự án. Không có bug, không
+có giải pháp nào cần làm cho phát hiện này; **17.2.1 (bên dưới) đã bị loại bỏ**. Bài học
+ghi lại để nhắc: mọi phát hiện "lỗi cú pháp" phải chạy thử trên `.venv` thật của dự án
+trước khi đưa vào spec, không suy luận từ kiến thức phiên bản Python cũ.
+
+### 17.1 Vấn đề
+
+1. **Ca 1 — đại từ đổi chủ thể giới tính:** "Nghỉ thai sản được mấy tháng?" → "Lao động
+   nữ được nghỉ thai sản 6 tháng." → "Vậy chồng thì sao?". Condense (đã đúng, không
+   rỗng, không bịa số Điều) ra: "Chồng của lao động nữ được nghỉ thai sản bao lâu?".
+   Retrieval trả 5 chunk không đủ, generator kết luận "không tìm thấy quy định phù hợp".
+   **Nguyên nhân gốc:** condense sao chép nguyên văn thuật ngữ "nghỉ thai sản" (chỉ áp
+   dụng cho lao động nữ mang thai/sinh con) sang chủ thể "chồng" — câu đúng ngữ pháp
+   nhưng sai thuật ngữ pháp lý (luật gọi đây là "nghỉ việc khi vợ sinh con", BLLĐ Điều
+   139, hoặc "trợ cấp một lần khi vợ sinh con", Luật BHXH). Retrieval (dense + BM25 +
+   rerank + HyDE nhánh A — **đã bật sẵn**, không phải chưa dùng HyDE) hoạt động đúng
+   thiết kế: tìm đúng theo câu hỏi được đưa vào, nhưng câu hỏi đưa vào chứa cụm từ không
+   tồn tại trong corpus cho chủ thể đó → "garbage in, garbage out". Đây là lỗi ở
+   **condense**, không phải lỗi retrieval.
+2. **Ca 3 — 2 kịch bản mâu thuẫn + tính sai thuế + cảnh báo không xuất hiện:** câu hỏi
+   "Lương 20 triệu đóng thuế TNCN thế nào?" không nêu cư trú/không cư trú. Generator vi
+   phạm quy tắc 3 hiện có ("không làm tròn, không quy đổi, không tính toán thêm") — tự
+   thực hiện tính thuế luỹ tiến nhiều bước, đưa ra 2 kịch bản mâu thuẫn được trình bày
+   như thể đều chắc chắn, và bỏ bước trừ giảm trừ gia cảnh trước khi áp biểu luỹ tiến cho
+   trường hợp cư trú (sai nghiệp vụ thuế). Nguyên nhân là **prompt generation chưa đủ
+   chặt** để ngăn suy luận nhiều bước và chưa yêu cầu liệt kê rõ ràng khi thiếu thông tin
+   phân loại quan trọng.
+3. **Cảnh báo `unverified_number` không xuất hiện ở ca 3 (điều tra):** đã xem lại
+   `output_check.py` — cơ chế hiện tại chỉ gắn cờ số **không xuất hiện dạng chuẩn hoá
+   trong context** (breadcrumb/content/raw_table), không kiểm tra logic tính toán. Các
+   ngưỡng/tỷ lệ luỹ tiến (5%, 10%, 15%..., các mốc 5/10/18 triệu...) đều là số **có thật**
+   trong văn bản luật TNCN, nên nếu câu trả lời chỉ trích lại các mốc/tỷ lệ đó mà không
+   chốt một con số tiền thuế cuối cùng, không có số nào "lạc" để cảnh báo — đúng thiết kế
+   hiện tại (`generation_spec.md` mục 6: kiểm tra ngữ nghĩa/logic tính toán **ngoài phạm
+   vi**, để dành phase sau có LLM/agent). **Kết luận: không phải bug của
+   `output_check.py`; khác biệt giữa 2 lần chạy là do model (temperature 0.1, cùng
+   input) có lúc chốt một số tiền cuối (bị bắt ở lần chạy trước), có lúc chỉ liệt kê tỷ
+   lệ (không có gì để bắt ở lần này).** Không sửa `output_check.py` — xem lý do giữ
+   nguyên phạm vi ở 17.2.3.
+4. **Bộ ca kiểm thử `conversation/test.py` thiếu:** chỉ có ca 1, 2, 3, 5 trong 10 ca của
+   bảng mục 13.4 (thiếu ca 4, 6, 7, 8, 9, 10); `condense_cases.yaml` nhắc ở mục 15.5
+   **chưa từng được tạo** (đã kiểm tra bằng glob, không có file). Cũng chưa có ca tổng
+   quát cho câu hỏi nhiều chủ thể (nam/nữ, loại hợp đồng), câu cần phân loại trước khi
+   trả lời, câu cần tính toán số học từ luật (lớp lỗi giống ca 3).
+
+### 17.2 Giải pháp
+
+Thứ tự thực hiện đề xuất: 17.2.2 → 17.2.3 → 17.2.5 (17.2.4 chỉ là điều tra, đã kết luận ở
+17.1.3, không có công việc code riêng; **17.2.1 đã loại bỏ**, xem mục 17.0 — báo động giả,
+không có bug cần sửa). Mỗi mục là 1 vòng `develop-cycle` độc lập (≤ 50 phút), nhánh git
+riêng, tạo từ nhánh chứa mục 15 đã hoàn tất (hoặc từ `main` sau khi merge — người dùng
+quyết định thứ tự merge).
+
+#### 17.2.2 Condense: thuật ngữ pháp lý theo chủ thể (ca 1)
+
+**Vấn đề:** 17.1.1. **Giải pháp:** thêm 1 quy tắc + 1 few-shot mới vào
+`CONDENSE_SYSTEM_PROMPT` (`conversation/condenser.py`), theo đúng quy trình đã dùng ở
+mục 15.3 bước A (thêm quy tắc + few-shot, đo lại, không nới kiểm tra code).
+
+Quy tắc mới (đặt sau quy tắc 5 hiện có, đánh số 6), đề xuất nguyên văn (**CHƯA ĐO, cần
+đo theo tiêu chí nghiệm thu dưới đây trước khi coi là đóng băng**):
+
+```
+6. Một số thuật ngữ pháp lý chỉ áp dụng cho một nhóm chủ thể cụ thể (ví dụ "thai sản",
+   "nghỉ thai sản" chỉ dùng cho lao động nữ mang thai/sinh con). Nếu câu hỏi cuối chuyển
+   sang chủ thể khác nhóm với thuật ngữ chuyên biệt đó (ví dụ chồng, lao động nam), KHÔNG
+   sao chép nguyên thuật ngữ chuyên biệt đó sang chủ thể mới. Viết câu hỏi ở mức khái
+   quát hơn (nghỉ, chế độ, quyền lợi, trợ cấp) để việc tra cứu tự tìm đúng quy định,
+   không tự đặt tên chế độ cụ thể cho chủ thể mới.
+```
+
+Few-shot mới (thêm vào cuối khối ví dụ hiện có):
+
+```
+Hội thoại trước:
+Người dùng: Nghỉ thai sản được mấy tháng?
+Trợ lý: Lao động nữ được nghỉ thai sản 6 tháng.
+Câu hỏi cuối: Vậy chồng thì sao?
+Đầu ra: Chồng của lao động nữ sinh con có được nghỉ và hưởng chế độ gì, trong bao lâu?
+```
+
+Không đổi `check_condensed` (kiểm tra số Điều/Khoản không liên quan tới lớp lỗi này).
+
+**Root cause đã cân nhắc kỹ (theo yêu cầu, không sửa cả 2 bên):** retrieval hoạt động
+đúng thiết kế khi nhận câu hỏi đã đúng thuật ngữ (HyDE nhánh A đã bật sẵn, không phải
+thiếu); lỗi nằm hoàn toàn ở câu hỏi độc lập sai thuật ngữ do condense sinh ra. Vì vậy
+**chỉ sửa `condenser.py`**, không đổi `retrieval/` (ý tưởng mở rộng truy vấn theo từ
+đồng nghĩa pháp lý ở `retrieval/` bị hoãn, xem rủi ro 17.5).
+
+- **Phạm vi:** `conversation/condenser.py` (`CONDENSE_SYSTEM_PROMPT`). Thuộc package
+  `conversation/`. Sau khi đo đạt, cập nhật `conversation_spec.md` mục 5 (chép nguyên
+  văn prompt mới) và thêm 1 dòng "Vòng 7" vào bảng nhật ký mục 16.
+- **Nhánh:** `fix/condense-gendered-legal-terms`.
+- **Tiêu chí nghiệm thu:** chạy ca "Vậy chồng thì sao?" (và tối thiểu 2 biến thể cùng
+  lớp lỗi, ví dụ "lao động nữ" ↔ "lao động nam" ở chủ đề khác, "hợp đồng xác định thời
+  hạn" ↔ "không xác định thời hạn" — xem 17.2.5) ≥ 3 lần: condense không còn dùng cụm
+  "nghỉ thai sản" cho chủ thể nam giới ở cả 3 lần; không có ca hồi quy nào trong mục
+  13.4/15.5 bị vỡ (đại từ, kế thừa Điều, đổi chủ đề, injection vẫn đúng như log mục 16).
+  Retrieval trúng chunk đúng (Điều 139 BLLĐ hoặc quy định trợ cấp khi vợ sinh con Luật
+  BHXH) ghi lại **là nháp/tham khảo** (chưa có nhãn luật duyệt, không phải điều kiện
+  chặn theo đúng tinh thần mục 15.5).
+
+#### 17.2.3 Generation: phân loại thiếu thông tin + cấm tự tính toán nhiều bước (ca 3)
+
+**Vấn đề:** 17.1.2. Quy tắc 3 hiện có của `GENERATION_SYSTEM_PROMPT`
+(`generation/generator.py`, xem `generation_spec.md` mục 5.2) đã cấm "tính toán thêm"
+nhưng chưa đủ chặt cho câu hỏi thiếu thông tin phân loại quan trọng — model vẫn tự chọn/
+trộn kịch bản và tự tính. **Giải pháp:** thêm 2 quy tắc mới (đánh số 9, 10, sau quy tắc 8
+hiện có), đề xuất nguyên văn (**CHƯA ĐO**):
+
+```
+9. Nếu câu hỏi cần phân loại theo một yếu tố quan trọng làm thay đổi hẳn nội dung áp
+   dụng (ví dụ: cư trú hay không cư trú, loại hợp đồng lao động) và câu hỏi không cho
+   biết yếu tố đó, trong khi "Văn bản" có quy định khác nhau cho từng trường hợp: liệt
+   kê RIÊNG BIỆT từng trường hợp bằng gạch đầu dòng, nêu rõ điều kiện áp dụng của từng
+   trường hợp, và nói rõ người dùng cần cho biết yếu tố nào để xác định đúng trường hợp
+   của mình. Không trộn các trường hợp vào cùng một cách tính, không tự chọn một trường
+   hợp để trả lời như thể đó là câu trả lời chắc chắn duy nhất.
+10. Nếu trả lời đầy đủ cần thực hiện nhiều bước tính toán (ví dụ áp dụng biểu thuế luỹ
+    tiến từng phần, cộng trừ nhiều khoản) mà "Văn bản" không có sẵn kết quả cuối cùng:
+    chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
+    hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
+    mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
+    hội) là nơi tính cụ thể.
+```
+
+Bắt buộc tăng `PROMPT_VERSION` (`generation/generator.py`) từ `"v1"` lên `"v2"` theo quy
+ước đã có ở `generation_spec.md` mục 16.3 (đổi `GENERATION_SYSTEM_PROMPT` → đổi khoá
+cache).
+
+**Không sửa `output_check.py`:** đã điều tra ở 17.1.3 — không phải bug, và mở rộng để
+kiểm tra logic tính toán là kiểm tra ngữ nghĩa, đã được `generation_spec.md` mục 6 ghi
+rõ "ngoài phạm vi... để dành phase sau" (cần LLM/agent). Giữ nguyên quyết định đó, tránh
+over-engineering; quy tắc 9-10 xử lý tận gốc (ngăn model tính toán) thay vì bắt lỗi sau.
+
+- **Phạm vi:** `generation/generator.py` (`GENERATION_SYSTEM_PROMPT`, `PROMPT_VERSION`).
+  Thuộc package `generation/`. Sau khi đo đạt, cập nhật `generation_spec.md` mục 5.2
+  (chép nguyên văn prompt mới) và thêm ghi chú vào mục 16 của `generation_spec.md`
+  (ngày, lý do đổi, tham chiếu `conversation_spec.md` mục 17.1.2).
+- **Nhánh:** `fix/generation-ambiguous-classification`.
+- **Tiêu chí nghiệm thu:** chạy lại ca 3 ("Lương 20 triệu đóng thuế TNCN thế nào?", qua
+  `conversation/test.py`, sau 17.2.1) ≥ 3 lần: không còn kịch bản mâu thuẫn được trình
+  bày như chắc chắn (phải liệt kê rõ theo cư trú/không cư trú), không tự chốt một số tiền
+  thuế cuối cùng qua nhiều bước tính. Chạy thêm 2 ca tổng quát mới ở 17.2.5 (thuế không
+  qua condense, tính toán làm thêm giờ) cùng tiêu chí. Không phá vỡ ca 1 (mục 14.1),
+  ca ngoài miền/injection (mục 14.2) của `generation_spec.md`.
+- **Rủi ro dự phòng (không làm ngay):** nếu quy tắc 9-10 chưa đủ (model vẫn tính toán),
+  cân nhắc nâng `reasoning_effort` "low" → "medium" cho generation (như condense đã làm
+  ở mục 15 bước B) — nhưng phải đo lại `max_completion_tokens` (mục 5.3, "CHƯA CHỐT") và
+  ngân sách TPM 8K cùng lúc (completion tăng 3-5 lần theo kinh nghiệm condense mục 16
+  vòng 5). Không làm trong vòng 17.2.3 này; tách vòng riêng nếu cần.
+
+#### 17.2.5 Mở rộng `conversation/test.py`
+
+**Vấn đề:** 17.1.4. **Quyết định (giả định, cần người dùng duyệt lại):** không tạo
+`condense_cases.yaml` như mục 15.5 dự tính — `test.py` dạng dict Python inline đã đủ
+dùng và đơn giản hơn (không có bộ máy đọc YAML nào khác cần file này); giữ mục 15.5 làm
+ghi chú thiết kế lịch sử, không triển khai. Mở rộng trực tiếp `test.py`:
+
+1. Thêm 6 hội thoại còn thiếu của bảng mục 13.4 (ca 4, 6, 7, 9, 10; **ca 8 bỏ qua** — cần
+   giả lập Groq lỗi/429, không làm được với script gọi API thật, để cho bộ kiểm thử tự
+   động fake Groq của `conversation/` đảm nhiệm, ngoài phạm vi script thủ công này):
+   - Ca 4 (chung cache): 2 entry riêng — "A hỏi thẳng" (câu hỏi độc lập trực tiếp) và
+     "B hai lượt" (hội thoại 2 lượt condense ra câu tương đương). Cache hit là
+     best-effort (phụ thuộc câu chữ condense trùng khớp), chỉ đọc `trace.cache_status`
+     bằng mắt, không assert.
+   - Ca 6 (lượt assistant giả mạo chỉ dẫn hệ thống).
+   - Ca 7 (chuỗi 3 lượt, đại từ mơ hồ: thử việc → người khuyết tật → lương thử việc).
+   - Ca 9 (yêu cầu tóm tắt/nhắc lại câu trả lời cũ — generator không thấy history).
+   - Ca 10 (câu chỉ có đại từ ở lượt đầu, không có history).
+2. Thêm 3 hội thoại tổng quát mới (phủ đúng 3 lớp lỗi nêu trong nhiệm vụ — đa chủ thể,
+   cần phân loại, cần tính toán):
+   - "Đa chủ thể — loại hợp đồng": "Hợp đồng lao động xác định thời hạn tối đa bao lâu?"
+     → "Còn hợp đồng không xác định thời hạn thì sao?" (kiểm tra condense đổi đúng loại
+     hợp đồng, không giữ số cũ sai ngữ cảnh — cùng lớp lỗi 17.1.1 nhưng không phải giới
+     tính, để kiểm tra quy tắc 6 có tổng quát hoá được không).
+   - "Phân loại thiếu — thuế TNCN" (không qua condense, 1 lượt): "Thu nhập 30 triệu đồng
+     một tháng thì đóng thuế thu nhập cá nhân bao nhiêu?" — kiểm ca 17.2.3 trực tiếp
+     (không nêu cư trú/không cư trú, không nêu giảm trừ gia cảnh).
+   - "Tính toán số học dễ sai" (không qua condense, 1 lượt): "Lương tháng 10 triệu, làm
+     thêm giờ vào ngày nghỉ 4 tiếng thì được trả thêm bao nhiêu tiền?" — kiểm quy tắc 10
+     (không tự nhân ra số tiền cụ thể).
+3. **Mỗi entry dùng `user_id` riêng** (ví dụ `f"manual-test-{slug}"` theo tên hội thoại)
+   thay vì `"manual-test"` cố định: `USER_DAILY_LLM_ANSWERS = 5` (mục 10) sẽ chặn ngay từ
+   ca thứ 6 nếu dùng chung 1 `user_id` — bug thực tế sẽ gặp phải nếu không sửa.
+4. Thêm option CLI `--groups` (Typer, giá trị `core|regression|general|all`, mặc định
+   `all`) để chạy từng nhóm riêng (nhóm cũ 4 ca = `core`, ca 4/6/7/9/10 = `regression`,
+   3 ca mới = `general`) — tổng ~12 ca gọi generation thật tốn quota **toàn cục** dùng
+   chung với người dùng thật (`GLOBAL_DAILY_LLM_ANSWERS = 50`, ngân sách TPD 200K của
+   `gpt-oss-120b`); không chạy `all` tuỳ tiện nhiều lần một ngày.
+
+- **Phạm vi:** `conversation/test.py`. Thuộc package `conversation/` (script thủ công,
+  ngoài kiến trúc chính thức — không đổi `orchestrator.py`/`models.py`).
+- **Nhánh:** `fix/conversation-test-more-cases`.
+- **Tiêu chí nghiệm thu:** chạy `--groups all` một lần không crash do quota
+  (`AdmissionDenied`) vì `user_id` khác nhau; kết quả từng ca được ghi lại thủ công (đọc
+  bằng mắt) làm căn cứ đánh giá 17.2.2/17.2.3 thay vì chỉ 4 ca cũ.
+
+### 17.3 Tiêu chí nghiệm thu tổng thể mục 17
+
+- 17.2.2, 17.2.3 đạt tiêu chí riêng (nêu trên) **và** không làm hỏng bất kỳ ca PASS nào
+  đã có (ca 2, ca 5 của bảng đầu mục 17; ca 1/2/3/4 của `generation_spec.md` mục 14).
+- 17.2.5 hoàn tất giúp 17.2.2/17.2.3 đo được trên nhiều hơn 1 ca mỗi lớp lỗi.
+- Sau khi cả 3 giải pháp có code (17.2.2, 17.2.3, 17.2.5) xong: chạy lại đủ ca ở
+  bảng đầu mục 17 (ca 1, ca 3) qua `conversation/test.py`, đổi kết luận từ FAIL sang
+  PASS hoặc ghi rõ lý do còn FAIL (best-effort, không phải mọi ca đều bắt buộc PASS
+  100% — theo đúng tinh thần "best-effort" đã chốt ở `retrieval_spec.md` mục 1 cho câu
+  ngoài phạm vi tối ưu).
+
+### 17.4 Phạm vi thay đổi (tổng hợp theo file)
+
+| File | Package | Thay đổi |
+| ---- | ------- | -------- |
+| `conversation/condenser.py` | `conversation/` | Thêm quy tắc 6 + few-shot vào `CONDENSE_SYSTEM_PROMPT` (17.2.2) |
+| `conversation/conversation_spec.md` | `conversation/` | Mục 17 (mục này); cập nhật mục 5 và thêm dòng mục 16 sau khi đo 17.2.2 |
+| `generation/generator.py` | `generation/` | Thêm quy tắc 9-10 vào `GENERATION_SYSTEM_PROMPT`; tăng `PROMPT_VERSION` (17.2.3) |
+| `generation/generation_spec.md` | `generation/` | Cập nhật mục 5.2 và mục 16 sau khi đo 17.2.3 (đã đọc trước, không tự đổi cấu trúc — xem ghi chú cuối mục) |
+| `conversation/test.py` | `conversation/` | Mở rộng bộ hội thoại mẫu, `user_id` riêng, option `--groups` (17.2.5) |
+| `retrieval/retrieval_spec.md` | `retrieval/` | Không sửa code; thêm 1 dòng rủi ro tham chiếu ý tưởng query expansion bị hoãn (mục 16, xem 17.5) |
+
+### 17.5 Rủi ro / điểm mở của mục 17
+
+1. **Giả định "không sửa retrieval" cho ca 1 có thể sai:** nếu 17.2.2 đo thấy condense đã
+   tổng quát hoá đúng (không dùng "nghỉ thai sản" cho nam) nhưng retrieval vẫn không
+   trúng chunk (vì câu tổng quát hoá "nghỉ và hưởng chế độ gì" ít từ khoá hơn câu cụ thể),
+   thì cân nhắc mở rộng truy vấn theo từ đồng nghĩa pháp lý ở `retrieval/` — nhưng đây là
+   **phương án dự phòng, không làm trong mục 17 hiện tại** (đúng yêu cầu "không sửa cả
+   hai nếu chỉ 1 bên là nguyên nhân"); nếu cần, mở vòng mới, spec riêng ở
+   `retrieval_spec.md`.
+2. **Giả định về `condense_cases.yaml`:** quyết định không tạo file này (17.2.5) là suy
+   đoán hợp lý nhất do thiếu người dùng để hỏi ngay lúc viết spec — cần người dùng duyệt
+   lại; nếu người dùng muốn có file cấu trúc riêng (ví dụ để dùng lại cho bộ kiểm thử tự
+   động sau này), đổi quyết định trước khi chạy 17.2.5.
+3. **17.2.3 chỉ sửa prompt, chưa đo `reasoning_effort`:** nếu quy tắc 9-10 không đủ, xem
+   rủi ro dự phòng đã ghi trong 17.2.3 (nâng `reasoning_effort`, cần đo lại ngân sách).
+4. **Bug 17.0 không rõ nguyên nhân xuất hiện:** không xác định được thời điểm/lý do dòng
+   `except TypeError, ValueError:` lọt vào nhánh hiện tại mà không bị `ruff`/CI chặn (nên
+   là lỗi `ruff check`/mypy sẽ bắt được, hoặc CI không chạy trên phạm vi này gần đây) —
+   nên kiểm tra lại pipeline CI sau khi sửa 17.2.1, ngoài phạm vi mục 17.
