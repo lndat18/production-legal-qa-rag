@@ -525,6 +525,40 @@ def test_orchestrator_admission_denied_becomes_error() -> None:
     assert trace.outcome == "error" and trace.error_code == "quota_exceeded"
 
 
+def test_orchestrator_gates_low_relevance_chunks_as_no_context() -> None:
+    """18.2.2: 5 chunk điểm rerank thấp -> `error(no_context)`, không vào generation."""
+    from production_legal_qa_rag.retrieval.relevance import MIN_RERANK_SCORE
+
+    async def weak_retrieve(query: str) -> list[RetrievedChunk]:
+        return [
+            RetrievedChunk(
+                chunk_id="c1",
+                source_document="d",
+                breadcrumb="Điều 1",
+                content="x",
+                rerank_score=MIN_RERANK_SCORE - 1.0,
+            )
+        ]
+
+    generation = _FakeGeneration()
+    orchestrator = ChatOrchestrator(
+        guardrail=_FakeGuardrail(),  # type: ignore[arg-type]
+        condenser=_FakeCondenser("x"),  # type: ignore[arg-type]
+        generation=generation,  # type: ignore[arg-type]
+        admission=_NoopAdmission(),  # type: ignore[arg-type]
+        retrieve=weak_retrieve,
+        answer_cache=_MemoryAnswerCache(),
+        replay=_replay,
+    )
+    events, trace = _run(orchestrator, [_user("q")])
+    assert not generation.queries
+    error_events = [e for e in events if e.type == "error"]
+    assert len(error_events) == 1 and error_events[0].code == "no_context"
+    assert events[-1].type == "done"
+    assert trace.outcome == "error" and trace.error_code == "no_context"
+    assert trace.chunk_ids == []
+
+
 def test_orchestrator_invalid_conversation_propagates() -> None:
     orchestrator = _orchestrator(
         guardrail=_FakeGuardrail(),

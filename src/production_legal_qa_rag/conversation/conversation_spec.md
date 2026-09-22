@@ -1113,6 +1113,74 @@ xong.
   Không làm gate này quá "thông minh" (không thử nhiều ngưỡng/thống kê phức tạp) — đúng
   tinh thần tránh over-engineering.
 
+**Kết quả đo (2026-09-22, thực hiện trước khi code, gọi trực tiếp `retrieve()`/
+`condense()` qua script dev tạm, không commit — rẻ hơn chạy hết `conversation/test.py`
+vì không tốn quota generation):**
+
+Không có `retrieval/test.py` riêng (đã kiểm tra bằng `find`, chỉ có `conversation/test.py`)
+nên đo bằng script gọi thẳng `retrieval.pipeline.retrieve()` (và `QueryCondenser.condense()`
+cho 2 câu cần condense, đúng đường production).
+
+*4 câu viện dẫn Khoản biết chắc liên quan (3 câu lấy từ `retrieval_spec.md` mục 15, thêm
+1 câu Khoản 2 Điều 113 cho đủ cặp ca 2):*
+
+| Câu | max rerank_score | min rerank_score |
+| --- | ----------------: | ----------------: |
+| "Khoản 1 Điều 113 Bộ luật Lao động nói gì?" | 1.0748 | -3.6691 |
+| "Khoản 2 Điều 113 Bộ luật Lao động nói gì?" | 1.0332 | -0.8097 |
+| "Điều 36 khoản 2 Bộ luật Lao động" | 0.8793 | -2.5550 |
+| "Điều 3 khoản 1 của luật thuế TNCN quy định gì?" | 1.1451 | -0.0832 |
+
+*8 câu hợp lệ khác, không viện dẫn Khoản (lấy từ `conversation/test.py`, kể cả câu
+đã qua condense thật như ca 1 "chồng") — đo thêm để tránh chốt ngưỡng chỉ dựa trên câu
+viện dẫn Khoản (rủi ro chặn oan câu hỏi tự nhiên không có số Điều/Khoản):*
+
+| Câu | max rerank_score |
+| --- | ----------------: |
+| "Thời gian thử việc tối đa là bao lâu?" | -0.4643 |
+| "Chồng của lao động nữ sinh con có được nghỉ và hưởng chế độ gì, trong bao lâu?" (ca 1, đã condense) | -3.9651 |
+| "Hợp đồng lao động xác định thời hạn tối đa bao lâu?" | -0.1465 |
+| "Hợp đồng lao động không xác định thời hạn có thời hạn tối đa bao lâu?" | 0.6240 |
+| "Lương 20 triệu đóng thuế TNCN thế nào?" (ca 3) | -3.8193 |
+| "Thu nhập 30 triệu đồng một tháng thì đóng thuế thu nhập cá nhân bao nhiêu?" | -3.0935 |
+| "Lương tháng 10 triệu, làm thêm giờ vào ngày nghỉ 4 tiếng thì được trả thêm bao nhiêu tiền?" | -4.0964 |
+| "Vậy lương thử việc tối thiểu là bao nhiêu?" (ca 7, chuỗi đại từ) | 1.1994 |
+
+*Ca 9 (biết chắc KHÔNG liên quan), qua đúng đường condense thật:*
+
+| Câu gốc | Câu condense (fallback về câu gốc, `reason=finish_length`) | max rerank_score |
+| --- | --- | ----------------: |
+| "Tóm tắt lại các câu trả lời ở trên cho tôi." | "Tóm tắt lại các câu trả lời ở trên cho tôi." | -8.7521 |
+| "Ý thứ 3 bạn vừa nói là gì?" | "Ý thứ 3 bạn vừa nói là gì?" | -7.0697 |
+
+**Phát hiện quan trọng làm thay đổi cách chọn ngưỡng so với dự kiến ban đầu:** câu hợp lệ
+*không viện dẫn Khoản* có `max rerank_score` thấp hơn nhiều so với câu viện dẫn Khoản (ví
+dụ "làm thêm giờ" chỉ -4.0964, "chồng" -3.9651) — logit thô của reranker không phải xác
+suất, âm không đồng nghĩa "không liên quan". Nếu chỉ hiệu chỉnh trên 4 câu viện dẫn Khoản
+(min 0.8793) sẽ chọn ngưỡng quá cao, chặn oan các câu hợp lệ kiểu này. Vì vậy `MIN_RERANK_SCORE`
+được chọn dựa trên **toàn bộ 12 câu hợp lệ đã đo** (không chỉ 4 câu viện dẫn Khoản):
+min(max-score) của câu hợp lệ = **-4.0964**; max(max-score) của ca 9 (2 biến thể) =
+**-7.0697**. Chọn **`MIN_RERANK_SCORE = -6.0`** — thiên về bảo thủ (gần phía ca 9 hơn:
+margin ~1.07 với ca 9 cao nhất, ~1.90 với câu hợp lệ thấp nhất, tức là rủi ro chặn oan
+được ưu tiên giảm nhiều hơn rủi ro bỏ sót ca không liên quan, đúng chỉ dẫn "thà bỏ sót còn
+hơn chặn oan").
+
+**Đo lại sau khi code xong**, chạy `conversation/test.py --groups all` (13 hội thoại, Groq
++ Pinecone thật, quota nội bộ đã nới tạm `GLOBAL_DAILY_LLM_ANSWERS=500`): ca 9 nhận
+`error(no_context)` ngay sau `status(retrieval)`, không có `status(generation)`, không có
+dòng token usage (0 call Groq generation), tổng thời gian 30.95s (thời gian rerank CPU, không
+phải generation). Ca 10 ("Còn cái đó thì sao?", không có history) **cũng** bị gate chặn
+(`error(no_context)`, 25.13s) — không tính là chặn oan vì kỳ vọng gốc của ca 10 (mục 13.4)
+vốn đã là "generator trả 'không tìm thấy quy định phù hợp'" (không có câu trả lời thật để
+mất), gate chỉ làm phần đó xảy ra sớm hơn, rẻ hơn (không tốn quota generation). **11 ca còn
+lại đều `answered` hoặc `refused` (bởi guardrail, trước khi tới gate) đúng như trước khi có
+gate — 0 ca hợp lệ bị chặn oan**, bao gồm cả ca 1 (chồng, max -3.9651), ca "làm thêm giờ"
+(max -4.0964), ca 7 (chuỗi đại từ mơ hồ) — đúng những câu có điểm thấp nhất trong nhóm hợp
+lệ đã đo, xác nhận ngưỡng -6.0 có margin an toàn thực tế, không chỉ trên giấy.
+
+**Kết luận:** đạt tiêu chí nghiệm thu, **merge được** (không rơi vào nhánh "không đủ tin
+cậy"). `MIN_RERANK_SCORE = -6.0` đã implement ở `retrieval/relevance.py`.
+
 #### 18.2.4 Condense: retry 1 lần khi `reason=FINISH_LENGTH`
 
 **Vấn đề:** 18.1.3 — kích hoạt bước C đã dự tính sẵn ở mục 15.3 nhưng chưa làm

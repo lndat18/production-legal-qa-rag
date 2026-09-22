@@ -51,6 +51,7 @@ from production_legal_qa_rag.generation.models import (
 from production_legal_qa_rag.generation.pipeline import GenerationPipeline
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 from production_legal_qa_rag.retrieval.pipeline import retrieve as default_retrieve
+from production_legal_qa_rag.retrieval.relevance import is_low_relevance
 
 logger = logging.getLogger(__name__)
 
@@ -281,21 +282,25 @@ class ChatOrchestrator:
     async def _load_chunks(
         self, standalone: str, trace: TurnTrace
     ) -> tuple[list[RetrievedChunk], ErrorEvent | None]:
+        cached: list[RetrievedChunk] | None = None
         if self._retrieval_cache is not None:
             cached = await self._retrieval_cache.get(standalone)
-            if cached:
-                trace.cache_status = "retrieval_hit"
-                return cached, None
-        try:
-            chunks = await self._retrieve(standalone)
-        except Exception:
-            logger.warning("Retrieval lỗi.", exc_info=True)
-            return [], ErrorEvent(
-                code="retrieval_error", message=_RETRIEVAL_ERROR_MESSAGE
-            )
-        if not chunks:
+        if cached:
+            trace.cache_status = "retrieval_hit"
+            chunks = cached
+        else:
+            try:
+                chunks = await self._retrieve(standalone)
+            except Exception:
+                logger.warning("Retrieval lỗi.", exc_info=True)
+                return [], ErrorEvent(
+                    code="retrieval_error", message=_RETRIEVAL_ERROR_MESSAGE
+                )
+        # 18.2.2: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
+        # retrieve() không lọc gì — retrieval_spec.md mục 16 điểm 8).
+        if not chunks or is_low_relevance(chunks):
             return [], ErrorEvent(code="no_context", message=_NO_CONTEXT_MESSAGE)
-        if self._retrieval_cache is not None:
+        if not cached and self._retrieval_cache is not None:
             await self._retrieval_cache.set(standalone, chunks)
         return chunks, None
 
