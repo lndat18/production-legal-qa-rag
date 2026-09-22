@@ -1392,6 +1392,30 @@ lời trong khi trích dẫn nhầm chunk khác).
 - **Không có nhánh git cho mục này** — thuần điều tra, giống tiền lệ 17.0/17.1.3. Không
   làm gì thêm nếu kết luận (1).
 
+**Kết quả điều tra (2026-09-23):** chạy lại ca 1 qua `conversation/test.py`, lấy
+`chunk_id` thật từ `trace.chunk_ids`, fetch trực tiếp bằng Pinecone `index.fetch(ids=...)`
+(không qua embedding/rerank lại, đọc thẳng `metadata.content`/`metadata.breadcrumb` đã
+lưu). Kết quả:
+
+- Chunk `[1]` (`breadcrumb`: "LUẬT BẢO HIỂM XÃ HỘI - Chương V - Mục 2 - Điều 54. Chế độ
+  thai sản của lao động nữ mang thai hộ - Khoản 4") có `content` nguyên văn: *"Khi lao
+  động nữ mang thai hộ sinh con thì người chồng đang tham gia bảo hiểm xã hội bắt buộc
+  được nghỉ việc hưởng chế độ thai sản theo quy định tại khoản 2 và khoản 3 Điều 53 của
+  Luật này."* — **khớp chính xác** câu trả lời của model ("...theo quy định tại khoản 2
+  và khoản 3 Điều 53 của Luật Bảo hiểm xã hội [1]"). Không phải bịa, không vi phạm quy
+  tắc 2 (số Điều 53 xuất hiện nguyên văn trong chính chunk được trích).
+- **Kết luận: (1) vô hại.** Không mở vòng sửa nào. Không cần thay đổi `output_check.py`.
+- **Ghi chú UX (không phải bug, không cần sửa):** chunk `[1]` là điều khoản DÀNH RIÊNG
+  cho trường hợp "lao động nữ mang thai hộ" (một tình huống hẹp hơn câu hỏi gốc "chồng của
+  lao động nữ" nói chung), nhưng được retrieval chọn vì nó tình cờ chứa đúng cụm tham
+  chiếu chéo cần thiết ("khoản 2 và khoản 3 Điều 53"). Model dùng nó như một "cầu nối" xác
+  nhận phạm vi áp dụng, rồi dùng chunk `[2]` (đúng Điều 53 Khoản 2, áp dụng chung, không
+  giới hạn mang thai hộ) để liệt kê số ngày cụ thể — cách phối hợp 2 chunk này ra kết quả
+  đúng, nhưng người đọc kỹ citation `[1]` có thể hơi bối rối vì breadcrumb ghi "mang thai
+  hộ" trong khi câu hỏi không phải trường hợp đó. Không đủ nghiêm trọng để mở vòng sửa
+  (không sai sự thật, không bịa số) — để lại làm quan sát tham khảo cho phase tối ưu
+  citation UX sau này (nếu có).
+
 #### 18.2.6 Quyết định: không sửa `check_condensed` cho lỗi condense trả tiếng Anh (injection)
 
 **Vấn đề:** 18.1.5. **Quyết định:** **không làm** trong vòng này. Lý do: `_guard_and_condense`
