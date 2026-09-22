@@ -415,6 +415,40 @@ trực tiếp `ChatOrchestrator` như `conversation/test.py`). Tổng 7 lần g�
   lần gọi condense của ca 1/ca 2 (model `gpt-oss-20b`, org riêng) — trong hạn mức 8-10 lần
   gọi generation đã định trước.
 
+## 18. Ranh giới phạm vi Khoản trong prompt generation (2026-09-22)
+
+Chi tiết vấn đề, phân tích nguyên nhân và tiêu chí nghiệm thu nằm ở
+`conversation/conversation_spec.md` mục 18 (đọc trước khi implement). Tóm tắt phần thuộc
+package `generation/`:
+
+- **`GENERATION_SYSTEM_PROMPT` sửa quy tắc 10, thêm quy tắc 11-12** (mục 5.2): quy tắc 10
+  thêm một câu cấm rõ ràng "không kết hợp số liệu từ hai đoạn/Khoản khác nhau để ra một
+  con số cuối cùng"; quy tắc 11 cấm ghép nối các đoạn không cùng chủ đề pháp lý nhất quán
+  thành một câu trả lời liền mạch (chỉ dùng đoạn thực sự liên quan, còn lại từ chối theo
+  quy tắc 5); quy tắc 12 cấm dùng "Văn bản" hiện tại để dựng câu trả lời trông như đang
+  tóm tắt/nhắc lại một câu trả lời cũ trong hội thoại (generation không có history nên
+  không thể biết "câu trả lời ở trên" là gì). Nội dung đề xuất nguyên văn và lý do (ca
+  "Tóm tắt lại các câu trả lời ở trên" trả lời bịa từ 5 chunk rời rạc; ca "thu nhập 30
+  triệu đóng thuế TNCN" kết hợp 2 bậc luỹ tiến) nằm ở `conversation_spec.md` mục 18.2.1.
+- Bắt buộc tăng `PROMPT_VERSION` lên `"v3"` theo quy ước mục 16.3.
+- **Không sửa `output_check.py`:** cùng lý do đã chốt ở mục 17 — kiểm tra "các chunk có
+  cùng chủ đề pháp lý nhất quán hay không" là kiểm tra ngữ nghĩa, ngoài phạm vi (mục 6).
+
+Sau khi đo đạt (theo tiêu chí ở `conversation_spec.md` mục 18.2.1), cập nhật mục 5.2 ở
+đây (chép nguyên văn prompt mới) và ghi kết quả đo vào mục này.
+
+## 19. Kế hoạch tiếp theo (chưa implement) — trình bày kết luận trước + blockquote trích dẫn
+
+`conversation_spec.md` mục 19.3.1 (đợt đánh giá chiến lược bổ sung 2026-09-22) đề xuất
+thêm quy tắc 13-14 vào `GENERATION_SYSTEM_PROMPT` (`generator.py`): kết luận/nội dung
+chính đặt ở 1-2 câu đầu (trừ ca từ chối/liệt kê nhiều trường hợp), và trích dẫn nguyên
+văn câu/đoạn ngắn từ "Văn bản" trong khối markdown blockquote (`> ...`) tách biệt phần
+diễn giải. Là cải tiến UX/trình bày, không thêm nội dung mới; đặt sau mục 18 trong thứ tự
+ưu tiên (18 xử lý lỗi chính xác, nghiêm trọng hơn). Bump `PROMPT_VERSION` khi implement.
+Chưa có nhánh git chạy, chưa đo — chỉ ghi chú kế hoạch tại đây theo yêu cầu mục 5 khi viết
+`conversation_spec.md` mục 19. Cập nhật mục 5.2 và ghi kết quả đo vào mục này sau khi có
+code.
+
 ## 16. Mở rộng cho lớp chat (2026-09-21)
 
 Thay đổi nhỏ để `conversation/` dùng lại được các phần của `generation/`; **không đổi

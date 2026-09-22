@@ -801,3 +801,488 @@ tra thêm.
    `except TypeError, ValueError:` lọt vào nhánh hiện tại mà không bị `ruff`/CI chặn (nên
    là lỗi `ruff check`/mypy sẽ bắt được, hoặc CI không chạy trên phạm vi này gần đây) —
    nên kiểm tra lại pipeline CI sau khi sửa 17.2.1, ngoài phạm vi mục 17.
+
+## 18. Nâng độ chính xác trong phạm vi Khoản — lỗi phát hiện sau vòng mục 17 (2026-09-22)
+
+Bối cảnh: chạy đủ 13 ca của `conversation/test.py` (`--groups all`, Groq + Pinecone thật)
+sau khi 17.2.2/17.2.3/17.2.5 đã merge vào `feat/condense-tuning`. Mục tiêu hệ thống được
+làm rõ lại: **cam kết chính xác chỉ ở phạm vi <= 1 Khoản** (đã có sẵn ở
+`retrieval_spec.md` mục 1: "ngoài phạm vi tối ưu: cả Điều, nhiều Điều, viện dẫn chéo —
+best-effort"). Khoảng hở: `generation/` không có cơ chế nào tự kiểm tra "các chunk được
+cấp có nằm gọn trong phạm vi 1 Khoản/1 chủ đề nhất quán hay đòi hỏi tổng hợp xuyên Khoản
+không liên quan" trước khi trả lời — nguyên nhân gốc của lỗi 1 và 2 dưới đây, nghiêm
+trọng hơn các lỗi lẻ tẻ 3-6. **Đã đọc thêm để viết mục này:** `generation/generator.py`
+(prompt sau 17.2.3), `generation/output_check.py`, `conversation/condenser.py`
+(`check_condensed`), `retrieval/reranker_client.py`, `retrieval/models.py`
+(`rerank_score`), `retrieval/pipeline.py`, `generation/models.py`, `conversation/orchestrator.py`.
+
+### 18.1 Vấn đề
+
+1. **[Nghiêm trọng nhất] Ca 9 "Tóm tắt lại các câu trả lời ở trên" — generation bịa câu
+   trả lời từ 5 chunk không liên quan.** Đây là câu hỏi meta về lịch sử hội thoại mà
+   `generate()` về bản chất không thể trả lời (không nhận history, `conversation_spec.md`
+   mục 3). Kỳ vọng theo mục 13.4 ca 9: "Từ chối hoặc 'không tìm thấy', không bịa". Thực
+   tế: retrieval trả 5 chunk rời rạc không liên quan tới nhau (định nghĩa từ ngữ Điều 3
+   BLLĐ, trốn đóng BHXH Điều 39, nội dung thương lượng tập thể Điều 67, trách nhiệm BHYT
+   Điều 39...); generation tổng hợp chúng thành một danh sách có `[n]` hợp lệ về hình
+   thức nhưng đánh lừa người dùng vì trông như đang "tóm tắt các câu trả lời ở trên".
+2. **Quy tắc 10 (17.2.3, cấm tự tính toán nhiều bước) tái phạm ở ca "Phân loại thiếu -
+   thuế TNCN"** ("Thu nhập 30 triệu đồng một tháng thì đóng thuế thu nhập cá nhân bao
+   nhiêu?"): generation tự trừ giảm trừ gia cảnh (15,5 triệu, không rõ nguồn số này trong
+   context), tự tổng hợp **2 bậc thuế luỹ tiến (2 Khoản khác nhau của Điều 9)**, ra kết
+   quả cuối "0,95 triệu đồng" (`WarningEvent(unverified_number)` có bắt được số cuối này,
+   nhưng câu trả lời đã sai trước khi cảnh báo tới). Đây là ví dụ điển hình của "câu hỏi
+   đòi hỏi tổng hợp nhiều Khoản" — theo phạm vi vừa chốt, hệ thống PHẢI từ chối tổng hợp
+   xuyên Khoản một cách tường minh, không chỉ "cấm tính toán nhiều bước" chung chung như
+   quy tắc 10 hiện có (17.2.3 chỉ đạt ~1/3 tỉ lệ tuân thủ ở đo lần trước, xem
+   `generation_spec.md` mục 17 "Kết quả đo" — chưa đủ).
+3. **`finish_length` vẫn tái phát** dù đã tune `medium`+2048 (mục 15-16): ca "Đổi chủ đề
+   (ca 3)" ở lần chạy đầy đủ 13 ca, condense tốn hết 2046/2048 token reasoning, content
+   rỗng, `reason=finish_length`, fallback về câu gốc. Ca này "trông đúng" chỉ vì câu gốc
+   tình cờ trùng câu kỳ vọng (đổi chủ đề → quy tắc 3 vốn yêu cầu in nguyên văn), không
+   phải vì condense hoạt động đúng thiết kế. Rủi ro: một ca đổi chủ đề phức tạp hơn có
+   thể fallback sai lệch mà không "trông đúng" một cách tình cờ.
+4. **Nghi vấn lệch trích dẫn ở ca 1** (đại từ, chồng nghỉ khi vợ sinh con): câu trả lời
+   nêu "...theo quy định tại khoản 2 và khoản 3 Điều 53 của Luật Bảo hiểm xã hội **[1]**"
+   nhưng mục NGUỒN THAM KHẢO ghi `[1]` là "Điều 54. Chế độ thai sản của lao động nữ mang
+   thai hộ - Khoản 4" — số Điều nhắc trong câu (53) không khớp số Điều của citation `[1]`
+   (54). Có thể vô hại (Điều 54 tham chiếu chéo Điều 53) nhưng **chưa xác minh**; nếu là
+   lỗi thật, đây là vi phạm trực tiếp "chính xác tuyệt đối trong phạm vi Khoản".
+5. **Condense tự áp guardrail riêng, trả tiếng Anh khi thấy nội dung nguy hiểm** (ca 5,
+   ca 6 — injection): model condense (`gpt-oss-20b`) tự trả "I'm sorry, but I can't comply
+   with that." thay vì in 1 câu hỏi tiếng Việt. `check_condensed` hiện chỉ kiểm độ dài
+   (5-500 ký tự) và số Điều/Khoản bịa, không kiểm ngôn ngữ/định dạng câu hỏi. Vô hại ở
+   đây vì `InputGuardrail` đã chặn trước dựa trên câu gốc chạy song song
+   (`_guard_and_condense`, mục 7 bước 1: `verdict != allow` khiến `standalone` bị bỏ qua
+   hoàn toàn) — nhưng nếu guardrail có false-negative, chuỗi tiếng Anh này sẽ lọt vào làm
+   `standalone_query` đưa thẳng vào retrieval.
+6. **Độ trễ token đầu tiên 17.5s-44s** (do rerank chạy CPU) — **ngoài phạm vi mục này**,
+   nhắc lại để không quên, không có giải pháp nào ở dưới xử lý vấn đề này.
+
+### 18.2 Giải pháp
+
+Thứ tự thực hiện đề xuất: 18.2.1 → 18.2.3 → 18.2.2 → 18.2.4 → 18.2.5 (điều tra, không có
+nhánh git) → 18.2.6 (quyết định không làm gì, không có nhánh git). Mỗi mục có code là 1
+vòng `develop-cycle` độc lập (≤ 50 phút), nhánh git riêng, tạo từ nhánh chứa mục 17 đã
+hoàn tất (hoặc từ `main` sau khi merge — người dùng quyết định thứ tự merge).
+
+#### 18.2.1 Generation: ranh giới phạm vi Khoản + siết quy tắc cấm tính toán xuyên Khoản
+
+**Vấn đề:** 18.1.1 và 18.1.2 — gộp chung một giải pháp vì cùng gốc: generation không tự
+đánh giá được liệu các chunk có nằm gọn trong 1 Khoản/1 chủ đề nhất quán hay đòi hỏi tổng
+hợp xuyên Khoản. **Giải pháp:** thêm quy tắc 11, 12 vào `GENERATION_SYSTEM_PROMPT`
+(`generation/generator.py`) và sửa quy tắc 10, theo đúng quy trình đã dùng ở 17.2.3 (thêm
+quy tắc, đo lại qua `conversation/test.py`, không nới `output_check.py`).
+
+Quy tắc 10 sửa (thêm 1 câu, in đậm phần thêm để dễ đối chiếu — **CHƯA ĐO**):
+
+```
+10. Nếu trả lời đầy đủ cần thực hiện nhiều bước tính toán (ví dụ áp dụng biểu thuế luỹ
+    tiến từng phần, cộng trừ nhiều khoản) mà "Văn bản" không có sẵn kết quả cuối cùng:
+    chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
+    hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
+    mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
+    hội) là nơi tính cụ thể. Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số
+    liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu
+    thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu
+    vào để tính.
+```
+
+Quy tắc 11 mới (đặt sau quy tắc 10, về ranh giới phạm vi Khoản):
+
+```
+11. Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp
+    lý nhất quán, không liên quan trực tiếp tới nhau và tới câu hỏi (ví dụ các đoạn nói
+    về những chế độ, nghĩa vụ khác nhau không cùng một mạch nội dung): KHÔNG cố ghép nối
+    chúng thành một câu trả lời liền mạch như thể chúng bổ sung cho nhau. Chỉ dùng đoạn
+    (hoặc các đoạn) thực sự liên quan trực tiếp tới câu hỏi; nếu không có đoạn nào liên
+    quan trực tiếp, dùng đúng câu từ chối ở quy tắc 5. Nếu câu hỏi cần tổng hợp nhiều
+    Khoản hoặc nhiều Điều khác nhau mới trả lời được trọn vẹn: chỉ trả lời phần nằm gọn
+    trong một đoạn/Khoản duy nhất nếu có, và nói rõ phần còn lại chưa xác định được vì
+    mỗi đoạn chỉ quy định một phần, không tự suy luận để ghép thành câu trả lời đầy đủ.
+```
+
+Quy tắc 12 mới (về meta-request lịch sử hội thoại, xử lý tận gốc lỗi 18.1.1 ở lớp
+prompt, bổ sung cho lớp code ở 18.2.3):
+
+```
+12. Bạn KHÔNG được xem lại các câu trả lời trước đó trong cuộc hội thoại — chỉ thấy đúng
+    phần "Văn bản" và "Câu hỏi" hiện tại. Nếu câu hỏi yêu cầu nhắc lại, tóm tắt, hay giải
+    thích thêm về một nội dung/câu trả lời đã nói TRƯỚC ĐÓ (ví dụ "tóm tắt lại các câu
+    trả lời ở trên", "ý thứ 3 bạn vừa nói là gì?") thay vì hỏi một câu hỏi pháp luật độc
+    lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
+    có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
+    cũ.
+```
+
+Bắt buộc tăng `PROMPT_VERSION` (`generation/generator.py`) từ `"v2"` lên `"v3"` (đổi
+`GENERATION_SYSTEM_PROMPT` → đổi khoá cache, quy ước `generation_spec.md` mục 16.3).
+
+**Không sửa `output_check.py`:** cùng lý do đã chốt ở 17.2.3 — kiểm tra "chunk có thực
+sự liên quan chủ đề với nhau/với câu hỏi hay không" là kiểm tra ngữ nghĩa, cần LLM/agent
+thứ hai, ngoài phạm vi hiện tại (`generation_spec.md` mục 6). Quy tắc 11-12 xử lý tận gốc
+(ngăn model tổng hợp/bịa) thay vì bắt lỗi sau.
+
+- **Phạm vi:** `generation/generator.py` (`GENERATION_SYSTEM_PROMPT`, `PROMPT_VERSION`).
+  Thuộc package `generation/`. Sau khi đo đạt, cập nhật `generation_spec.md` mục 5.2 và
+  mục 17 (ghi chú ngày, lý do đổi, tham chiếu mục 18.1.1/18.1.2 ở đây).
+- **Nhánh:** `fix/generation-khoan-boundary`.
+- **Tiêu chí nghiệm thu:** qua `conversation/test.py --groups general`, chạy lại ca 9
+  ("Tóm tắt lại các câu trả lời ở trên cho tôi.") ≥ 3 lần: không còn tổng hợp 5 chunk
+  rời rạc thành câu trả lời trông như tóm tắt hội thoại cũ — phải từ chối rõ ràng hoặc
+  trả lời "không tìm thấy quy định phù hợp". Chạy lại ca "Phân loại thiếu - thuế TNCN"
+  (30 triệu) ≥ 3 lần: không còn kết hợp số liệu 2 Khoản luỹ tiến ra 1 số cuối cùng ở bất
+  kỳ lần nào (ngưỡng cao hơn kết quả 17.2.3 đã ghi — 2/3 lần vẫn vi phạm). Không phá vỡ
+  ca PASS đã có: ca 1, ca 2, ca 5 của mục 17; ca 1-4 của `generation_spec.md` mục 14; ca
+  "làm thêm giờ" (đã đạt ở 17.2.3).
+- **Rủi ro dự phòng (không làm ngay):** như 17.2.3 đã ghi — nếu quy tắc 10-12 vẫn chưa
+  đủ, cân nhắc nâng `reasoning_effort` "low" → "medium" (đo lại `max_completion_tokens`
+  và ngân sách TPM cùng lúc, tách vòng riêng).
+
+#### 18.2.3 Conversation: chặn sớm meta-request về lịch sử hội thoại (code-based, trước guardrail/condense)
+
+**Vấn đề:** 18.1.1 — lớp phòng thủ thứ hai (defense-in-depth) cho ca 9, độc lập với
+18.2.1: nếu quy tắc 12 (prompt) có false-negative, hoặc để tiết kiệm quota (guardrail +
+condense + retrieval + generation) cho một loại câu hỏi về bản chất không thể trả lời
+được (`generate()` không nhận history). **Giải pháp:** thêm kiểm tra code thuần (regex),
+không LLM, chạy **trước** `_guard_and_condense` trong `orchestrator.py`.
+
+Hàm mới `is_meta_history_request(window: HistoryWindow) -> bool` (`conversation/history.py`,
+cùng vị trí với `build_window`/`HistoryWindow` vì cùng thao tác trên cửa sổ history):
+
+- Chỉ xét khi `window.has_history` là `True` (lượt đầu không có gì để tham chiếu, không
+  áp dụng — không ảnh hưởng ca 10 của mục 13.4).
+- `window.query` khớp ít nhất 1 trong các mẫu regex tham chiếu ngược tới nội dung đã nói
+  (không phân biệt hoa/thường): các cụm như "tóm tắt" + "ở trên"/"vừa"/"đã nói"/"trước
+  đó"; "nhắc lại" + cùng nhóm cụm trên; "(ý|điểm|phần) ... (bạn|vừa|đã) ... (nói|nêu|trả
+  lời)". Danh sách mẫu chính xác chốt lúc code, có test đơn vị theo đúng 2 câu ví dụ ở
+  mục 13.4 ca 9 ("Tóm tắt lại các câu trả lời ở trên cho tôi.", "Ý thứ 3 bạn vừa nói là
+  gì?").
+- **Và** `window.query` không chứa số Điều/Khoản nào (`extract_citation_numbers` và
+  `extract_citation_khoans` của `retrieval/citation.py` đều rỗng) — tránh chặn oan yêu
+  cầu hợp lệ như "Nhắc lại giúp tôi Điều 35 nói gì" (có số Điều → không phải meta-request
+  về lịch sử, là câu hỏi tra cứu bình thường).
+
+Khi `True`, trong `_run` (`orchestrator.py`, ngay sau `yield StatusEvent(stage="guardrail")`,
+trước khi gọi `_guard_and_condense`): gán `trace.verdict = GuardrailVerdict(verdict="out_of_scope",
+reason="meta_request_lich_su_hoi_thoai")`, `trace.standalone_query = window.query`,
+`trace.outcome = "refused"`, `yield RefusalEvent(reason="out_of_scope", message=META_REQUEST_MESSAGE)`
+(hằng số mới, câu từ chối nêu rõ hệ thống không lưu/không xem lại lịch sử hội thoại),
+`yield DoneEvent()`, return — không gọi guardrail, condense, retrieval, generation. Tái
+dùng `reason="out_of_scope"` sẵn có trong `RefusalEvent`/`GuardrailVerdict` (không đổi
+model, message riêng theo case như `guardrail.py` đã làm với `OUT_OF_SCOPE_MESSAGE`/
+`INJECTION_MESSAGE`).
+
+- **Phạm vi:** `conversation/history.py` (hàm mới), `conversation/orchestrator.py`
+  (nhánh chặn sớm + hằng số `META_REQUEST_MESSAGE`). Thuộc package `conversation/`.
+- **Nhánh:** `feat/conversation-meta-request-guard`.
+- **Tiêu chí nghiệm thu:** ca 9 và biến thể "Ý thứ 3 bạn vừa nói là gì?" bị chặn ở bước
+  này ≥ 3/3 lần (0 call Groq, `trace.chunk_ids` rỗng, không qua retrieval/generation).
+  Chạy lại toàn bộ `conversation/test.py --groups all`: không ca hợp lệ nào (đặc biệt ca
+  2 "Còn Khoản 2?", ca 7 chuỗi đại từ mơ hồ) bị chặn oan bởi heuristic mới.
+
+#### 18.2.2 Retrieval-relevance gate dựa trên `rerank_score`
+
+**Vấn đề:** 18.1.1 — lớp phòng thủ thứ ba, rẻ nhất (không LLM), chặn sớm hơn ở biên
+retrieval → generation: khi 5 chunk trả về có độ liên quan (theo reranker) quá thấp/quá
+rời rạc so với câu hỏi, trả `error(no_context)` ngay thay vì đẩy 5 chunk yếu vào
+generation tốn quota. **Đã đọc `retrieval/reranker_client.py`,
+`reranker_server/server.py`:** `rerank_score` là **logit thô** (không qua sigmoid) của
+`AITeamVN/Vietnamese_Reranker` (`bge-reranker-v2-m3`), không có ngưỡng nào đã hiệu chỉnh
+trong dự án — **chưa có tín hiệu ngưỡng sẵn dùng**, phải đo trước khi chốt số, theo đúng
+phương pháp đã dùng ở mục 15.3 (quan sát trước, không đoán).
+
+**Vị trí đặt (quan trọng, giữ đúng ranh giới trách nhiệm hiện có):** `retrieval/` **không**
+đổi hợp đồng `retrieve()` (vẫn luôn trả top `FINAL_TOP_K` chunk theo rerank, không lọc —
+đúng `retrieval_spec.md` mục 1 "không có nhánh xử lý riêng, không nới `FINAL_TOP_K`").
+Ngưỡng và quyết định "coi như không đủ liên quan → từ chối" là **chính sách của lớp
+`conversation/`** (giống cách `no_context` hiện đã được quyết định ở `_load_chunks`, mục
+7), không phải thay đổi hành vi `retrieve()`. Vì vậy: hàm biết ý nghĩa `rerank_score`
+(thuộc kiến thức `retrieval/`) đặt ở `retrieval/relevance.py` (module mới, nhỏ), nhưng
+**nơi gọi và quyết định trả `no_context`** là `conversation/orchestrator.py._load_chunks`.
+
+```python
+# retrieval/relevance.py (mới)
+MIN_RERANK_SCORE: Final = <đo được, xem dưới>  # logit thô, không phải xác suất
+
+def is_low_relevance(chunks: list[RetrievedChunk]) -> bool:
+    """True nếu không có chunk nào đủ liên quan (rerank_score thấp/không có)."""
+    scores = [c.rerank_score for c in chunks if c.rerank_score is not None]
+    if not scores:
+        return False  # rerank lỗi/fallback: giữ hành vi cũ, không gate mù
+    return max(scores) < MIN_RERANK_SCORE
+```
+
+`_load_chunks` gọi `is_low_relevance(chunks)` sau khi có `chunks` (từ cache hoặc
+`retrieve` mới) và trước khi ghi `retrieval_cache`; `True` → trả `([], ErrorEvent(code="no_context", ...))`
+giống hệt nhánh "chunks rỗng" hiện có (tái dùng `_NO_CONTEXT_MESSAGE`, không thêm error
+code mới).
+
+**Quy trình đo ngưỡng (bắt buộc làm trước khi implement, cùng vòng):** chạy
+`conversation/test.py`/`retrieval/test.py` trên tối thiểu: 3 ca biết chắc liên quan
+(viện dẫn đúng 1 Khoản, `retrieval_spec.md` mục 15) và ca 9 (biết chắc không liên quan);
+ghi `rerank_score` thật của từng chunk. Chọn `MIN_RERANK_SCORE` nằm giữa max-score của ca
+9 và min-score của các ca liên quan đã biết, thiên về **bảo thủ** (thà bỏ sót còn hơn
+chặn oan — vì retrieval mục 1 đã cam kết chunk đúng luôn lọt top 5, chặn oan sẽ phá vỡ
+cam kết đó). Ghi số đo thật (không phải số đoán) vào bảng nhật ký dưới đây khi implement
+xong.
+
+- **Phạm vi:** `retrieval/relevance.py` (mới, hàm + hằng số), `retrieval/retrieval_spec.md`
+  (mục ghi chú module mới — không đổi `retrieve()`), `conversation/orchestrator.py`
+  (`_load_chunks`, gọi `is_low_relevance`). Chạm cả `retrieval/` lẫn `conversation/`.
+- **Nhánh:** `feat/retrieval-relevance-gate`.
+- **Tiêu chí nghiệm thu:** ca 9 (và biến thể không bị 18.2.3 chặn được, nếu có) nhận
+  `error(no_context)` ngay sau `status(retrieval)`, không tốn quota generation. Chạy lại
+  toàn bộ ca hồi quy retrieval (`retrieval/test.py` mục 15) và conversation
+  (`conversation/test.py --groups all`): **0 ca hợp lệ nào bị chặn oan** (điều kiện chặn
+  PR nếu vi phạm — đây là rủi ro chính của giải pháp này).
+- **Rủi ro:** ngưỡng chỉ hiệu chỉnh trên ~4-5 ca, chưa đủ dữ liệu để tin cậy cao; có thể
+  cần hiệu chỉnh lại khi có nhãn `expected_chunks` đã duyệt (mục 15.5) hoặc ở phase RAGAS.
+  Không làm gate này quá "thông minh" (không thử nhiều ngưỡng/thống kê phức tạp) — đúng
+  tinh thần tránh over-engineering.
+
+#### 18.2.4 Condense: retry 1 lần khi `reason=FINISH_LENGTH`
+
+**Vấn đề:** 18.1.3 — kích hoạt bước C đã dự tính sẵn ở mục 15.3 nhưng chưa làm
+("retry 1 lần... không retry khi 429 hoặc lỗi kiểm tra số Điều"). `FINISH_LENGTH` khác
+biệt về bản chất với các `CondenseReason` khác: không phải lỗi xác định (model không bịa
+số, không sai định dạng) mà là **ngẫu nhiên** — cùng input, đôi khi reasoning ăn hết
+token, đôi khi không (mục 16 vòng 5-6 đã quan sát completion dao động 160-700+ ở cùng
+cấu hình `medium`). Retry có cơ hội thật để ra kết quả tốt hơn, khác với
+`unknown_citation` (lỗi xác định, retry không đổi được điều model đã bịa) hay `groq_error`
+429 (retry ngay có thể vẫn 429, tốn thêm ngân sách).
+
+**Giải pháp:** trong `condense_detailed` (`conversation/condenser.py`), khi
+`reason == CondenseReason.FINISH_LENGTH` sau lần gọi đầu: gọi lại đúng 1 lần (cùng tham
+số, cùng ngân sách timeout của `CondenseSettings`); nếu lần 2 cũng `FINISH_LENGTH` hoặc
+lỗi khác, dùng kết quả lần 2 (degrade về câu gốc nếu vẫn không hợp lệ) — không retry
+thêm lần 3. Không retry cho `groq_error`, `unknown_citation`, `bad_length`, `empty` (giữ
+đúng quyết định mục 15.3).
+
+- **Phạm vi:** `conversation/condenser.py` (`condense_detailed`). Thuộc package
+  `conversation/`.
+- **Nhánh:** `fix/condense-retry-finish-length`.
+- **Tiêu chí nghiệm thu:** test đơn vị (fake Groq) mô phỏng lần 1 `finish_length` + lần 2
+  hợp lệ → trả kết quả lần 2, không dùng câu gốc; lần 1 và lần 2 đều `finish_length` →
+  dùng câu gốc, không gọi lần 3 (đếm số lần gọi client fake); các `reason` khác không bị
+  retry (giữ nguyên số lần gọi = 1). Ngân sách Groq: retry chỉ xảy ra khi
+  `finish_length` (theo quan sát mục 16, tỉ lệ thấp), không đo lại toàn bộ mục 15.4 —
+  chỉ cần xác nhận ca "Đổi chủ đề (ca 3)" không còn `finish_length` fallback ở 3 lần chạy
+  liên tiếp qua `conversation/test.py`.
+
+#### 18.2.5 Điều tra (không code): xác minh lệch trích dẫn ca 1
+
+**Vấn đề:** 18.1.4. **Việc cần làm:** đọc trực tiếp nội dung thô của chunk citation `[1]`
+(qua log `chatlog/` của lần chạy đó, hoặc gọi lại Pinecone bằng `chunk_id` đã ghi trong
+`trace.chunk_ids`) để xem: (a) breadcrumb/nội dung thật của chunk `[1]` có đúng là "Điều
+54 Khoản 4" như đã hiển thị; (b) nội dung Khoản 4 Điều 54 có thực sự nhắc/dẫn chiếu tới
+Khoản 2, 3 Điều 53 (tham chiếu chéo hợp lệ, không phải model tự bịa số Điều trong câu trả
+lời trong khi trích dẫn nhầm chunk khác).
+
+- **Kết luận có thể có:** (1) vô hại — Điều 54 thực sự dẫn chiếu Điều 53, generation trích
+  đúng, không cần sửa; (2) là bug thật — model tự nêu "Điều 53" (vi phạm quy tắc 2:
+  "Không tự nêu số Điều/Khoản/Điểm... trừ khi số đó xuất hiện nguyên văn trong Văn bản")
+  trong khi trích dẫn `[1]` trỏ tới chunk khác (Điều 54) — cần mở vòng sửa riêng (có thể
+  là `output_check.py` thêm kiểm tra "số Điều nêu trong câu có khớp breadcrumb của các
+  `[n]` được trích trong CÙNG câu đó không" — nhưng đây là ý tưởng, **chưa thiết kế**, chỉ
+  làm nếu (2) được xác nhận).
+- **Không có nhánh git cho mục này** — thuần điều tra, giống tiền lệ 17.0/17.1.3. Không
+  làm gì thêm nếu kết luận (1).
+
+#### 18.2.6 Quyết định: không sửa `check_condensed` cho lỗi condense trả tiếng Anh (injection)
+
+**Vấn đề:** 18.1.5. **Quyết định:** **không làm** trong vòng này. Lý do: `_guard_and_condense`
+(mục 7 bước 1) chạy guardrail và condense **song song** trên **câu gốc**, và
+`verdict != allow` khiến `standalone` (kết quả condense, dù là gì) **bị bỏ qua hoàn
+toàn** trước khi tới bất kỳ bước nào dùng tới nó (cache/retrieval/generation) — lớp phòng
+thủ chính (guardrail) đã đủ, độc lập với chất lượng đầu ra condense. Thêm kiểm tra ngôn
+ngữ/định dạng vào `check_condensed` chỉ có giá trị phòng thủ-kép cho kịch bản hiếm
+(guardrail false-negative CHÍNH XÁC ở ca injection mà condense CŨNG lệch sang tiếng Anh
+CHÍNH XÁC) — rủi ro thấp, chi phí thêm quy tắc/test không tương xứng lợi ích (tránh
+over-engineering). **Ghi nhận làm rủi ro tồn đọng** (residual risk), xem mục 18.5; xem
+xét lại chỉ khi có bằng chứng guardrail false-negative thật trong vận hành.
+
+### 18.3 Tiêu chí nghiệm thu tổng thể mục 18
+
+- 18.2.1, 18.2.3, 18.2.2, 18.2.4 đạt tiêu chí riêng (nêu trên) **và** không làm hỏng bất
+  kỳ ca PASS nào đã có (ca 2, ca 5 của mục 17; ca 1/2/3/4 của `generation_spec.md` mục 14;
+  ca "làm thêm giờ" của mục 17.2.3).
+- Sau khi 18.2.1, 18.2.2, 18.2.3 có code (18.2.4 độc lập, không phụ thuộc thứ tự): chạy
+  lại `conversation/test.py --groups all` đủ 13 ca, đặc biệt ca 9 và ca "Phân loại thiếu -
+  thuế TNCN": đổi kết luận từ FAIL sang PASS, hoặc ghi rõ lý do còn FAIL — không bắt buộc
+  100% (best-effort ngoài phạm vi <= Khoản vẫn đúng tinh thần `retrieval_spec.md` mục 1),
+  nhưng **ca 9 (meta-request) và ca thuế TNCN (tổng hợp nhiều Khoản) không được phép còn
+  bịa/kết hợp số liệu như một câu trả lời chắc chắn** — đây là ranh giới cứng của mục
+  tiêu "chính xác gần tuyệt đối trong phạm vi Khoản" vừa được xác nhận.
+- 18.2.5 kết luận rõ ràng (vô hại hoặc bug xác nhận + việc cần làm tiếp, ghi vào mục 18.5).
+
+### 18.4 Phạm vi thay đổi (tổng hợp theo file)
+
+| File | Package | Thay đổi |
+| ---- | ------- | -------- |
+| `generation/generator.py` | `generation/` | Sửa quy tắc 10, thêm quy tắc 11-12 vào `GENERATION_SYSTEM_PROMPT`; `PROMPT_VERSION` "v2"→"v3" (18.2.1) |
+| `generation/generation_spec.md` | `generation/` | Cập nhật mục 5.2, mục 17 sau khi đo 18.2.1 |
+| `conversation/history.py` | `conversation/` | Hàm mới `is_meta_history_request` (18.2.3) |
+| `conversation/orchestrator.py` | `conversation/` | Nhánh chặn sớm meta-request (18.2.3) + hằng số `META_REQUEST_MESSAGE`; gọi `is_low_relevance` trong `_load_chunks` (18.2.2) |
+| `retrieval/relevance.py` | `retrieval/` | Module mới: `MIN_RERANK_SCORE`, `is_low_relevance` (18.2.2) |
+| `retrieval/retrieval_spec.md` | `retrieval/` | Ghi chú module `relevance.py` mới — không đổi hợp đồng `retrieve()` (18.2.2) |
+| `conversation/condenser.py` | `conversation/` | Retry 1 lần khi `reason=FINISH_LENGTH` trong `condense_detailed` (18.2.4) |
+| `conversation/conversation_spec.md` | `conversation/` | Mục 18 (mục này); cập nhật mục 15.3 (đánh dấu bước C đã làm) sau khi đo 18.2.4 |
+
+### 18.5 Đánh giá nhanh chiến lược tham khảo (bên ngoài, người dùng cung cấp)
+
+Đánh giá bởi agent viết spec (architect), người dùng tự quyết định cuối cùng khi duyệt:
+
+| Chiến lược | Đánh giá | Lý do |
+| ---------- | -------- | ----- |
+| State Graph Architecture (LangGraph...) | **Không phù hợp** | Trái quyết định "không Kafka, không agent/ReAct" (mục 1); pipeline hiện tại tuyến tính, không có nhánh rẽ/human-in-the-loop cần đồ thị — 18.2.3 (early-exit) và 18.2.2 (gate) đã giải quyết nhu cầu "rẽ nhánh sớm" bằng if/return đơn giản, không cần framework đồ thị. |
+| LLM summarization nền / Semantic memory dài hạn | **Không phù hợp** | Trái quyết định "không lưu lịch sử, không tóm tắt dài hạn, không memory dài hạn" (mục 1 "Không làm"). Ca 9 được xử lý bằng từ chối tường minh (18.2.1 quy tắc 12, 18.2.3), không phải bằng cách cho generation "nhớ" được câu trả lời cũ — đúng tinh thần kiểu A (OpenWebUI giữ lịch sử). |
+| Token-based context truncation (`history.py`) | **Đáng cân nhắc, KHÔNG làm trong mục 18** | Cải tiến nhỏ, không mở rộng phạm vi lỗi đang xử lý (cắt theo ký tự hiện tại chưa gây lỗi nào trong 6 lỗi ở mục 18.1); để dành vòng riêng nếu có bằng chứng cắt theo ký tự làm mất ngữ cảnh quan trọng. |
+| Multi-turn HyDE | **Không phù hợp** | Trái quyết định đã chốt 2026-09-21: "cache, HyDE, retrieval, generator chỉ thấy câu độc lập" (mục 3). |
+| Prompt Caching ở gateway (Groq) | **Đáng điều tra riêng, KHÔNG thuộc mục 18** | Nhắm đúng vấn đề TTFT 17-44s (lỗi 18.1.6, đã nêu rõ ngoài phạm vi mục này); cần xác nhận Groq free tier có hỗ trợ prompt caching không trước khi thiết kế cụ thể — việc của một spec/vòng đo riêng, không trộn vào mục 18 (mục 18 chỉ xử lý độ chính xác, không xử lý độ trễ). |
+| NeMo Guardrails/Llama Guard framework | **Không cần** | Guardrail tự viết (`generation/guardrail.py`) đã hoạt động đúng qua nhiều vector test (mục 13.4, 17); thêm framework ngoài là over-engineering so với lỗi thực tế đang gặp (lỗi 18.1 không phải do guardrail yếu). |
+| Redis/Postgres session persistence | **Đã có, khác chủ đề** | Quota dùng Redis (`admission.py`); lịch sử hội thoại giao cho OpenWebUI + Postgres theo quyết định kiểu A (`api_spec.md` mục 9) — không liên quan tới 6 lỗi ở mục 18.1. |
+
+## 19. Đánh giá chiến lược bổ sung — quản lý hội thoại & UX (đợt 2) (2026-09-22)
+
+Bối cảnh: người dùng cung cấp thêm 2 danh sách chiến lược bên ngoài (đợt 2, sau mục 18.5
+đợt 1) — Danh sách A (quản lý bộ nhớ hội thoại & kiểm thử đa lượt, 8 mục) và Danh sách B
+(prompting/UX cho chatbot pháp luật, 10 mục). Ưu tiên đánh giá: **độ chính xác trong phạm
+vi ≤ Khoản gần như tuyệt đối** — mọi đề xuất làm tăng bề mặt bịa đặt/tổng hợp ngoài "Văn
+bản" bị từ chối hoặc hoãn, bất kể lợi ích UX. **Đã đọc lại trước khi viết mục này:**
+`generation/generator.py` (code thật — xác nhận quy tắc 1-10 đã implement,
+`PROMPT_VERSION = "v2"`; quy tắc 11-12 của mục 18.2.1 **chưa có trong code**, mới là đề
+xuất trong spec), `chunking/chunking_spec.md` mục 5.2 (`raw_table` chỉ dành cho bảng CÓ
+SẴN trong nguồn), `retrieval/retrieval_spec.md` mục 1 (best-effort ngoài phạm vi Khoản),
+`cache/cache_spec.md` (`corpus_version` là hash BM25, không phải ngày), `api/api_spec.md`
+(đoạn về khối "Nguồn" nối ở lớp SSE — chưa đọc toàn bộ file).
+
+### 19.1 Đánh giá Danh sách A (quản lý bộ nhớ hội thoại & kiểm thử đa lượt)
+
+| Chiến lược | Đánh giá | Lý do |
+| ---------- | -------- | ----- |
+| A1. Buffer Memory (giữ toàn bộ lịch sử) | **Không phù hợp** | Trái mục 1 "Không làm" ("không lưu lịch sử hội thoại... backend stateless") và mục 3 ("Generation là hàm thuần của `(standalone_query, chunks)`"). `build_window` chỉ giữ tối đa 3 lượt cho condense/guardrail — đã là Window Memory (A3), không phải "giữ toàn bộ". |
+| A2. Summary Memory | **Không phù hợp** | Trái mục 1 "Không làm": "không tóm tắt hội thoại dài, không memory dài hạn". Trùng kết luận "LLM summarization nền / Semantic memory dài hạn" đã có ở mục 18.5, không phân tích lại. |
+| A3. Window Memory (N lượt gần nhất) | **Đã có sẵn, không có việc mới** | `HISTORY_MAX_TURNS = 3` (`history.py` mục 4) chính là window memory. Xác nhận đúng phân tích sơ bộ. |
+| A4. Conversation Compaction / Recursive Continuation (cô đọng vào system prompt động) | **Không phù hợp** | Cùng nhóm lý do A2 (bản chất là một dạng tóm tắt/nén, trái mục 1). Thêm: "system prompt động theo hội thoại" phá vỡ chính lý do 1 ở mục 3 (generation là hàm thuần) — system prompt sẽ phụ thuộc history, cache trả nhầm câu trả lời cho người khác. |
+| A5. State Management (LangGraph/Redis/Postgres cho `session_state` theo kịch bản) | **Không áp dụng được** | Chatbot là Q&A tra cứu, không có "bước" kịch bản (đặt vé, thanh toán...) để theo dõi. Trùng "State Graph Architecture" và "Redis/Postgres session persistence" đã có ở mục 18.5 (Redis hiện dùng cho quota, không cho `session_state` kịch bản). |
+| A6. Finite State Machine (FSM) cho luồng có kịch bản | **Không áp dụng được** | Cùng lý do A5 — không có luồng nhiều bước cần trạng thái rời rạc để chuyển tiếp. |
+| A7. Intent & Slot Filling (hỏi lại đúng trọng tâm khi thiếu dữ liệu) | **Không cần kiến trúc mới — khả năng đã hoạt động một phần qua condense hiện có (giả thuyết, CHƯA kiểm chứng)** | **Phản biện phân tích sơ bộ:** slot-filling "thật" (hỏi → chờ → nhớ câu trả lời) không nhất thiết mâu thuẫn với "generation không nhận history" — việc "nhớ" có thể xảy ra ở **condense** (có history tối đa 3 lượt), không phải ở generation. Khi assistant đã liệt kê 2 nhánh và hỏi lại yếu tố phân loại (quy tắc 9, đã implement) ở lượt N, nếu người dùng trả lời ngắn ở lượt N+1 (ví dụ "Tôi cư trú"), quy tắc 1 của `CONDENSE_SYSTEM_PROMPT` ("dùng Hội thoại trước để bổ sung... tình huống đang bàn") CÓ THỂ đã gộp thành 1 câu hỏi độc lập mang đủ yếu tố phân loại mà không cần đổi kiến trúc. Đây là giả thuyết, không kiểm chứng được bằng đọc code tĩnh. **Không viết thành giải pháp con 19.3.x** (không đổi hành vi hệ thống, không cần nhánh git riêng) — đề xuất thêm đúng 1 ca 2 lượt kiểu này vào lần mở rộng `conversation/test.py` tiếp theo (nếu có) để kiểm chứng bằng số đo, không làm ngay trong đợt này. |
+| A8. Multi-turn Evaluation (DeepEval/Ragas) | **Đã hoãn sang phase RAGAS — xác nhận lại** | Mục 9 đã ghi rõ "PHASE RAGAS (cuối dự án) — KHÔNG implement ở phase này". Không có việc gì thêm. |
+
+### 19.2 Đánh giá Danh sách B (prompting/UX cho chatbot pháp luật)
+
+| Chiến lược | Đánh giá | Lý do |
+| ---------- | -------- | ----- |
+| B1. Chain-of-Thought có cấu trúc (Dữ kiện → Đối chiếu Điều luật → Kết luận) | **Từ chối/hoãn — phản biện đánh giá sơ bộ "rủi ro thấp"** | Mâu thuẫn trực tiếp về thứ tự với B4 (kim tự tháp ngược, kết luận đặt trước — được chọn ở 19.3.1): không thể làm cả hai cùng lúc. Ép khuôn 3 phần cứng, "Kết luận" luôn là mục riêng đặt SAU viện dẫn, tạo áp lực buộc model luôn chốt một "Kết luận" rõ ràng kể cả những câu đáng lẽ phải từ chối (quy tắc 5) hoặc liệt kê nhiều trường hợp (quy tắc 9) — rủi ro làm suy yếu đúng các quy tắc chống bịa vừa siết ở mục 17-18. Không giải quyết lỗi thực tế nào đang ghi nhận ở mục 17.1/18.1. Không tăng bề mặt bịa đặt về dữ liệu, nhưng tăng rủi ro cấu trúc ép buộc kết luận — đủ lý do để không làm. |
+| B2. Ngưỡng tin cậy nghiêm ngặt | **Đã có — xác nhận** | Đã đọc code thật: quy tắc 5 hiện tại (`generator.py`) yêu cầu đúng câu "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có" khi context không đủ. Không có việc gì thêm. |
+| B3. Văn phong khách quan, hedging cho tranh chấp ("có thể được xử lý như sau...") | **Phần lớn đã đạt (không làm thêm); phần hedging đề xuất có rủi ro, từ chối** | Quy tắc 2 (yêu cầu trích nguồn `[n]`) và quy tắc 6 ("không tư vấn cá nhân hoá... chỉ trình bày quy định") đã đạt tinh thần "khách quan". Cụm "có thể được xử lý như sau" ngụ ý dự đoán cách MỘT VỤ VIỆC CỤ THỂ sẽ được xử lý — gần với tư vấn cá nhân hoá theo tình huống, bị quy tắc 6 cấm. Không thêm quy tắc mới cho phần hedging này. |
+| B4. Kim tự tháp ngược (kết luận/giải pháp lên đầu, viện dẫn luật sau) | **ĐÁNG LÀM — xem 19.3.1** | Cải tiến UX thuần tuý, không thêm nội dung/số liệu mới, chỉ đổi THỨ TỰ trình bày nội dung đã có; ràng buộc rõ "câu đầu tiên phải đúng nội dung từ chối/liệt kê" cho ca thuộc quy tắc 5/9 — không nới các quy tắc chống bịa vừa siết. |
+| B5. Bảng so sánh trực quan tự động (ví dụ "TNHH hay Cổ phần") | **Từ chối (không hoãn)** | Đã đọc `chunking_spec.md` mục 5.2: `raw_table` chỉ tồn tại cho bảng CÓ SẴN trong nguồn (ví dụ bảng 4 vùng lương tối thiểu), không phải cơ chế sinh bảng mới. Một bảng so sánh "TNHH hay Cổ phần" đòi hỏi tổng hợp thông tin từ nhiều Điều/văn bản khác nhau thành 1 bảng — đúng loại "ghép nối chunk không cùng một mạch nội dung" mà quy tắc 11 (đề xuất 18.2.1) đang cố ngăn. Tăng trực tiếp bề mặt tổng hợp xuyên Điều/Khoản, mâu thuẫn ưu tiên "chính xác tuyệt đối trong phạm vi Khoản". Không có cách làm an toàn hơn phù hợp phạm vi hiện tại (cần thiết kế lại chunking/retrieval để nhận diện cặp Điều cần so sánh — ngoài phạm vi mọi package hiện có). |
+| B6. Hộp trích dẫn luật dạng blockquote (`> Căn cứ Điều...`) | **ĐÁNG LÀM — xem 19.3.1** | Yêu cầu trích nguyên văn câu/đoạn ngắn từ "Văn bản" (copy, không diễn giải) thực chất GIẢM rủi ro paraphrase-drift so với hiện trạng (model có thể diễn giải sai khi không bị buộc trích nguyên văn) — cải thiện tính chính xác, không chỉ là UX. |
+| B7. ELI5 kèm ví dụ minh hoạ | **Từ chối (giữ nguyên phân tích sơ bộ)** | Ví dụ minh hoạ cụ thể ("chơi bài ăn tiền từ 5 triệu đồng...") là số liệu/tình huống KHÔNG có trong "Văn bản" — vi phạm trực tiếp quy tắc 1. Phương án an toàn hơn (chỉ diễn giải lại đúng nội dung đã có, không thêm ví dụ tự bịa) về bản chất đã được quy tắc 7 hiện có bao phủ ("Văn phong tiếng Việt rõ ràng, ngắn gọn"); ranh giới "diễn giải lại" và "suy đoán thêm ví dụ" khó kiểm soát bằng prompt đơn thuần — rủi ro cao hơn lợi ích. Không làm. |
+| B8. Chuyển đổi đại từ nhân xưng linh hoạt (Tôi - Anh/Chị) | **Từ chối** | Đòi hỏi suy đoán giới tính/độ tuổi người dùng từ câu hỏi — bản chất là một dạng cá nhân hoá, đối lập tinh thần quy tắc 6. Giá trị thấp cho một công cụ tra cứu pháp luật khách quan, rủi ro đoán sai gây khó chịu. Không tăng bề mặt bịa đặt về pháp luật, nhưng tăng bề mặt suy đoán về người dùng — không phù hợp mục tiêu hiện tại. |
+| B9. Tự động gợi ý 2-3 câu hỏi tiếp theo | **Hoãn** | Mục 2 quy định rõ `ChatOrchestrator.stream` "Dùng lại đúng union `GenerationEvent`... không thêm event mới". Làm đúng cách cần event type mới (danh sách câu hỏi có cấu trúc, không nhét gọn vào `token`) + đổi `api/api_spec.md` (lớp SSE) — vượt phạm vi 1 vòng nhỏ, và không giải quyết ưu tiên "chính xác trong phạm vi Khoản" hiện tại. Hoãn sang phase UX riêng. |
+| B10. Cảnh báo tính thời điểm dữ liệu luật (disclaimer ngày cập nhật) | **ĐÁNG LÀM — xem 19.3.2, có giả định cần duyệt** | Rẻ, an toàn, đúng tinh thần minh bạch giới hạn hệ thống. Khác giả định sơ bộ: hệ thống hiện **không có trường "ngày cập nhật" tự động** (`corpus_version` ở `cache_spec.md` chỉ là hash nội dung BM25, không phải ngày; `formatting_spec.md` chỉ giữ "ngày ban hành" trong nội dung frontmatter của từng văn bản, không trích xuất thành field riêng). Phải dùng hằng số ngày cố định, cập nhật thủ công mỗi lần re-index — có kỷ luật vận hành đi kèm, không tự động. |
+
+### 19.3 Giải pháp con được chọn
+
+Cả 2 giải pháp dưới đây là cải tiến UX chủ động (không phải lỗi đã phát hiện như mục 17/18),
+đặt **sau** 18.2.1 trong thứ tự ưu tiên vì 18.2.1 xử lý lỗi chính xác nghiêm trọng hơn
+(ưu tiên #1 dự án). Mỗi mục là 1 vòng `develop-cycle` độc lập (≤ 50 phút), nhánh git riêng,
+tạo từ nhánh chứa 18.2.1 đã hoàn tất (hoặc từ `main` sau khi 18.2.1 merge).
+
+#### 19.3.1 Generation: kết luận trước + trích dẫn blockquote nguyên văn (B4 + B6)
+
+**Giải pháp:** thêm 2 quy tắc mới vào `GENERATION_SYSTEM_PROMPT` (`generation/generator.py`).
+Đánh số tạm **13, 14** (nối sau quy tắc 12 của 18.2.1, giả định 18.2.1 merge trước — nếu
+19.3.1 merge trước 18.2.1 thì đổi thành 11, 12 lúc code, không đánh số cứng trong code, chỉ
+tăng dần theo quy tắc cuối cùng hiện có):
+
+```
+13. Khi câu trả lời có một nội dung/kết luận rõ ràng theo "Văn bản" (không thuộc diện quy
+    tắc 5 từ chối hay quy tắc 9 liệt kê nhiều trường hợp): nêu ngay nội dung/kết luận đó
+    trong 1-2 câu đầu tiên, rồi mới trình bày căn cứ pháp lý chi tiết. Nếu câu trả lời
+    thuộc diện quy tắc 5 (từ chối/chỉ trả lời một phần) hoặc quy tắc 9 (liệt kê nhiều
+    trường hợp): câu/đoạn đầu tiên phải đúng là nội dung từ chối/liệt kê đó — không thay
+    bằng một kết luận chắc chắn giả tạo để trông có vẻ dứt khoát hơn thực tế.
+14. Khi trích dẫn nguyên văn một câu hoặc đoạn ngắn (không quá khoảng 2 dòng) trực tiếp từ
+    "Văn bản" để làm bằng chứng, đặt đúng nguyên văn câu/đoạn đó trong khối trích dẫn
+    markdown (mỗi dòng bắt đầu bằng "> "), không diễn giải hay chỉnh sửa bên trong khối
+    này; phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích
+    dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời — chỉ dùng khi có một câu
+    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng.
+```
+
+Bắt buộc tăng `PROMPT_VERSION` (quy ước `generation_spec.md` mục 16.3) lên giá trị kế
+tiếp tại thời điểm merge (tuỳ thứ tự merge với 18.2.1).
+
+**Không tăng bề mặt bịa đặt:** quy tắc 13 chỉ đổi THỨ TỰ trình bày nội dung đã có, không
+thêm nội dung mới; quy tắc 14 yêu cầu copy nguyên văn (giảm rủi ro diễn giải sai so với
+hiện trạng, không tăng). Cả hai giữ nguyên ràng buộc "câu đầu tiên đúng nội dung từ
+chối/liệt kê" cho ca thuộc quy tắc 5/9 — không nới các quy tắc chống bịa đã siết ở mục
+17-18.
+
+- **Phạm vi:** `generation/generator.py` (`GENERATION_SYSTEM_PROMPT`, `PROMPT_VERSION`).
+  Thuộc package `generation/`. Sau khi đo đạt, cập nhật `generation_spec.md` mục 5.2 và
+  ghi chú ở mục 18 (tham chiếu `conversation_spec.md` mục 19.3.1).
+- **Nhánh:** `feat/generation-presentation-style`.
+- **Tiêu chí nghiệm thu:** qua `conversation/test.py --groups all`, đọc bằng mắt (không
+  assert tự động vì hành vi LLM không đơn định): ≥ 70% câu trả lời có kết luận rõ ràng
+  (không thuộc ca từ chối/liệt kê) đặt nội dung chính ở 1-2 câu đầu; ≥ 1 ca có trích dẫn
+  ngắn dùng đúng khối blockquote nguyên văn khớp context. **Không phá vỡ bất kỳ ca PASS
+  nào đã có** (ca 1-4 `generation_spec.md` mục 14; ca 2, 5 mục 17 của spec này; kết quả ca
+  9/thuế TNCN của 18.2.1 phải giữ nguyên là từ chối/liệt kê, không bị quy tắc 13 biến
+  thành một "kết luận" giả tạo).
+- **Rủi ro:** quy tắc 13 có thể không đủ rõ để model phân biệt "kết luận thật" và "kết
+  luận giả tạo" ở ca biên (gần đủ điều kiện quy tắc 9 nhưng chưa hẳn) — nếu quan sát thấy
+  vi phạm, ưu tiên nới lỏng yêu cầu B4 (chấp nhận thứ tự cũ ở ca biên) hơn là nới quy tắc
+  5/9.
+
+#### 19.3.2 Disclaimer ngày cập nhật dữ liệu (B10)
+
+**Giải pháp:** thêm hằng số cố định (ví dụ `DATA_SNAPSHOT_DISCLAIMER`, nội dung mẫu:
+`"\n\n_Dữ liệu pháp luật trong hệ thống được cập nhật tới {DATE}; có thể chưa phản ánh
+sửa đổi, bổ sung mới nhất. Vui lòng đối chiếu văn bản chính thức hoặc cơ quan có thẩm
+quyền khi cần độ chính xác cao nhất._"`) đặt ở `conversation/history.py` cạnh
+`SOURCES_FOOTER_MARKER` (cùng nhóm "phần đuôi cố định do `api/` nối vào câu trả lời",
+cùng lý do "hằng số định nghĩa ở đây để `api/` import" đã áp dụng cho
+`SOURCES_FOOTER_MARKER`, mục 4). `{DATE}` là giá trị **thủ công**, cập nhật mỗi lần
+re-index corpus (gắn vào runbook re-index, không tự động hoá theo mtime file vì mtime
+không đáng tin cậy phản ánh ngày ban hành luật thật).
+
+`api/` (lớp SSE, event `citations` — xem `api_spec.md` mục về khối "Nguồn") nối thêm
+disclaimer này 1 lần cuối câu trả lời, sau khối "Nguồn". **Vị trí chính xác và thay đổi
+`api/api_spec.md` cần người phụ trách `api/` xác nhận** — lần brainstorm này chỉ đọc đoạn
+liên quan tới footer, chưa đọc toàn bộ `api_spec.md`.
+
+`conversation/history.py` (`build_window` mục 4, bước làm sạch assistant content) phải
+cắt bỏ luôn disclaimer này khi dọn history — cùng lý do đã cắt `SOURCES_FOOTER_MARKER`
+(tránh đưa nội dung không phải câu trả lời thật vào ngân sách
+`HISTORY_ASSISTANT_MAX_CHARS`/condense).
+
+- **Phạm vi:** `conversation/history.py` (hằng số mới + mở rộng bước làm sạch mục 4),
+  `api/api_spec.md` (thêm dòng nối disclaimer vào luồng SSE — cần review riêng bởi người
+  phụ trách `api/`). Chạm 2 package.
+- **Nhánh:** `feat/data-snapshot-disclaimer`.
+- **Tiêu chí nghiệm thu:** test đơn vị `history.py` xác nhận (a) `build_window` cắt đúng
+  cả `SOURCES_FOOTER_MARKER` lẫn disclaimer khỏi nội dung assistant khi làm history; (b)
+  hằng số disclaimer tồn tại, không rỗng. Nghiệm thu end-to-end (sau khi `api/` implement
+  phần nối, ngoài phạm vi vòng này): 1 câu trả lời qua OpenWebUI có disclaimer xuất hiện
+  đúng 1 lần cuối câu trả lời.
+- **Giả định cần người dùng duyệt lại:** (1) dùng hằng số ngày thủ công thay vì tự động;
+  (2) vị trí nối disclaimer ở lớp `api/`, theo đúng pattern `SOURCES_FOOTER_MARKER` — nếu
+  muốn đặt ở nơi khác (ví dụ hiển thị tĩnh trên UI OpenWebUI, không qua mỗi câu trả lời),
+  đổi thiết kế trước khi code.
+- **Không tăng bề mặt bịa đặt:** nội dung disclaimer là chuỗi tĩnh, không do LLM sinh,
+  không phụ thuộc context/câu hỏi.
+
+### 19.4 Phạm vi thay đổi (tổng hợp theo file)
+
+| File | Package | Thay đổi |
+| ---- | ------- | -------- |
+| `generation/generator.py` | `generation/` | Thêm quy tắc 13-14 (kết luận trước, blockquote trích dẫn nguyên văn); bump `PROMPT_VERSION` (19.3.1) |
+| `generation/generation_spec.md` | `generation/` | Ghi chú kế hoạch (chưa implement) tham chiếu mục 19.3.1; cập nhật mục 5.2 sau khi đo |
+| `conversation/history.py` | `conversation/` | Hằng số `DATA_SNAPSHOT_DISCLAIMER` mới + mở rộng bước làm sạch history (19.3.2) |
+| `api/api_spec.md` | `api/` | Ghi chú kế hoạch nối disclaimer vào luồng SSE (19.3.2, cần review riêng bởi người phụ trách `api/`) |
+| `conversation/conversation_spec.md` | `conversation/` | Mục 19 (mục này) |
