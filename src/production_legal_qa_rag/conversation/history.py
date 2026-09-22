@@ -30,15 +30,22 @@ _CITATION_MARK = re.compile(r"\[\d+\]")
 _ELLIPSIS: Final = "…"
 
 # Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa rồi/nói/nêu/trả lời/trích
-# dẫn", "đã nói", "trước đó", "lúc nãy"/"khi nãy"/"hồi nãy" — đồng nghĩa khẩu ngữ của
-# "vừa rồi"). "vừa" PHẢI đi kèm hậu tố tham chiếu (rồi/nói/nêu/trả lời/trích dẫn) —
-# không để bare, vì "vừa" còn có nghĩa khác không liên quan tới hội thoại cũ ("vừa mới
-# ban hành", "vừa sinh con", "vừa đủ"...), nếu để bare sẽ chặn oan câu hỏi pháp luật mới
-# bất kỳ có chứa "vừa" (phát hiện khi review PR #40, false-positive thật: "Tóm tắt giúp
-# tôi các quy định vừa ban hành về nghỉ phép năm.").
+# dẫn", "đã nói", "trước đó" (khi đi kèm nói/nêu/trả lời), "lúc nãy"/"khi nãy"/"hồi nãy"
+# — đồng nghĩa khẩu ngữ của "vừa rồi"). "vừa" và "trước đó" PHẢI đi kèm hậu tố/ngữ cảnh
+# tham chiếu rõ nghĩa — không để bare, vì cả hai còn có nghĩa khác không liên quan tới
+# hội thoại cũ: "vừa" ("vừa mới ban hành", "vừa sinh con", "vừa đủ"...) và "trước đó"
+# (mốc thời gian trong lịch sử pháp luật, ví dụ "mức lương tối thiểu vùng trước đó, giai
+# đoạn 2015-2020" — không liên quan gì tới lượt hội thoại trước). Nếu để bare sẽ chặn
+# oan câu hỏi pháp luật mới bất kỳ có chứa các từ này (phát hiện khi review PR #40,
+# false-positive thật: "Tóm tắt giúp tôi các quy định vừa ban hành về nghỉ phép năm.",
+# "Tóm tắt mức lương tối thiểu vùng trước đó, giai đoạn 2015-2020.").
 _BACK_REFERENCE = (
-    r"(?:ở\s*trên|vừa\s*(?:rồi|nói|nêu|trả\s*lời|trích\s*dẫn)"
-    r"|đã\s*nói|trước\s*đó|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
+    r"(?:ở\s*trên"
+    r"|vừa\s*(?:rồi|nói|nêu|trả\s*lời|trích\s*dẫn)"
+    r"|đã\s*nói"
+    r"|(?:nói|nêu|trả\s*lời).{0,15}trước\s*đó"
+    r"|trước\s*đó.{0,15}(?:nói|nêu|trả\s*lời)"
+    r"|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
 )
 # Mẫu regex nhận diện meta-request về lịch sử hội thoại (conversation_spec.md
 # mục 18.2.3): "tóm tắt"/"nhắc lại" + cụm tham chiếu ngược, "(ý|điểm|phần) ...

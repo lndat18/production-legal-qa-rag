@@ -163,6 +163,30 @@ def test_is_meta_history_request_does_not_block_new_questions_with_bare_vua() ->
         assert not is_meta_history_request(_window_with_history(query)), query
 
 
+def test_is_meta_history_request_does_not_block_bare_truoc_do() -> None:
+    """Biên (cùng vòng review PR #40, cùng lớp lỗi với "vừa" bare): "trước đó"
+    bare cũng có nghĩa khác không liên quan hội thoại cũ (mốc thời gian trong
+    lịch sử pháp luật, ví dụ "mức lương tối thiểu vùng trước đó, giai đoạn
+    2015-2020"). "trước đó" chỉ được coi là tham chiếu ngược khi đi kèm
+    nói/nêu/trả lời (ngữ cảnh hội thoại rõ ràng)."""
+    for query in (
+        "Tóm tắt chính sách bảo hiểm xã hội trước đó khi luật cũ còn hiệu lực.",
+        "Tóm tắt mức lương tối thiểu vùng trước đó, giai đoạn 2015-2020.",
+        "Nhắc lại quy định thuế TNCN trước đó áp dụng cho năm 2020.",
+    ):
+        assert not is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_matches_truoc_do_with_conversation_context() -> None:
+    """Biên: "trước đó" đi kèm nói/trả lời (ngữ cảnh hội thoại rõ ràng) vẫn phải
+    bị chặn, dù không dùng "vừa" hay "ở trên"."""
+    for query in (
+        "Nhắc lại xem bạn đã nói gì trước đó.",
+        "Tóm tắt lại những gì bạn trả lời trước đó.",
+    ):
+        assert is_meta_history_request(_window_with_history(query)), query
+
+
 def test_is_meta_history_request_matches_direct_address_variants() -> None:
     """Biên: gọi thẳng "bạn" + vừa/đã + nói/nêu/trả lời -> meta-request, dù
     không có tiền tố "tóm tắt"/"nhắc lại"/"ý/điểm/phần" (phát hiện khi review
