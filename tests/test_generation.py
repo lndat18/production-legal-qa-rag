@@ -413,11 +413,36 @@ def test_generation_prompt_has_rule_10_worked_example() -> None:
     """Mục 20 (đợt 2/3): thêm ví dụ minh hoạ cụ thể quy tắc 10 (phong cách few-shot
     như `condenser.py`) — 1 ca thuế TNCN đủ dữ liệu để tính, minh hoạ cả đầu ra đúng
     (từ chối tính, chỉ nêu nguyên văn tỷ lệ/mức) và đầu ra sai (tự trừ/nhân ra số
-    cuối cùng), giúp model phân biệt rõ ranh giới hơn so với chỉ mô tả bằng lời.
+    cuối cùng), giúp model phân biệt rõ ranh giới hơn so với chỉ mô tả bằng lời. Số
+    liệu trong ví dụ (20/11/5/10 triệu) khác ca thật (30 triệu) để tránh model chép
+    nguyên số thay vì học nguyên tắc.
     """
-    assert "Ví dụ minh hoạ quy tắc 10" in GENERATION_SYSTEM_PROMPT
-    assert "Đầu ra đúng:" in GENERATION_SYSTEM_PROMPT
-    assert "Đầu ra SAI, KHÔNG được làm:" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung"
+        ' "Văn bản" thật):' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nhập cá nhân"
+        " bao nhiêu?" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Đầu ra đúng: Theo biểu thuế luỹ tiến từng phần, thu nhập tính thuế đến 5"
+        " triệu đồng/tháng" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Tôi không tự trừ thu nhập\ntrong câu hỏi cho mức giảm trừ này hay tự tính"
+        " số thuế cụ thể cho trường hợp thu nhập 20\ntriệu đồng"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9'
+        " triệu đồng.\nThuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu"
+        ' đồng."' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'vi phạm\nquy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa'
+        " tính tiếp)." in GENERATION_SYSTEM_PROMPT
+    )
 
 
 def test_generation_prompt_has_no_cross_topic_chunk_merging_rule() -> None:
