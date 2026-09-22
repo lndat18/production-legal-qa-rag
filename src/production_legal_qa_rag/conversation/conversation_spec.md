@@ -357,6 +357,22 @@ Không log nội dung câu hỏi/câu trả lời ra log ứng dụng (stdout). 
    **TPD 200K của generation ≈ 50–60 câu cache-miss/ngày** → cache là bắt buộc, còn để
    phục vụ nhiều hơn phải nâng gói Groq trả phí (không cần đổi code). Cách Groq tính
    reasoning token vào TPM/TPD docs không nêu — đo bằng `usage` thực tế.
+6. **`orchestrator.py` — cleanup lỗi khi đóng async generator (xác nhận 2026-09-22):**
+   sau khi chạy `test.py --groups general` (và tái xác nhận độc lập bởi tester, không chỉ
+   developer), ngay sau khi hội thoại **cuối cùng** của một lượt chạy nhận `DoneEvent` và
+   vòng lặp gọi `ChatOrchestrator.stream()` (`async for ... break`), lúc tiến trình Python
+   thoát và garbage-collect đóng async generator `ChatOrchestrator._produce`, xuất hiện
+   traceback `RuntimeError: generator didn't stop after athrow()` ra stderr — bắt nguồn từ
+   `async with self._admission.slot(ctx.user_id) as ticket:` (dòng ~246 `_produce`) không
+   xử lý `GeneratorExit` sạch khi generator bị đóng thay vì được duyệt hết tới `StopAsyncIteration`.
+   Xảy ra ở `--groups general` (đã tái hiện), **không** xảy ra ở `--groups regression`
+   trong cùng lần đo. Xuất hiện sau khi câu trả lời cuối cùng đã in xong đầy đủ
+   (`TRẢ LỜI`/`NGUỒN THAM KHẢO`/`TRACE`), mã thoát tiến trình vẫn `0` — không có bằng
+   chứng ảnh hưởng tới kết quả trả lời hay quota đã tính, chỉ là log rác lúc dọn dẹp.
+   Nghi ngờ liên quan tới cách `async with` bọc quanh `yield` bên trong async generator
+   khi generator bị đóng giữa chừng bởi caller (ở đây do vòng lặp gọi `break` sau
+   `DoneEvent`, không phải do lỗi runtime). Chưa sửa — ngoài phạm vi 17.2.5; cần điều tra
+   thêm ở `orchestrator.py` (không đổi trong PR này).
 
 ## 15. Cải thiện độ chính xác condense
 
