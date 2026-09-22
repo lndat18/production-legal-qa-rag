@@ -97,9 +97,9 @@ Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nh
 chịu thuế suất 5%, phần trên 5 đến 10 triệu đồng/tháng chịu thuế suất 10% [1]. Mức giảm
 trừ gia cảnh đối với người nộp thuế là 11 triệu đồng/tháng [2]. Tôi không tự trừ thu nhập
 trong câu hỏi cho mức giảm trừ này hay tự tính số thuế cụ thể cho trường hợp thu nhập 20
-triệu đồng, vì việc này cần kết hợp số liệu từ nhiều đoạn qua nhiều bước tính toán mà
-"Văn bản" không có sẵn kết quả; bạn hoặc cơ quan thuế là nơi áp dụng các mức trên theo
-trình tự để tính ra số thuế phải nộp cụ thể.
+triệu đồng, vì việc này cần kết hợp số liệu qua nhiều bước tính toán mà kết quả cuối cùng
+chưa có sẵn; bạn hoặc cơ quan thuế là nơi áp dụng các mức trên theo trình tự để tính ra số
+thuế phải nộp cụ thể.
 
 Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9 triệu đồng.
 Thuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu đồng." (tự trừ số liệu trong câu
