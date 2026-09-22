@@ -345,6 +345,43 @@ def test_prompt_version_bumped_for_cache_keying() -> None:
     assert PROMPT_VERSION == "v2"
 
 
+def test_generation_prompt_has_ambiguous_classification_rule() -> None:
+    """Mục 17.2.3 quy tắc 9: khi câu hỏi thiếu yếu tố phân loại quan trọng (cư trú,
+    loại hợp đồng lao động...) và "Văn bản" có quy định khác nhau theo từng trường
+    hợp, prompt phải yêu cầu liệt kê riêng biệt từng trường hợp thay vì tự chọn một
+    trường hợp trả lời như chắc chắn duy nhất (ca gốc: thuế TNCN cư trú/không cư trú).
+    """
+    assert "RIÊNG BIỆT từng trường hợp bằng gạch đầu dòng" in GENERATION_SYSTEM_PROMPT
+    assert "cư trú hay không cư trú, loại hợp đồng lao động" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "Không trộn các trường hợp vào cùng một cách tính" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "không tự chọn một trường" in GENERATION_SYSTEM_PROMPT
+        and "hợp để trả lời như thể đó là câu trả lời chắc chắn duy nhất."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_has_no_multi_step_calculation_rule() -> None:
+    """Mục 17.2.3 quy tắc 10: khi câu trả lời đầy đủ đòi hỏi nhiều bước tính toán
+    (ví dụ thuế luỹ tiến từng phần) mà "Văn bản" không có sẵn kết quả cuối, prompt
+    phải cấm tự tính ra một con số kết quả cuối cùng, chỉ nêu nguyên văn mức/ngưỡng.
+    """
+    assert "KHÔNG tự thực" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "biểu thuế luỹ" in GENERATION_SYSTEM_PROMPT
+    assert "tiến từng phần, cộng trừ nhiều khoản" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "hội) là nơi tính cụ thể." in GENERATION_SYSTEM_PROMPT
+
+
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
     calls: list[dict[str, Any]] = []
 
