@@ -187,6 +187,42 @@ def test_is_meta_history_request_matches_truoc_do_with_conversation_context() ->
         assert is_meta_history_request(_window_with_history(query)), query
 
 
+def test_is_meta_history_request_does_not_block_bare_da_noi() -> None:
+    """Biên (round 3 review PR #40, cùng lớp lỗi với "vừa"/"trước đó" bare): "đã
+    nói" bare khớp cả câu hỏi mới về nội dung một văn bản luật cụ thể ("Nghị
+    định 90 đã nói gì", "luật đã nói gì" — không liên quan hội thoại cũ). Đã bỏ
+    "đã nói" khỏi `_BACK_REFERENCE`; case "bạn đã nói" đã được mẫu địa chỉ trực
+    tiếp (pattern 4) bao phủ riêng."""
+    for query in (
+        "Tóm tắt xem Nghị định 90 đã nói gì về mức lương tối thiểu vùng.",
+        "Nhắc lại xem luật đã nói gì về nghỉ phép năm.",
+        "Tóm tắt những gì Bộ luật Lao động đã nói về thời gian thử việc.",
+    ):
+        assert not is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_still_matches_da_noi_via_o_tren() -> None:
+    """Biên: bỏ "đã nói" khỏi `_BACK_REFERENCE` không làm mất ca hợp lệ "đã nói
+    ... ở trên" (không có "bạn") — vẫn bị chặn nhờ nhánh "ở trên" (ràng buộc
+    `_near_ref_verb`, "nói" nằm trong `_REF_VERB`)."""
+    for query in (
+        "Tóm tắt lại những gì đã nói ở trên",
+        "Nhắc lại những gì đã nói ở trên cho tôi",
+    ):
+        assert is_meta_history_request(_window_with_history(query)), query
+
+
+def test_is_meta_history_request_does_not_block_bare_o_tren() -> None:
+    """Biên (round 3 review PR #40): "ở trên" bare (không đi kèm nói/nêu/trả
+    lời) có thể chỉ nội dung trong cùng câu hỏi (vd. văn bản dán kèm), không
+    phải hội thoại cũ -> không được chặn oan."""
+    for query in (
+        "Tóm tắt giúp tôi nội dung ở trên: nghỉ phép năm mấy ngày theo luật?",
+        "Nhắc lại giúp tôi mức phạt được quy định ở trên trong dự thảo nghị định.",
+    ):
+        assert not is_meta_history_request(_window_with_history(query)), query
+
+
 def test_is_meta_history_request_matches_direct_address_variants() -> None:
     """Biên: gọi thẳng "bạn" + vừa/đã + nói/nêu/trả lời -> meta-request, dù
     không có tiền tố "tóm tắt"/"nhắc lại"/"ý/điểm/phần" (phát hiện khi review

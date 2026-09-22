@@ -29,22 +29,41 @@ GUARDRAIL_CONTEXT_TURNS: Final = 2
 _CITATION_MARK = re.compile(r"\[\d+\]")
 _ELLIPSIS: Final = "…"
 
-# Cụm tham chiếu ngược tới nội dung đã nói ("ở trên", "vừa rồi/nói/nêu/trả lời/trích
-# dẫn", "đã nói", "trước đó" (khi đi kèm nói/nêu/trả lời), "lúc nãy"/"khi nãy"/"hồi nãy"
-# — đồng nghĩa khẩu ngữ của "vừa rồi"). "vừa" và "trước đó" PHẢI đi kèm hậu tố/ngữ cảnh
-# tham chiếu rõ nghĩa — không để bare, vì cả hai còn có nghĩa khác không liên quan tới
-# hội thoại cũ: "vừa" ("vừa mới ban hành", "vừa sinh con", "vừa đủ"...) và "trước đó"
-# (mốc thời gian trong lịch sử pháp luật, ví dụ "mức lương tối thiểu vùng trước đó, giai
-# đoạn 2015-2020" — không liên quan gì tới lượt hội thoại trước). Nếu để bare sẽ chặn
-# oan câu hỏi pháp luật mới bất kỳ có chứa các từ này (phát hiện khi review PR #40,
-# false-positive thật: "Tóm tắt giúp tôi các quy định vừa ban hành về nghỉ phép năm.",
-# "Tóm tắt mức lương tối thiểu vùng trước đó, giai đoạn 2015-2020.").
+# Động từ chỉ hành động phát ngôn ("nói"/"nêu"/"trả lời") — dùng làm ngữ cảnh bắt buộc
+# cho các cụm tham chiếu ngược mơ hồ bên dưới ("ở trên", "trước đó"): tự thân các cụm
+# này còn có nghĩa khác không liên quan tới hội thoại cũ (xem giải thích dưới), nên chỉ
+# coi là tham chiếu ngược khi đứng gần (≤15 ký tự, cả 2 chiều) một trong 3 động từ này.
+_REF_VERB = r"(?:nói|nêu|trả\s*lời)"
+
+
+def _near_ref_verb(phrase: str) -> str:
+    """Cụm `phrase` chỉ khớp khi đứng gần `_REF_VERB` (theo cả 2 thứ tự)."""
+    return rf"(?:{_REF_VERB}.{{0,15}}{phrase}|{phrase}.{{0,15}}{_REF_VERB})"
+
+
+# Cụm tham chiếu ngược tới nội dung đã nói: "ở trên"/"trước đó" (chỉ tính khi đi kèm
+# nói/nêu/trả lời — xem `_near_ref_verb`), "vừa rồi/nói/nêu/trả lời/trích dẫn" (đồng
+# nghĩa khẩu ngữ của "vừa rồi"), "lúc nãy"/"khi nãy"/"hồi nãy". Không có alternative nào
+# được để bare (không ràng buộc ngữ cảnh hội thoại) vì mỗi cụm này còn mang nghĩa khác
+# không liên quan hội thoại cũ, dễ chặn oan câu hỏi pháp luật mới bất kỳ:
+# - "vừa": "vừa mới ban hành", "vừa sinh con", "vừa đủ"...
+# - "trước đó": mốc thời gian trong lịch sử pháp luật, vd. "mức lương tối thiểu vùng
+#   trước đó, giai đoạn 2015-2020".
+# - "ở trên": có thể chỉ nội dung trong cùng câu hỏi (không phải hội thoại cũ), vd. văn
+#   bản luật dán kèm ngay trên câu hỏi.
+# - "đã nói": đã BỎ khỏi danh sách (không còn là alternative riêng) — case "bạn đã nói"
+#   đã được `_META_HISTORY_PATTERNS` (mẫu thứ 4) bao phủ riêng, để "đã nói" bare ở đây
+#   vừa dư thừa vừa nguy hiểm (khớp cả "Nghị định 90 đã nói gì", "luật đã nói gì" —
+#   không liên quan hội thoại cũ). Case "... đã nói ... ở trên" (không có "bạn") vẫn bị
+#   chặn nhờ nhánh "ở trên" (đã ràng buộc `_near_ref_verb`, "nói" nằm trong `_REF_VERB`).
+# Phát hiện qua 3 vòng review PR #40 (2026-09-22): false-positive thật với "vừa" bare
+# ("Tóm tắt giúp tôi các quy định vừa ban hành về nghỉ phép năm."), "trước đó" bare
+# ("Tóm tắt mức lương tối thiểu vùng trước đó, giai đoạn 2015-2020."), và "đã nói" bare
+# ("Tóm tắt xem Nghị định 90 đã nói gì về mức lương tối thiểu vùng.").
 _BACK_REFERENCE = (
-    r"(?:ở\s*trên"
+    rf"(?:{_near_ref_verb(r'ở\s*trên')}"
     r"|vừa\s*(?:rồi|nói|nêu|trả\s*lời|trích\s*dẫn)"
-    r"|đã\s*nói"
-    r"|(?:nói|nêu|trả\s*lời).{0,15}trước\s*đó"
-    r"|trước\s*đó.{0,15}(?:nói|nêu|trả\s*lời)"
+    rf"|{_near_ref_verb(r'trước\s*đó')}"
     r"|lúc\s*nãy|khi\s*nãy|hồi\s*nãy)"
 )
 # Mẫu regex nhận diện meta-request về lịch sử hội thoại (conversation_spec.md
