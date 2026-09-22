@@ -342,7 +342,7 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v2"
+    assert PROMPT_VERSION == "v3"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
