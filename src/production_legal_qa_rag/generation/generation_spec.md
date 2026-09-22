@@ -115,12 +115,14 @@ bằng 1 dòng trống. `chunks` rỗng → **không gọi Groq**, phát `error(
 ### 5.2. Prompt
 
 Cấu trúc: system = quy tắc cố định; user = context + câu hỏi. Prompt khởi điểm
-(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v3"`** (`generator.py`):
+(chưa đo bằng RAGAS; tinh chỉnh ở mục 14). **`PROMPT_VERSION = "v4"`** (`generator.py`):
 quy tắc 9-10 thêm ở mục 17 (2026-09-22, sửa lỗi phát hiện sau khi tune condense — ca "2
 kịch bản mâu thuẫn + tính sai thuế"); quy tắc 10 sửa thêm 1 câu và quy tắc 11-12 thêm ở
 mục 18 (2026-09-22, ranh giới phạm vi Khoản — ca "tóm tắt câu trả lời cũ" bịa từ 5 chunk
-rời rạc, ca "thuế TNCN" kết hợp 2 Khoản luỹ tiến ra 1 số cuối), khoá cache đã đổi theo
-`PROMPT_VERSION`.
+rời rạc, ca "thuế TNCN" kết hợp 2 Khoản luỹ tiến ra 1 số cuối); quy tắc 10 siết lại (cấm cả
+trường hợp chỉ kết hợp 1 Khoản với số liệu trong câu hỏi, không chỉ "hai Khoản khác nhau")
+và thêm ví dụ minh hoạ few-shot ở mục 20 (2026-09-22, đợt 2/3 — sau khi thử
+`reasoning_effort=medium` ở đợt 1/3 không đạt), khoá cache đã đổi theo `PROMPT_VERSION`.
 
 ```
 [system]
@@ -162,10 +164,13 @@ Quy tắc:
     chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
     hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
     mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
-    hội) là nơi tính cụ thể. Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số
-    liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu
-    thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu
-    vào để tính.
+    hội) là nơi tính cụ thể. Đặc biệt: KHÔNG được cộng, trừ, nhân, chia hay kết hợp số
+    liệu — dù chỉ lấy từ MỘT đoạn/Khoản kết hợp với số liệu nêu trong câu hỏi (ví dụ lấy
+    số tiền trong câu hỏi trừ đi một mức giảm trừ trong "Văn bản"), hay lấy từ hai đoạn/
+    Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu thuế luỹ tiến) — để tạo
+    ra BẤT KỲ con số trung gian hay con số kết quả nào không xuất hiện nguyên văn trong
+    "Văn bản", dù câu hỏi cung cấp đủ dữ liệu đầu vào để tính. Xem ví dụ minh hoạ cuối
+    phần quy tắc.
 11. Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp
     lý nhất quán, không liên quan trực tiếp tới nhau và tới câu hỏi (ví dụ các đoạn nói
     về những chế độ, nghĩa vụ khác nhau không cùng một mạch nội dung): KHÔNG cố ghép nối
@@ -183,6 +188,30 @@ Quy tắc:
     có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
     cũ.
 
+Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung "Văn bản" thật):
+
+Văn bản:
+[1] Điều 9 Khoản 2 Luật Thuế thu nhập cá nhân - Biểu thuế luỹ tiến từng phần
+Thu nhập tính thuế đến 5 triệu đồng/tháng: thuế suất 5%. Thu nhập tính thuế trên 5 đến 10
+triệu đồng/tháng: thuế suất 10%.
+[2] Điều 10 Khoản 1 Luật Thuế thu nhập cá nhân - Giảm trừ gia cảnh
+Mức giảm trừ đối với người nộp thuế là 11 triệu đồng/tháng.
+
+Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nhập cá nhân bao nhiêu?
+
+Đầu ra đúng: Theo biểu thuế luỹ tiến từng phần, thu nhập tính thuế đến 5 triệu đồng/tháng
+chịu thuế suất 5%, phần trên 5 đến 10 triệu đồng/tháng chịu thuế suất 10% [1]. Mức giảm
+trừ gia cảnh đối với người nộp thuế là 11 triệu đồng/tháng [2]. Tôi không tự trừ thu nhập
+trong câu hỏi cho mức giảm trừ này hay tự tính số thuế cụ thể cho trường hợp thu nhập 20
+triệu đồng, vì việc này cần kết hợp số liệu từ nhiều đoạn qua nhiều bước tính toán mà
+"Văn bản" không có sẵn kết quả; bạn hoặc cơ quan thuế là nơi áp dụng các mức trên theo
+trình tự để tính ra số thuế phải nộp cụ thể.
+
+Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9 triệu đồng.
+Thuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu đồng." (tự trừ số liệu trong câu
+hỏi cho mức giảm trừ [2] rồi kết hợp với thuế suất [1] để ra số tiền cuối cùng — vi phạm
+quy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa tính tiếp)
+
 [user]
 Văn bản:
 {context}
@@ -194,9 +223,9 @@ Câu hỏi: {query}
 
 - `stream=True`, `include_reasoning=False` (chỉ nhận `delta.content`; reasoning của
   gpt-oss xảy ra trước chữ đầu tiên nên có `status` để UI không đứng im),
-  `reasoning_effort="medium"` (đổi từ `"low"`, xem mục 20 — **kết quả đo KHÔNG đạt**,
-  giữ nguyên trong code làm bằng chứng cho đợt tiếp theo, chưa chốt là giá trị đúng),
-  `temperature=0.1`.
+  `reasoning_effort="low"` (đợt 1/3 thử `"medium"`, đo KHÔNG đạt — tệ hơn `"low"`; đợt
+  2/3 đo lại với mẫu lớn hơn xác nhận lại kết luận đó rồi **revert về `"low"`**, xem mục
+  20), `temperature=0.1`.
 - **`max_completion_tokens` — tạm 2048, CHƯA CHỐT.** Doc Groq không nói reasoning
   token có tính vào cap hay không (chỉ có trường `reasoning_tokens` trong usage);
   HyDE từng trả rỗng khi cap 2048. Quy trình chốt (mục 14): chạy ~20 câu mẫu với cap
@@ -537,11 +566,15 @@ Chưa có nhánh git chạy, chưa đo — chỉ ghi chú kế hoạch tại đ�
 `conversation_spec.md` mục 19. Cập nhật mục 5.2 và ghi kết quả đo vào mục này sau khi có
 code.
 
-## 20. `reasoning_effort` "low" → "medium" cho quy tắc 10 — ĐỢT 1/3, KHÔNG đạt (2026-09-22)
+## 20. Siết quy tắc 10 cho ca thuế TNCN — 3 đợt (2026-09-22)
 
 Thực hiện rủi ro dự phòng đã ghi ở `conversation_spec.md` mục 18.2.1 (kết quả 18.2.1 chỉ
 đạt 2/3 lần cho ca "Phân loại thiếu - thuế TNCN", cần 3/3). Nhánh
-`fix/generation-reasoning-effort-medium`, HEAD `0c8d721` (`feat/condense-tuning`).
+`fix/generation-reasoning-effort-medium` (đợt 1-2), tạo từ `feat/condense-tuning`.
+
+### 20.1 ĐỢT 1/3 — `reasoning_effort` "low" → "medium", KHÔNG đạt
+
+HEAD `0c8d721` (`feat/condense-tuning`).
 
 **Thay đổi:** `_REASONING_EFFORT` "low" → "medium" trong `generator.py` (mục 5.3).
 `_MAX_COMPLETION_TOKENS` giữ nguyên 2048 — không quan sát `finish_reason="length"` hay
@@ -602,6 +635,114 @@ theo hướng nâng effort, cần đo lại với mẫu lớn hơn (ngân sách 
 luận chắc chắn medium tệ hơn hay chỉ là nhiễu do mẫu nhỏ (n=3); (c) cân nhắc hướng khác
 ngoài `reasoning_effort` — ví dụ few-shot ví dụ cụ thể trong prompt, hoặc chấp nhận đây là
 rủi ro tồn đọng (residual risk) nếu 2 đợt tiếp theo cũng không cải thiện.
+
+### 20.2 ĐỢT 2/3 — đo lại `medium` với mẫu lớn hơn rồi đổi hướng (few-shot + revert `low`), ĐẠT
+
+Nhánh `fix/generation-reasoning-effort-medium` (tiếp tục từ đợt 1, HEAD `5647f19`). Ngân
+sách nội bộ `AdmissionSettings` đã được nới tạm thời trong `.env`
+(`GLOBAL_DAILY_LLM_ANSWERS=500`, `USER_DAILY_LLM_ANSWERS=100`, có ghi chú TẠM THỜI) theo
+yêu cầu chủ dự án — `quota:global:20260922` ở mức 50/500 khi đợt này bắt đầu (dư địa lớn
+hơn đợt 1 rất nhiều), vẫn đo có kỷ luật (không gọi hàng trăm lần), tôn trọng giới hạn thật
+của Groq (30 RPM/8K TPM key `GROQ_API_KEY_2`) bằng cách giãn cách 20s giữa các lần gọi.
+
+**Bước 1 — đo lại `reasoning_effort=medium` (mẫu lớn hơn, xác nhận đợt 1):** script tạm
+gọi `ChatOrchestrator` thật với `user_id` riêng mỗi lần (không commit, cùng cách đợt 1/mục
+17/18), giữ nguyên prompt v3 + `_REASONING_EFFORT="medium"` như đợt 1 để lại. Đo tiếp 5 lần
+ca "Phân loại thiếu - thuế TNCN" (30 triệu, không qua condense) và 2 lần ca "Đổi chủ đề"
+(qua condense) — dừng sớm hơn kế hoạch ban đầu (5-6 lần/ca cho cả 3 ca) sau khi tín hiệu đã
+rõ ràng, để dành ngân sách/thời gian cho bước 2 quan trọng hơn.
+
+- **Ca "Phân loại thiếu - thuế TNCN", 5 lần fresh: 3/5 vi phạm quy tắc 10** (lần 1: kết
+  hợp "14,5 triệu" (Điều 10 Khoản 1) và "4,5 triệu" (ngưỡng bậc Điều 9 Khoản 2) thành số
+  trung gian; lần 2: tương tự "14,5"/"4,5"; lần 3: đi tới số cuối cùng "0,95 triệu đồng" —
+  vi phạm nặng nhất; lần 4, lần 5: chỉ liệt kê công thức, không tính ra số nào — đạt). Gộp
+  với 3/3 vi phạm của đợt 1: **tổng 6/8 lần vi phạm (75%) ở `medium`**, so với baseline
+  `low` đã biết 1/3 (33%, mục 18.2.1/mục 5.3 cũ) — xác nhận lại kết luận đợt 1: `medium`
+  không cải thiện, nhất quán tệ hơn `low` qua 2 đợt đo độc lập.
+- **Ca "Đổi chủ đề", 2 lần: 0/2 vi phạm** — không đủ mẫu để đối chiếu chi tiết, dừng sớm vì
+  tín hiệu ca chính đã đủ rõ.
+
+**Kết luận bước 1:** giữ nguyên kết luận đợt 1 — `medium` không phải hướng đúng, revert về
+`"low"` (mục 5.3) trước khi thử hướng khác, đúng chỉ dẫn "kết hợp với `reasoning_effort` ở
+giá trị cho kết quả tốt hơn giữa low/medium, dựa trên số liệu vừa đo".
+
+**Bước 2 — few-shot + revert `_REASONING_EFFORT="low"`:** thay đổi `generator.py`
+(`PROMPT_VERSION` `"v3"` → `"v4"`):
+
+1. `_REASONING_EFFORT`: `"medium"` → `"low"` (revert, theo số liệu bước 1).
+2. Quy tắc 10 siết thêm: câu "Đặc biệt" mở rộng từ chỉ cấm kết hợp **"hai đoạn/Khoản khác
+   nhau"** sang cấm CẢ trường hợp kết hợp **một** đoạn/Khoản với số liệu trong câu hỏi (ví
+   dụ trừ thu nhập trong câu hỏi cho một mức giảm trừ) — đóng lỗ hổng đã thấy ở cả 2 đợt đo
+   (model coi bước "trừ 1 Khoản" là "an toàn" vì câu chữ cũ chỉ cấm "hai Khoản khác nhau",
+   rồi từ đó dễ trôi tiếp sang kết hợp Khoản thứ hai). Đổi "để ra một con số kết quả cuối
+   cùng" thành "để tạo ra BẤT KỲ con số trung gian hay con số kết quả nào" — cấm cả số
+   trung gian, không chỉ số cuối.
+3. Thêm ví dụ minh hoạ (few-shot, phong cách giống `condenser.py`/`CONDENSE_SYSTEM_PROMPT`)
+   ngay sau quy tắc 12: 1 ca thuế TNCN mẫu (Văn bản 2 đoạn: biểu thuế luỹ tiến + giảm trừ
+   gia cảnh, số liệu khác ca thật để tránh model chép nguyên số), minh hoạ cả "Đầu ra đúng"
+   (chỉ liệt kê nguyên văn tỷ lệ/mức, từ chối tính) và "Đầu ra SAI, KHÔNG được làm" (tự trừ
+   giảm trừ rồi nhân thuế suất ra số cuối) — nêu rõ ngay cả bước trừ trung gian cũng sai.
+
+**Kết quả đo (11 lần gọi generation thật, Groq `gpt-oss-120b` org B, prompt v4 +
+`reasoning_effort=low`):**
+
+- **Ca "Phân loại thiếu - thuế TNCN" (30 triệu, không qua condense), 5/5 lần — KHÔNG LẦN
+  NÀO VI PHẠM quy tắc 10** (đạt tuyệt đối, `warnings=[]` ở cả 5 lần theo `output_check`,
+  không chỉ quan sát thủ công): mọi lần đều liệt kê riêng tỷ lệ/mức theo từng Khoản, có lần
+  nêu rõ "(Không thực hiện tính toán cụ thể vì 'Văn bản' không cung cấp kết quả cuối
+  cùng.)" — đúng tinh thần ví dụ few-shot vừa thêm. Đạt vượt tiêu chí "3/3" gốc của
+  18.2.1 lẫn tiêu chí "≥5/6" của đợt này; cải thiện tuyệt đối so với baseline `low` cũ
+  (1/3 vi phạm, mục 18.2.1) và so với `medium` (6/8 vi phạm, mục 20.1/20.2 bước 1).
+- **Ca "Đổi chủ đề" (`--groups core`, "Lương 20 triệu đóng thuế TNCN thế nào?" qua condense
+  từ hội thoại 2 lượt), đo 2 kiểu:
+  - 3 lần đo trực tiếp qua script tạm (không qua `--groups core`): **3/3 đạt**, không có
+    số nào bị tính hay kết hợp.
+  - 1 lần qua `--groups core` (chạy sau, dùng đúng `conversation/test.py`): **có
+    `warning(unverified_number)`** — nhưng lỗi khác hẳn kiểu cũ: model tự hiểu nhầm "20
+    triệu đồng" trong câu hỏi (vốn là lương/**tháng**) thành "20 triệu đồng/**năm**", rồi tự
+    chia cho 12 ra "1,667 triệu đồng/tháng" — một phép tính KHÔNG liên quan tới việc kết
+    hợp Điều 9/Điều 10 (không trừ giảm trừ gia cảnh, không cộng bậc thuế), mà là lỗi diễn
+    giải đơn vị. Đây là một dạng vi phạm nhẹ hơn của quy tắc 10 chung (vẫn tạo ra 1 con số
+    "1,667" không có trong "Văn bản") nhưng không phải hành vi mục tiêu ban đầu ("kết hợp 2
+    Khoản luỹ tiến"). Ghi nhận trung thực: tổng ca "Đổi chủ đề" qua 4 lần đo (3 script tạm +
+    1 `--groups core`) là **3/4 đạt** — chưa phải 100%, nhưng ca này chưa từng nằm trong
+    tiêu chí nghiệm thu bắt buộc (18.2.1 và mục này chỉ bắt buộc ca thuế TNCN 30 triệu + ca
+    9 + không phá vỡ ca 1/2/5), và bản chất lỗi đã đổi từ "kết hợp Khoản" sang "hiểu sai đơn
+    vị thời gian" — cải thiện thật nhưng chưa triệt để 100%, không che giấu.
+- **Ca 9 "Tóm tắt lại các câu trả lời ở trên cho tôi.", 3/3 lần — ĐẠT tuyệt đối:** cả 3 lần
+  đều trả lời "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có.", quy tắc 12
+  không bị ảnh hưởng bởi thay đổi quy tắc 10 hay việc revert `reasoning_effort`.
+- **Không phá vỡ ca PASS đã có (`--groups core`, 1 lần):** ca "Kế thừa Điều (ca 2)" và ca
+  "Đại từ (ca 1)" đều trả lời đúng, có `[n]` hợp lệ, không cảnh báo (ca 1 vẫn còn nghi vấn
+  lệch trích dẫn tồn đọng từ mục 18.1.4/18.2.5 — không phải lỗi mới, ngoài phạm vi mục
+  này). Ca "Injection (ca 5)" vẫn bị guardrail chặn trước generation, không tốn quota
+  generation, không đổi hành vi.
+- **Kiểm tra cục bộ:** `ruff check`, `mypy` (cả 2 trên `generator.py`) và
+  `pytest tests/test_generation.py` (32 test) đều pass; `pytest` toàn repo (838 test) pass.
+- **Ngân sách đã dùng:** 11 lần gọi generation thật đợt bước 2 (5 tax30 + 3 doi-chu-de
+  script tạm + 3 ca9) + 3 lần gọi generation của `--groups core` (ca2, ca1, ca3 — ca5
+  injection không tốn quota) = 14 lần; cộng bước 1 đợt này (7 lần: 5 tax30 + 2 doi-chu-de)
+  = 21 lần đo chính thức cho đợt 2/3, cộng thêm 2 lần gọi smoke-test xác nhận script/prompt
+  hoạt động đúng trước mỗi bước đo chính (1 lần `medium`, 1 lần `v4`+`low`, không tính vào
+  tỉ lệ đạt/vi phạm) = 23 lần gọi generation thật tổng cộng. `quota:global` tăng từ 50 lên
+  73/500 trong ngày (50 + 23 = 73, khớp) — còn nhiều dư địa nhờ ngân sách đã được nới tạm
+  thời, không có lần nào bị `AdmissionDenied` hay 429 thật từ Groq.
+
+**Kết luận: ĐỢT 2/3 — ĐẠT.** Ca mục tiêu chính "Phân loại thiếu - thuế TNCN" đạt 5/5
+(100%), vượt xa tiêu chí "3/3" gốc và "≥5/6" của đợt này, cải thiện tuyệt đối so với cả 2
+baseline trước (`low` v3 2/3 đạt = 1/3 vi phạm, `medium` v3 2/8 đạt = 6/8 vi phạm). Ca 9 và
+ca hồi quy bắt buộc
+(ca 1/2/5) đều giữ nguyên PASS. Giải pháp cuối: **`_REASONING_EFFORT="low"`** (revert từ
+`medium`, giữ nguyên tham số khác mục 5.3) + **`PROMPT_VERSION="v4"`** (quy tắc 10 siết lại
++ ví dụ minh hoạ few-shot mới, mục 5.2). Ghi nhận trung thực 1 quan sát residual (ca "Đổi
+chủ đề" 1/4 lần có lỗi hiểu sai đơn vị thời gian dẫn tới 1 con số không có căn cứ) — khác
+hẳn lỗi mục tiêu ban đầu, mức độ nhẹ hơn (không kết hợp Khoản, không ra số tiền thuế cuối
+cùng), không nằm trong tiêu chí bắt buộc, nhưng nên theo dõi thêm nếu có bằng chứng lặp lại
+ở phase sau (RAGAS hoặc vận hành thật) — có thể cần thêm 1 câu quy tắc riêng về "không tự
+suy diễn/qui đổi đơn vị thời gian (tháng/năm) khi câu hỏi đã nêu rõ đơn vị" nếu tái diễn.
+Không cần đợt 3/3 cho vấn đề "kết hợp 2 Khoản luỹ tiến" (đã giải quyết); nếu muốn xử lý
+residual risk vừa nêu, đó sẽ là một vấn đề mới, phạm vi hẹp hơn, để tester/reviewer/người
+dùng quyết định có mở vòng riêng hay chấp nhận làm rủi ro tồn đọng.
 
 ## 16. Mở rộng cho lớp chat (2026-09-21)
 
