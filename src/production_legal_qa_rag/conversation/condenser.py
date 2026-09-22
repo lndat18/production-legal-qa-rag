@@ -161,9 +161,31 @@ class QueryCondenser:
         Không raise: mọi lỗi degrade về ``query`` với ``reason`` tương ứng.
         Log warning khi loại đầu ra chỉ có ``reason``, ``finish_reason`` và số
         token, không có nội dung (mục 12).
+
+        Retry (mục 15.3 bước C / 18.2.4): khi lần gọi đầu có
+        ``reason=CondenseReason.FINISH_LENGTH`` (lỗi ngẫu nhiên — reasoning ăn
+        hết ``max_completion_tokens``, không phải lỗi xác định), gọi lại đúng 1
+        lần với cùng tham số. Kết quả lần 2 luôn được dùng (dù vẫn
+        ``FINISH_LENGTH`` hay lý do khác) — không retry thêm lần 3. Các
+        ``reason`` khác (``groq_error``, ``unknown_citation``, ``bad_length``,
+        ``empty``) KHÔNG được retry: đây là lỗi xác định (429, model bịa số,
+        định dạng sai) mà gọi lại không có cơ hội thật để sửa.
         """
         if not history:
             return CondenseOutcome(text=query, reason=CondenseReason.NO_HISTORY)
+        outcome = await self._condense_once(query, history)
+        if outcome.reason == CondenseReason.FINISH_LENGTH:
+            logger.warning(
+                "Condense reason=%s ở lần gọi đầu, retry 1 lần (mục 18.2.4).",
+                CondenseReason.FINISH_LENGTH,
+            )
+            outcome = await self._condense_once(query, history)
+        return outcome
+
+    async def _condense_once(
+        self, query: str, history: Sequence[ChatMessage]
+    ) -> CondenseOutcome:
+        """Đúng 1 lời gọi Groq + kiểm tra đầu ra; không tự retry."""
         try:
             response = await self._client.get().chat.completions.create(
                 model=self._settings.model_name,

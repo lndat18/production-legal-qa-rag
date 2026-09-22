@@ -245,6 +245,102 @@ def test_condense_without_history_skips_call() -> None:
     assert fake.calls == []
 
 
+# --------------------------------------------------- condense retry (18.2.4)
+class _SequencedFakeGroq:
+    """Trả kết quả khác nhau qua từng lần gọi (mô phỏng retry finish_length)."""
+
+    def __init__(self, results: list[tuple[str | Exception, str]]) -> None:
+        self._results = results
+        self.calls: list[dict[str, Any]] = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    async def _create(self, **kwargs: Any) -> Any:
+        content, finish_reason = self._results[len(self.calls)]
+        self.calls.append(kwargs)
+        if isinstance(content, Exception):
+            raise content
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message, finish_reason=finish_reason)
+        usage = SimpleNamespace(
+            completion_tokens=40,
+            completion_tokens_details=SimpleNamespace(reasoning_tokens=25),
+        )
+        return SimpleNamespace(choices=[choice], usage=usage)
+
+
+def _sequenced_condenser(
+    results: list[tuple[str | Exception, str]],
+) -> tuple[QueryCondenser, _SequencedFakeGroq]:
+    fake = _SequencedFakeGroq(results)
+    settings = CondenseSettings(GROQ_API_KEY="k")
+    return QueryCondenser(settings, fake), fake  # type: ignore[arg-type]
+
+
+def test_condense_retries_once_on_finish_length_then_succeeds() -> None:
+    """Lần 1 finish_length + lần 2 hợp lệ -> dùng kết quả lần 2, không phải câu gốc."""
+    condenser, fake = _sequenced_condenser(
+        [
+            ("", "length"),
+            ("Khoản 2 Điều 113 Bộ luật Lao động nói gì?", "stop"),
+        ]
+    )
+    outcome = asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+    assert outcome.reason is CondenseReason.OK
+    assert outcome.text == "Khoản 2 Điều 113 Bộ luật Lao động nói gì?"
+    assert len(fake.calls) == 2
+
+
+def test_condense_retries_once_then_degrades_if_still_finish_length() -> None:
+    """Lần 1 và lần 2 đều finish_length -> dùng câu gốc, không gọi lần 3."""
+    condenser, fake = _sequenced_condenser(
+        [
+            ("", "length"),
+            ("", "length"),
+        ]
+    )
+    outcome = asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+    assert outcome.reason is CondenseReason.FINISH_LENGTH
+    assert outcome.text == "Còn Khoản 2?"
+    assert len(fake.calls) == 2
+
+
+def test_condense_retries_once_then_uses_groq_error_from_retry() -> None:
+    """Lần 1 finish_length + lần 2 lỗi Groq khác hẳn (429/timeout) -> dùng thẳng
+    kết quả lần 2 (reason=groq_error, text=câu gốc), không gọi lần 3 (mục 18.2.4:
+    "Kết quả lần 2 luôn được dùng dù lý do là gì").
+    """
+    condenser, fake = _sequenced_condenser(
+        [
+            ("", "length"),
+            (RuntimeError("429"), "stop"),
+        ]
+    )
+    outcome = asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+    assert outcome.reason is CondenseReason.GROQ_ERROR
+    assert outcome.text == "Còn Khoản 2?"
+    assert len(fake.calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("content", "finish_reason", "expected_reason"),
+    [
+        (RuntimeError("429"), "stop", CondenseReason.GROQ_ERROR),
+        ("Điều 500 nói gì?", "stop", CondenseReason.UNKNOWN_CITATION),
+        ("ab", "stop", CondenseReason.BAD_LENGTH),
+        ("", "stop", CondenseReason.EMPTY),
+    ],
+)
+def test_condense_does_not_retry_other_reasons(
+    content: str | Exception, finish_reason: str, expected_reason: CondenseReason
+) -> None:
+    """groq_error/unknown_citation/bad_length/empty là lỗi xác định: không retry."""
+    condenser, fake = _condenser(content, finish_reason)
+    outcome = asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+    assert outcome.reason is expected_reason
+    assert outcome.text == "Còn Khoản 2?"
+    assert len(fake.calls) == 1
+
+
 # ------------------------------------------------------------------- admission
 class _FakePipeline:
     def __init__(self, redis: _FakeRedis) -> None:
