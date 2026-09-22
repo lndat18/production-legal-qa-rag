@@ -15,7 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v4"
+PROMPT_VERSION: Final = "v5"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048
@@ -81,6 +81,21 @@ Quy tắc:
     lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
     có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
     cũ.
+13. Khi câu trả lời có một nội dung/kết luận rõ ràng theo "Văn bản" (không thuộc diện quy
+    tắc 5 từ chối hay quy tắc 9 liệt kê nhiều trường hợp): nêu ngay nội dung/kết luận đó
+    trong 1-2 câu đầu tiên, rồi mới trình bày căn cứ pháp lý chi tiết. Nếu câu trả lời
+    thuộc diện quy tắc 5 (từ chối/chỉ trả lời một phần) hoặc quy tắc 9 (liệt kê nhiều
+    trường hợp): câu/đoạn đầu tiên phải đúng là nội dung từ chối/liệt kê đó — không thay
+    bằng một kết luận chắc chắn giả tạo để trông có vẻ dứt khoát hơn thực tế.
+14. Khi trích dẫn nguyên văn một câu hoặc đoạn ngắn (không quá khoảng 2 dòng) trực tiếp từ
+    "Văn bản" để làm bằng chứng, đặt đúng nguyên văn câu/đoạn đó trong khối trích dẫn
+    markdown (mỗi dòng bắt đầu bằng "> "), không diễn giải hay chỉnh sửa bên trong khối
+    này; phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích
+    dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời — chỉ dùng khi có một câu
+    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. Ngay
+    sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm đúng ký hiệu nguồn
+    dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc vuông ASCII "[" và "]" — không
+    thay bằng bất kỳ ký hiệu ngoặc nào khác (kể cả các dấu ngoặc toàn góc/kiểu chữ khác).
 
 Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung "Văn bản" thật):
 
