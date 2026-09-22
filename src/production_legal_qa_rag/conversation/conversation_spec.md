@@ -418,6 +418,10 @@ Thứ tự A → B → C → D, **dừng ngay khi đạt ngưỡng 15.4**; mỗi
 - **C — retry 1 lần:** chỉ làm khi số đo cho thấy lỗi ngẫu nhiên còn ≥ ngưỡng sau A+B
   (ví dụ tỉ lệ hợp lệ giữa các lần chạy dao động). Retry tối đa 1 lần, cùng ngân sách
   timeout; không retry khi 429 hoặc lỗi kiểm tra số Điều (bịa số là lỗi xác định).
+  **Đã làm (2026-09-22, mục 18.2.4):** trigger thật là `reason=FINISH_LENGTH` tái phát ở
+  mục 18.1.3 (ca "Đổi chủ đề (ca 3)" tốn hết 2046/2048 token reasoning). Chỉ retry cho
+  đúng `FINISH_LENGTH` (lỗi ngẫu nhiên); giữ nguyên "không retry" cho `groq_error`,
+  `unknown_citation`, `bad_length`, `empty` như đã chốt ở trên. Chi tiết kết quả ở 18.2.4.
 - **D — đổi model qua `CondenseSettings.model_name`:** chỉ khi A–C không đạt (H5). Không
   đổi code; đo lại từ đầu bộ ca. Tính lại ngân sách Groq của model mới.
 
@@ -1347,6 +1351,27 @@ thêm lần 3. Không retry cho `groq_error`, `unknown_citation`, `bad_length`, 
   `finish_length` (theo quan sát mục 16, tỉ lệ thấp), không đo lại toàn bộ mục 15.4 —
   chỉ cần xác nhận ca "Đổi chủ đề (ca 3)" không còn `finish_length` fallback ở 3 lần chạy
   liên tiếp qua `conversation/test.py`.
+
+**Kết quả (2026-09-22, đã làm):** `condense_detailed` tách lời gọi Groq đơn lẻ ra
+`_condense_once`; `condense_detailed` gọi `_condense_once` một lần, và nếu
+`reason == CondenseReason.FINISH_LENGTH` thì gọi lại `_condense_once` đúng 1 lần nữa (log
+warning trước khi retry, không log nội dung — mục 12), rồi dùng thẳng kết quả lần 2 dù
+lý do là gì (không có lần gọi thứ 3). Các `reason` khác giữ nguyên hành vi cũ (không
+retry). `tests/test_conversation.py` thêm 7 test: `_SequencedFakeGroq` (client giả trả
+kết quả khác nhau theo thứ tự lần gọi) cho 2 ca retry (lần 1 `finish_length` + lần 2 hợp
+lệ → dùng kết quả lần 2, đếm đúng 2 lần gọi; lần 1 và 2 đều `finish_length` → degrade về
+câu gốc, đếm đúng 2 lần gọi, không có lần 3) và 1 test tham số hoá 4 ca không retry
+(`groq_error`, `unknown_citation`, `bad_length`, `empty` — mỗi ca đúng 1 lần gọi). Toàn
+bộ 30 test `test_conversation.py` và 852 test toàn repo pass; `ruff format --check`,
+`ruff check`, `mypy src/` sạch. Đo end-to-end: chạy `conversation/test.py --groups core`
+(4 ca) qua Groq + Pinecone thật — cả 4 ca (kế thừa Điều, đại từ, đổi chủ đề, injection)
+đều `answered`/`refused` đúng như trước, không có traceback. Chạy riêng ca "Đổi chủ đề
+(ca 3)" 3 lần liên tiếp qua `--query`/`--previous-user`/`--previous-assistant`: cả 3 lần
+"Câu độc lập" trả đúng nguyên văn câu gốc, không log warning "Đầu ra condense bị loại"
+(tức `reason=OK`, không phải fallback do `finish_length`), completion token 312-350/2048 —
+không chạm ngưỡng reasoning ăn hết token như ca gốc ở mục 18.1.3. Không đo lại toàn bộ
+mục 15.4 (đúng phạm vi đã chốt): retry chỉ ảnh hưởng nhánh `finish_length`, không đổi
+prompt hay logic kiểm tra đầu ra.
 
 #### 18.2.5 Điều tra (không code): xác minh lệch trích dẫn ca 1
 
