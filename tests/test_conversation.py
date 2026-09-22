@@ -304,6 +304,23 @@ def test_condense_retries_once_then_degrades_if_still_finish_length() -> None:
     assert len(fake.calls) == 2
 
 
+def test_condense_retries_once_then_uses_groq_error_from_retry() -> None:
+    """Lần 1 finish_length + lần 2 lỗi Groq khác hẳn (429/timeout) -> dùng thẳng
+    kết quả lần 2 (reason=groq_error, text=câu gốc), không gọi lần 3 (mục 18.2.4:
+    "Kết quả lần 2 luôn được dùng dù lý do là gì").
+    """
+    condenser, fake = _sequenced_condenser(
+        [
+            ("", "length"),
+            (RuntimeError("429"), "stop"),
+        ]
+    )
+    outcome = asyncio.run(condenser.condense_detailed("Còn Khoản 2?", HISTORY))
+    assert outcome.reason is CondenseReason.GROQ_ERROR
+    assert outcome.text == "Còn Khoản 2?"
+    assert len(fake.calls) == 2
+
+
 @pytest.mark.parametrize(
     ("content", "finish_reason", "expected_reason"),
     [
