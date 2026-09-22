@@ -1,0 +1,22 @@
+# Hạ tầng cho môi trường phát triển cục bộ (chỉ Redis, không mật khẩu).
+# Bản triển khai đầy đủ (deploy_spec.md mục 4) là deploy/docker-compose.yml, chưa tạo.
+#
+# Dùng:  docker compose -f deploy/docker-compose.dev.yml up -d
+# Dừng:  docker compose -f deploy/docker-compose.dev.yml down
+# .env:  REDIS_URL=redis://localhost:6379/0
+name: legal-qa-dev
+
+services:
+  redis:
+    image: redis:7-alpine
+    # Chỉ mở cổng trên localhost: Redis không có mật khẩu.
+    ports:
+      - "127.0.0.1:6379:6379"
+    # Dữ liệu (quota, cache) tính lại được nên không cần persistence; giới hạn RAM.
+    command: ["redis-server", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
