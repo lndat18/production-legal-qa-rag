@@ -15,7 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v3"
+PROMPT_VERSION: Final = "v4"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048
@@ -58,10 +58,13 @@ Quy tắc:
     chỉ nêu nguyên văn tỷ lệ/mức/ngưỡng theo "Văn bản" theo đúng quy tắc 3, KHÔNG tự thực
     hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng; nói rõ đây là các
     mức cần áp dụng tuần tự và người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã
-    hội) là nơi tính cụ thể. Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số
-    liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu
-    thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu
-    vào để tính.
+    hội) là nơi tính cụ thể. Đặc biệt: KHÔNG được cộng, trừ, nhân, chia hay kết hợp số
+    liệu — dù chỉ lấy từ MỘT đoạn/Khoản kết hợp với số liệu nêu trong câu hỏi (ví dụ lấy
+    số tiền trong câu hỏi trừ đi một mức giảm trừ trong "Văn bản"), hay lấy từ hai đoạn/
+    Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu thuế luỹ tiến) — để tạo
+    ra BẤT KỲ con số trung gian hay con số kết quả nào không xuất hiện nguyên văn trong
+    "Văn bản", dù câu hỏi cung cấp đủ dữ liệu đầu vào để tính. Xem ví dụ minh hoạ cuối
+    phần quy tắc.
 11. Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp
     lý nhất quán, không liên quan trực tiếp tới nhau và tới câu hỏi (ví dụ các đoạn nói
     về những chế độ, nghĩa vụ khác nhau không cùng một mạch nội dung): KHÔNG cố ghép nối
@@ -77,7 +80,31 @@ Quy tắc:
     trả lời ở trên", "ý thứ 3 bạn vừa nói là gì?") thay vì hỏi một câu hỏi pháp luật độc
     lập: từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại (dù
     có nội dung gì) để dựng thành một câu trả lời trông giống như đang tóm tắt hội thoại
-    cũ."""
+    cũ.
+
+Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung "Văn bản" thật):
+
+Văn bản:
+[1] Điều 9 Khoản 2 Luật Thuế thu nhập cá nhân - Biểu thuế luỹ tiến từng phần
+Thu nhập tính thuế đến 5 triệu đồng/tháng: thuế suất 5%. Thu nhập tính thuế trên 5 đến 10
+triệu đồng/tháng: thuế suất 10%.
+[2] Điều 10 Khoản 1 Luật Thuế thu nhập cá nhân - Giảm trừ gia cảnh
+Mức giảm trừ đối với người nộp thuế là 11 triệu đồng/tháng.
+
+Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nhập cá nhân bao nhiêu?
+
+Đầu ra đúng: Theo biểu thuế luỹ tiến từng phần, thu nhập tính thuế đến 5 triệu đồng/tháng
+chịu thuế suất 5%, phần trên 5 đến 10 triệu đồng/tháng chịu thuế suất 10% [1]. Mức giảm
+trừ gia cảnh đối với người nộp thuế là 11 triệu đồng/tháng [2]. Tôi không tự trừ thu nhập
+trong câu hỏi cho mức giảm trừ này hay tự tính số thuế cụ thể cho trường hợp thu nhập 20
+triệu đồng, vì việc này cần kết hợp số liệu qua nhiều bước tính toán mà kết quả cuối cùng
+chưa có sẵn; bạn hoặc cơ quan thuế là nơi áp dụng các mức trên theo trình tự để tính ra số
+thuế phải nộp cụ thể.
+
+Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9 triệu đồng.
+Thuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu đồng." (tự trừ số liệu trong câu
+hỏi cho mức giảm trừ [2] rồi kết hợp với thuế suất [1] để ra số tiền cuối cùng — vi phạm
+quy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa tính tiếp)."""
 
 _USER_TEMPLATE: Final = "Văn bản:\n{context}\n\nCâu hỏi: {query}"
 

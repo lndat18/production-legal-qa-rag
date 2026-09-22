@@ -342,7 +342,7 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v3"
+    assert PROMPT_VERSION == "v4"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -383,25 +383,66 @@ def test_generation_prompt_has_no_multi_step_calculation_rule() -> None:
 
 
 def test_generation_prompt_forbids_combining_two_khoan_into_final_number() -> None:
-    """Mục 18.2.1 quy tắc 10 (sửa thêm 1 câu): cấm rõ ràng việc cộng/trừ/nhân/chia
-    hay kết hợp số liệu từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai
-    bậc của biểu thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung
-    cấp đủ dữ liệu để tính (ca gốc: thuế TNCN 30 triệu bị kết hợp Điều 9 Khoản 2 +
-    Điều 10 Khoản 1 thành một số tiền cuối cùng).
+    """Mục 20 (đợt 2/3, siết lại quy tắc 10 sau khi `reasoning_effort=medium` không
+    đạt): cấm rõ ràng việc cộng/trừ/nhân/chia hay kết hợp số liệu — kể cả chỉ từ MỘT
+    đoạn/Khoản kết hợp với số liệu trong câu hỏi (không chỉ "hai đoạn/Khoản khác
+    nhau" như bản v3) — để tạo ra bất kỳ con số trung gian/kết quả nào không xuất
+    hiện nguyên văn trong "Văn bản" (ca gốc: thuế TNCN 30 triệu tự trừ giảm trừ gia
+    cảnh rồi kết hợp với thuế suất Điều 9 Khoản 2 thành một số tiền cuối cùng).
     """
     assert (
-        "Đặc biệt: không được cộng, trừ, nhân, chia hay kết hợp số"
+        "Đặc biệt: KHÔNG được cộng, trừ, nhân, chia hay kết hợp số"
         in GENERATION_SYSTEM_PROMPT
     )
     assert (
-        "liệu lấy từ hai đoạn/Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu"
+        "liệu — dù chỉ lấy từ MỘT đoạn/Khoản kết hợp với số liệu nêu trong câu hỏi"
         in GENERATION_SYSTEM_PROMPT
     )
     assert (
-        "thuế luỹ tiến) để ra một con số kết quả cuối cùng, dù câu hỏi cung cấp đủ dữ liệu đầu"
+        "hay lấy từ hai đoạn/\n    Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu thuế luỹ tiến)"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "để tạo\n    ra BẤT KỲ con số trung gian hay con số kết quả nào không xuất hiện nguyên văn trong"
         in GENERATION_SYSTEM_PROMPT
     )
     assert "vào để tính." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_has_rule_10_worked_example() -> None:
+    """Mục 20 (đợt 2/3): thêm ví dụ minh hoạ cụ thể quy tắc 10 (phong cách few-shot
+    như `condenser.py`) — 1 ca thuế TNCN đủ dữ liệu để tính, minh hoạ cả đầu ra đúng
+    (từ chối tính, chỉ nêu nguyên văn tỷ lệ/mức) và đầu ra sai (tự trừ/nhân ra số
+    cuối cùng), giúp model phân biệt rõ ranh giới hơn so với chỉ mô tả bằng lời. Số
+    liệu trong ví dụ (20/11/5/10 triệu) khác ca thật (30 triệu) để tránh model chép
+    nguyên số thay vì học nguyên tắc.
+    """
+    assert (
+        "Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung"
+        ' "Văn bản" thật):' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nhập cá nhân"
+        " bao nhiêu?" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Đầu ra đúng: Theo biểu thuế luỹ tiến từng phần, thu nhập tính thuế đến 5"
+        " triệu đồng/tháng" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Tôi không tự trừ thu nhập\ntrong câu hỏi cho mức giảm trừ này hay tự tính"
+        " số thuế cụ thể cho trường hợp thu nhập 20\ntriệu đồng"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9'
+        " triệu đồng.\nThuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu"
+        ' đồng."' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'vi phạm\nquy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa'
+        " tính tiếp)." in GENERATION_SYSTEM_PROMPT
+    )
 
 
 def test_generation_prompt_has_no_cross_topic_chunk_merging_rule() -> None:
