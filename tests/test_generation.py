@@ -14,8 +14,8 @@ from production_legal_qa_rag.generation.generator import (
     GENERATION_SYSTEM_PROMPT,
     PROMPT_VERSION,
     AnswerGenerator,
-    GenerationDelta,
     GeneratedAnswer,
+    GenerationDelta,
     build_context,
     build_messages,
     build_repair_messages,
@@ -478,7 +478,7 @@ def test_judge_repair_after_hard_gate_repair_refuses_instead_of_regenerating_twi
         detail="Không được context hỗ trợ.",
         evidence_numbers=[1],
     )
-    pipeline, generator, judge, _ = _pipeline(
+    pipeline, generator, _judge, _ = _pipeline(
         chunks=[_chunk()],
         drafts=[_answer("Bản nháp [9].")],
         repairs=[_answer("Được nghỉ 12 ngày [1].")],
