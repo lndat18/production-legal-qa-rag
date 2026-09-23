@@ -825,37 +825,92 @@ def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
     )
 
 
+class _FakeChunk:
+    """Fake AIMessageChunk tối giản, chỉ mang trường mà _stream_messages() đọc."""
+
+    def __init__(
+        self,
+        content: str,
+        *,
+        finish_reason: str | None = None,
+        usage_metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.content = content
+        self.response_metadata: dict[str, Any] = (
+            {"finish_reason": finish_reason} if finish_reason is not None else {}
+        )
+        self.usage_metadata = usage_metadata
+
+
+class _FakeChatModel:
+    """Fake ChatOpenAI-like client hỗ trợ ``.astream()`` trả về chunk cố định."""
+
+    def __init__(self, chunks: list[_FakeChunk]) -> None:
+        self._chunks = chunks
+        self.received_messages: list[dict[str, str]] | None = None
+
+    async def astream(
+        self, messages: list[dict[str, str]]
+    ) -> AsyncIterator[_FakeChunk]:
+        self.received_messages = messages
+        for chunk in self._chunks:
+            yield chunk
+
+
+class _FakeStructuredOutputRunnable:
+    """Fake runnable trả về kết quả cố định hoặc raise lỗi thật từ ``ainvoke``."""
+
+    def __init__(self, result: Any) -> None:
+        self._result = result
+        self.received_messages: list[dict[str, str]] | None = None
+
+    async def ainvoke(self, messages: list[dict[str, str]]) -> Any:
+        self.received_messages = messages
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class _FakeStructuredOutputClient:
+    """Fake ChatOpenAI-like client hỗ trợ ``with_structured_output(...).ainvoke()``."""
+
+    def __init__(self, result: Any) -> None:
+        self.runnable = _FakeStructuredOutputRunnable(result)
+        self.received_args: tuple[Any, str | None] | None = None
+
+    def with_structured_output(self, schema: Any, method: str | None = None) -> Any:
+        self.received_args = (schema, method)
+        return self.runnable
+
+
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> AsyncIterator[Any]:
-        calls.append(kwargs)
-
-        async def stream() -> AsyncIterator[Any]:
-            yield SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        delta=SimpleNamespace(content="Trả lời [1]"),
-                        finish_reason="stop",
-                    )
-                ],
-                usage=SimpleNamespace(
-                    prompt_tokens=10,
-                    completion_tokens=5,
-                    completion_tokens_details=SimpleNamespace(reasoning_tokens=2),
-                ),
-            )
-
-        return stream()
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="generation-key",
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
+    )
+
+    created_client = AnswerGenerator(settings)._create_client()
+    assert created_client.model_name == "generation-model"
+    assert created_client.max_tokens == 2048
+    assert created_client.temperature == 0.1
+    assert created_client.reasoning_effort == "low"
+    assert created_client.extra_body == {"include_reasoning": False}
+
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk(
+                "Trả lời [1]",
+                finish_reason="stop",
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                    "output_token_details": {"reasoning": 2},
+                },
+            )
+        ]
     )
 
     async def collect() -> list[GenerationDelta]:
@@ -863,27 +918,18 @@ def test_answer_generator_calls_groq_with_stream_contract() -> None:
             delta
             async for delta in AnswerGenerator(
                 settings,
-                client=client,  # type: ignore[arg-type]
+                client=fake_client,  # type: ignore[arg-type]
             ).stream("Câu hỏi", [_chunk()])
         ]
 
     deltas = asyncio.run(collect())
 
-    assert calls[0]["model"] == "generation-model"
-    assert calls[0]["stream"] is True
-    assert calls[0]["include_reasoning"] is False
-    assert calls[0]["reasoning_effort"] == "low"
-    assert calls[0]["temperature"] == 0.1
-    assert calls[0]["max_completion_tokens"] == 2048
+    assert fake_client.received_messages == build_messages("Câu hỏi", [_chunk()])
     assert deltas == [
         GenerationDelta(
             text="Trả lời [1]",
             finish_reason="stop",
-            usage={
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "reasoning_tokens": 2,
-            },
+            usage=Usage(prompt_tokens=10, completion_tokens=5, reasoning_tokens=2),
         )
     ]
 
@@ -891,47 +937,28 @@ def test_answer_generator_calls_groq_with_stream_contract() -> None:
 def test_answer_generator_buffers_internal_stream_before_pipeline_verification() -> (
     None
 ):
-    async def create(**kwargs: Any) -> AsyncIterator[Any]:
-        async def stream() -> AsyncIterator[Any]:
-            yield SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        delta=SimpleNamespace(content="Phần một "),
-                        finish_reason=None,
-                    )
-                ],
-                usage=None,
-            )
-            yield SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        delta=SimpleNamespace(content="phần hai [1]."),
-                        finish_reason="stop",
-                    )
-                ],
-                usage=SimpleNamespace(
-                    prompt_tokens=10,
-                    completion_tokens=5,
-                    completion_tokens_details=None,
-                ),
-            )
-
-        return stream()
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="generation-key",
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
     )
-
-    generator = AnswerGenerator(
-        settings,
-        client=client,  # type: ignore[arg-type]
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Phần một "),
+            _FakeChunk(
+                "phần hai [1].",
+                finish_reason="stop",
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                },
+            ),
+        ]
     )
+
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
     answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
 
     assert answer == GeneratedAnswer(
@@ -943,59 +970,46 @@ def test_answer_generator_buffers_internal_stream_before_pipeline_verification()
 
 
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> Any:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(content='{"verdict":"pass","issues":[]}')
-                )
-            ]
-        )
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="judge-key",
         model_name="judge-model",
         max_retries=1,
         timeout_seconds=45,
     )
+
+    created_client = EvidenceJudge(settings)._create_client()
+    assert created_client.model_name == "judge-model"
+    assert created_client.max_tokens == 1024
+    assert created_client.temperature == 0.0
+    assert created_client.reasoning_effort == "low"
+
     citation = Citation(
         n=1,
         chunk_id="chunk-1",
         source_document="bo-luat-lao-dong",
         breadcrumb="Điều 1",
     )
+    fake_client = _FakeStructuredOutputClient(JudgeVerdict(verdict="pass"))
 
     verdict = asyncio.run(
-        EvidenceJudge(settings, client=client).judge(  # type: ignore[arg-type]
+        EvidenceJudge(settings, client=fake_client).judge(  # type: ignore[arg-type]
             "Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation]
         )
     )
 
     assert verdict == JudgeVerdict(verdict="pass")
-    assert calls[0]["model"] == "judge-model"
-    assert calls[0]["response_format"] == {"type": "json_object"}
-    assert calls[0]["temperature"] == 0.0
-    assert "Draft:\nĐược nghỉ 12 ngày [1]." in calls[0]["messages"][1]["content"]
+    assert fake_client.received_args == (JudgeVerdict, "json_mode")
+    assert fake_client.runnable.received_messages is not None
     assert (
-        "Citation hợp lệ trong draft: [1] Điều 1" in calls[0]["messages"][1]["content"]
+        "Draft:\nĐược nghỉ 12 ngày [1]."
+        in fake_client.runnable.received_messages[1]["content"]
+    )
+    assert (
+        "Citation hợp lệ trong draft: [1] Điều 1"
+        in fake_client.runnable.received_messages[1]["content"]
     )
 
-    async def invalid_create(**kwargs: Any) -> Any:
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(message=SimpleNamespace(content="không phải JSON"))
-            ]
-        )
-
-    invalid_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=invalid_create))
-    )
+    invalid_client = _FakeStructuredOutputClient(ValueError("không phải JSON"))
     with pytest.raises(JudgeError):
         asyncio.run(
             EvidenceJudge(
@@ -1004,27 +1018,17 @@ def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> N
             ).judge("Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation])
         )
 
-
-def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> Any:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content=(
-                            '{"verdict":"out_of_scope","reason":"Không thuộc miền."}'
-                        )
-                    )
-                )
-            ]
+    wrong_type_client = _FakeStructuredOutputClient({"verdict": "pass", "issues": []})
+    with pytest.raises(JudgeError):
+        asyncio.run(
+            EvidenceJudge(
+                settings,
+                client=wrong_type_client,  # type: ignore[arg-type]
+            ).judge("Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation])
         )
 
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+
+def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
     settings = SimpleNamespace(
         api_key="guardrail-key",
         model_name="safeguard-model",
@@ -1032,49 +1036,46 @@ def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
         timeout_seconds=30,
     )
 
+    created_client = InputGuardrail(settings)._create_client()
+    assert created_client.model_name == "safeguard-model"
+    assert created_client.max_tokens == 512
+    assert created_client.temperature == 0.0
+    assert created_client.reasoning_effort == "low"
+
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="out_of_scope", reason="Không thuộc miền.")
+    )
+
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input("Kể chuyện cười")
     )
 
     assert verdict == GuardrailVerdict(
         verdict="out_of_scope", reason="Không thuộc miền."
     )
-    assert calls[0]["model"] == "safeguard-model"
-    assert calls[0]["reasoning_effort"] == "low"
-    assert calls[0]["temperature"] == 0.0
-    assert calls[0]["max_completion_tokens"] == 512
-    assert calls[0]["messages"][1] == {"role": "user", "content": "Kể chuyện cười"}
+    assert fake_client.received_args == (GuardrailVerdict, "json_mode")
+    assert fake_client.runnable.received_messages is not None
+    assert fake_client.runnable.received_messages[1] == {
+        "role": "user",
+        "content": "Kể chuyện cười",
+    }
 
 
 def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> Any:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content='{"verdict":"allow","reason":"Trong miền."}'
-                    )
-                )
-            ]
-        )
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="allow", reason="Trong miền.")
     )
 
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input(
             "Còn trường hợp này?",
             recent_user_turns=("Lượt cũ nhất", "Lượt gần", "Lượt mới nhất"),
@@ -1082,12 +1083,13 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
     )
 
     assert verdict.verdict == "allow"
-    system_prompt = calls[0]["messages"][0]["content"]
+    assert fake_client.runnable.received_messages is not None
+    system_prompt = fake_client.runnable.received_messages[0]["content"]
     assert (
         "Câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
         in system_prompt
     )
-    assert calls[0]["messages"][1] == {
+    assert fake_client.runnable.received_messages[1] == {
         "role": "user",
         "content": (
             "Câu hỏi trước (chỉ để hiểu ngữ cảnh):\n"
@@ -1098,29 +1100,44 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
 
 
 @pytest.mark.parametrize(
-    "response", ["not json", "", '{"verdict":"other","reason":"x"}']
+    "failure",
+    [ValueError("invalid json từ Groq"), TypeError("schema không hợp lệ")],
 )
-def test_guardrail_invalid_response_fails_open(response: str) -> None:
-    async def create(**kwargs: Any) -> Any:
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=response))]
-        )
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+def test_guardrail_invalid_response_fails_open(failure: Exception) -> None:
     settings = SimpleNamespace(
         api_key="key", model_name="model", max_retries=2, timeout_seconds=30
     )
+    fake_client = _FakeStructuredOutputClient(failure)
 
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input("Câu hỏi")
     )
 
     assert verdict.verdict == "allow"
+
+
+def test_guardrail_wrong_verdict_type_from_structured_output_fails_open() -> None:
+    """with_structured_output có thể trả object không đúng schema GuardrailVerdict
+    (ví dụ provider không tuân JSON mode); check_input() phải tự phát hiện qua
+    isinstance() và fail-open thay vì để lộ verdict sai kiểu cho pipeline.
+    """
+    settings = SimpleNamespace(
+        api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient({"verdict": "allow", "reason": "x"})
+
+    verdict = asyncio.run(
+        InputGuardrail(
+            settings,
+            client=fake_client,  # type: ignore[arg-type]
+        ).check_input("Câu hỏi")
+    )
+
+    assert verdict.verdict == "allow"
+    assert verdict.reason == "Không kiểm tra được guardrail; fail-open."
 
 
 def test_output_check_keeps_only_valid_citations_and_reports_invalid_ones() -> None:
