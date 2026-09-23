@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from typing import Any, Self
+from typing import Any
 
 import pytest
 
@@ -382,84 +382,23 @@ def test_condense_does_not_retry_other_reasons(
 
 
 # ------------------------------------------------------------------- admission
-class _FakePipeline:
-    def __init__(self, redis: _FakeRedis) -> None:
-        self._redis = redis
-        self._commands: list[str] = []
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def incr(self, key: str) -> None:
-        self._commands.append(key)
-
-    def expire(self, key: str, seconds: int) -> None:
-        return None
-
-    async def execute(self) -> list[int]:
-        key = self._commands[0]
-        self._redis.counts[key] = self._redis.counts.get(key, 0) + 1
-        return [self._redis.counts[key], 1]
+def _controller(**overrides: int) -> AdmissionController:
+    return AdmissionController(AdmissionSettings(**overrides))
 
 
-class _FakeRedis:
-    def __init__(self, broken: bool = False) -> None:
-        self.counts: dict[str, int] = {}
-        self.broken = broken
-
-    def pipeline(self, transaction: bool = True) -> _FakePipeline:
-        if self.broken:
-            raise ConnectionError("down")
-        return _FakePipeline(self)
-
-    async def decr(self, key: str) -> None:
-        self.counts[key] -= 1
-
-
-def _controller(redis: _FakeRedis, **overrides: int) -> AdmissionController:
-    settings = AdmissionSettings(redis_url="redis://x", **overrides)
-    return AdmissionController(settings, redis)  # type: ignore[arg-type]
-
-
-def test_admission_user_quota_denies_and_does_not_consume() -> None:
-    redis = _FakeRedis()
-    controller = _controller(redis, user_daily_llm_answers=1)
+def test_admission_has_no_user_or_daily_quota() -> None:
+    controller = _controller(max_concurrent_answers=1, max_waiting=0)
 
     async def scenario() -> None:
-        async with controller.slot("u"):
-            pass
-        with pytest.raises(AdmissionDenied) as info:
-            async with controller.slot("u"):
-                pass
-        assert info.value.kind == "user_quota"
-
-    asyncio.run(scenario())
-    user_key = next(k for k in redis.counts if k.startswith("quota:user:u:"))
-    assert redis.counts[user_key] == 1
-
-
-def test_admission_refund_and_global_budget() -> None:
-    redis = _FakeRedis()
-    controller = _controller(redis, global_daily_llm_answers=1)
-
-    async def scenario() -> None:
-        async with controller.slot("a") as ticket:
-            ticket.request_refund()
-        async with controller.slot("b"):
-            pass
-        with pytest.raises(AdmissionDenied) as info:
-            async with controller.slot("c"):
-                pass
-        assert info.value.kind == "global_budget"
+        for _ in range(3):
+            async with controller.slot("same-user") as ticket:
+                assert ticket is None
 
     asyncio.run(scenario())
 
 
 def test_admission_overloaded_after_max_waiting() -> None:
-    controller = _controller(_FakeRedis(), max_concurrent_answers=1, max_waiting=1)
+    controller = _controller(max_concurrent_answers=1, max_waiting=1)
     release = asyncio.Event()
 
     async def holder() -> None:
@@ -482,16 +421,6 @@ def test_admission_overloaded_after_max_waiting() -> None:
         assert info.value.retry_after_seconds
         release.set()
         await asyncio.gather(first, second)
-
-    asyncio.run(scenario())
-
-
-def test_admission_fails_open_when_redis_down() -> None:
-    controller = _controller(_FakeRedis(broken=True), user_daily_llm_answers=0)
-
-    async def scenario() -> None:
-        async with controller.slot("u"):
-            pass
 
     asyncio.run(scenario())
 
@@ -548,8 +477,8 @@ class _MemoryAnswerCache:
 
 class _NoopAdmission:
     @asynccontextmanager
-    async def slot(self, user_id: str) -> AsyncIterator[Any]:
-        yield SimpleNamespace(request_refund=lambda: None)
+    async def slot(self, user_id: str) -> AsyncIterator[None]:
+        yield None
 
 
 async def _replay(hit: CachedAnswer) -> AsyncIterator[Any]:
@@ -644,8 +573,8 @@ def test_orchestrator_refusal_skips_everything() -> None:
 def test_orchestrator_admission_denied_becomes_error() -> None:
     class Denying:
         @asynccontextmanager
-        async def slot(self, user_id: str) -> AsyncIterator[Any]:
-            raise AdmissionDenied("user_quota")
+        async def slot(self, user_id: str) -> AsyncIterator[None]:
+            raise AdmissionDenied("overloaded", retry_after_seconds=10.0)
             yield
 
     orchestrator = _orchestrator(
@@ -657,8 +586,9 @@ def test_orchestrator_admission_denied_becomes_error() -> None:
     )
     orchestrator._admission = Denying()  # type: ignore[assignment]
     events, trace = _run(orchestrator, [_user("q")])
-    assert events[-2].code == "quota_exceeded" and events[-1].type == "done"
-    assert trace.outcome == "error" and trace.error_code == "quota_exceeded"
+    assert events[-2].code == "rate_limited" and events[-1].type == "done"
+    assert events[-2].retry_after_seconds == 10.0
+    assert trace.outcome == "error" and trace.error_code == "rate_limited"
 
 
 def test_orchestrator_gates_low_relevance_chunks_as_no_context() -> None:
