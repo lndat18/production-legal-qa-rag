@@ -94,9 +94,7 @@ class _FakeGenerator:
             tuple[str, list[RetrievedChunk], str, list[VerificationIssue]]
         ] = []
 
-    async def draft(
-        self, query: str, chunks: list[RetrievedChunk]
-    ) -> GeneratedAnswer:
+    async def draft(self, query: str, chunks: list[RetrievedChunk]) -> GeneratedAnswer:
         self.draft_calls.append((query, chunks))
         if self.draft_error is not None:
             raise self.draft_error
@@ -470,8 +468,9 @@ def test_judge_repair_uses_the_only_repair_budget_and_fixed_context() -> None:
     assert len(judge.calls) == 2
 
 
-def test_judge_repair_after_hard_gate_repair_refuses_instead_of_regenerating_twice(
-) -> None:
+def test_judge_repair_after_hard_gate_repair_refuses_instead_of_regenerating_twice() -> (
+    None
+):
     issue = JudgeIssue(
         code="unsupported_claim",
         claim="Claim sai.",
@@ -503,9 +502,7 @@ def test_judge_insufficient_evidence_maps_to_safe_refusal_without_tokens() -> No
     pipeline, generator, _judge, _ = _pipeline(
         chunks=[_chunk()],
         drafts=[_answer("Được nghỉ 12 ngày [1].")],
-        judge_verdicts=[
-            JudgeVerdict(verdict="insufficient_evidence", issues=[issue])
-        ],
+        judge_verdicts=[JudgeVerdict(verdict="insufficient_evidence", issues=[issue])],
     )
 
     events = _collect(pipeline)
@@ -891,8 +888,9 @@ def test_answer_generator_calls_groq_with_stream_contract() -> None:
     ]
 
 
-def test_answer_generator_buffers_internal_stream_before_pipeline_verification(
-) -> None:
+def test_answer_generator_buffers_internal_stream_before_pipeline_verification() -> (
+    None
+):
     async def create(**kwargs: Any) -> AsyncIterator[Any]:
         async def stream() -> AsyncIterator[Any]:
             yield SimpleNamespace(
@@ -984,9 +982,10 @@ def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> N
     assert calls[0]["response_format"] == {"type": "json_object"}
     assert calls[0]["temperature"] == 0.0
     assert "Draft:\nĐược nghỉ 12 ngày [1]." in calls[0]["messages"][1]["content"]
-    assert "Citation hợp lệ trong draft: [1] Điều 1" in calls[0]["messages"][1][
-        "content"
-    ]
+    assert (
+        "Citation hợp lệ trong draft: [1] Điều 1"
+        in calls[0]["messages"][1]["content"]
+    )
 
     async def invalid_create(**kwargs: Any) -> Any:
         return SimpleNamespace(
@@ -1003,9 +1002,7 @@ def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> N
             EvidenceJudge(
                 settings,
                 client=invalid_client,  # type: ignore[arg-type]
-            ).judge(
-                "Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation]
-            )
+            ).judge("Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation])
         )
 
 
@@ -1154,8 +1151,9 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
     assert result.warnings == []
 
 
-def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_ones(
-) -> None:
+def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_ones() -> (
+    None
+):
     result = check_output("1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()])
 
     assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
