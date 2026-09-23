@@ -24,6 +24,7 @@ from production_legal_qa_rag.conversation.condenser import (
     validate_condensed,
 )
 from production_legal_qa_rag.conversation.history import (
+    DATA_SNAPSHOT_DISCLAIMER,
     HISTORY_ASSISTANT_MAX_CHARS,
     SOURCES_FOOTER_MARKER,
     InvalidConversationError,
@@ -93,6 +94,45 @@ def test_window_truncates_long_assistant_and_keeps_unanswered_user() -> None:
     assert [m.role for m in window.history] == ["user", "user", "assistant"]
     assert len(window.history[-1].content) == HISTORY_ASSISTANT_MAX_CHARS + 1
     assert window.history[-1].content.endswith("…")
+
+
+def test_data_snapshot_disclaimer_is_non_empty() -> None:
+    assert isinstance(DATA_SNAPSHOT_DISCLAIMER, str)
+    assert DATA_SNAPSHOT_DISCLAIMER.strip() != ""
+
+
+def test_window_cleans_both_sources_footer_and_data_snapshot_disclaimer() -> None:
+    answered = (
+        "Đáp án [1][2]"
+        + SOURCES_FOOTER_MARKER
+        + "[1] Điều 5"
+        + DATA_SNAPSHOT_DISCLAIMER
+    )
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Đáp án"
+
+
+def test_window_cleans_disclaimer_before_sources_footer() -> None:
+    """`api/` có thể nối disclaimer trước khối Nguồn (thứ tự ngược lại)."""
+    answered = (
+        "Đáp án [1]" + DATA_SNAPSHOT_DISCLAIMER + SOURCES_FOOTER_MARKER + "[1] Điều 5"
+    )
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Đáp án"
+
+
+def test_window_cleans_disclaimer_only_without_sources_footer() -> None:
+    """Câu trả lời không có nguồn trích dẫn (guardrail từ chối) vẫn có disclaimer."""
+    answered = "Không tìm thấy căn cứ pháp lý phù hợp." + DATA_SNAPSHOT_DISCLAIMER
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Không tìm thấy căn cứ pháp lý phù hợp."
+
+
+def test_window_cleans_sources_footer_only_without_disclaimer() -> None:
+    """Tương thích ngược: câu trả lời cũ (trước khi có disclaimer) vẫn được cắt đúng."""
+    answered = "Đáp án [1]" + SOURCES_FOOTER_MARKER + "[1] Điều 5"
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Đáp án"
 
 
 # ------------------------------------------------------------------- condenser
