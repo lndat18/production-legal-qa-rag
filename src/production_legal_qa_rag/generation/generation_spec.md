@@ -162,6 +162,7 @@ class JudgeIssue(BaseModel):
     detail: str
     evidence_numbers: list[int] = []
 
+
 class JudgeVerdict(BaseModel):
     verdict: Literal["pass", "repair", "insufficient_evidence"]
     issues: list[JudgeIssue] = []
@@ -201,7 +202,32 @@ Message refusal là hằng số. Không trả draft một phần và không đ�
 
 ## 8. Cấu hình và module
 
-Không thêm framework. Dùng groq, AsyncGroq, Pydantic v2 và code Python hiện có.
+Dùng langchain-openai (`ChatOpenAI`) trỏ vào endpoint OpenAI-compatible của Groq
+(`base_url="https://api.groq.com/openai/v1"`, cùng `api_key` Groq hiện có), thay
+AsyncGroq thô, để rút boilerplate client/parse JSON:
+
+KHÔNG dùng langchain-groq: mọi version của nó pin `groq<1.0.0`, xung đột trực tiếp
+với `groq>=1.7.0` mà `conversation/condenser.py`, `formatting/llm_client.py` và
+`retrieval/hyde.py` (ngoài phạm vi generation/) đang dùng qua AsyncGroq. Groq công
+bố chính thức endpoint OpenAI-compatible này nên `ChatOpenAI` trỏ vào đó vẫn là
+tích hợp thật, không phải workaround; đồng thời tránh đổi version `groq` toàn repo.
+
+- generator.py: `ChatOpenAI.astream()` thay `chat.completions.create(stream=True)`.
+  GenerationDelta vẫn map từ chunk trung gian như hiện tại (text, finish_reason,
+  usage) — không đổi hợp đồng generator/pipeline.
+- judge.py, guardrail.py: `ChatOpenAI.with_structured_output(PydanticModel,
+  method="json_mode")` thay `response_format={"type": "json_object"}` +
+  `model_validate_json` tay. Parse lỗi/JSON sai vẫn phải map về JudgeError
+  (judge.py) hoặc verdict allow fail-open (guardrail.py) như cũ — hành vi
+  fail-closed/fail-open ở mục 6 và guardrail không đổi.
+- Tham số riêng của Groq (`reasoning_effort`, `include_reasoning`,
+  `max_completion_tokens`) truyền qua `extra_body`/`model_kwargs` của ChatOpenAI;
+  không đổi giá trị các tham số này.
+- Vẫn giữ pattern LoopBoundClient bọc quanh instance `ChatOpenAI` (không đổi qua
+  event loop), do ChatOpenAI cũng giữ AsyncOpenAI client nội bộ với cùng giới hạn
+  nêu ở loop_bound.py.
+- Đây là đổi thư viện gọi model, không đổi workflow, event, hard gate hay policy ở
+  mục 1-7. Pydantic v2 vẫn là nguồn sự thật cho mọi schema.
 
 - GuardrailSettings: input safeguard, fail-open.
 - GenerationSettings: generator, ưu tiên GROQ_API_KEY_2.

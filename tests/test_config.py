@@ -14,6 +14,7 @@ from production_legal_qa_rag.config import (
     EmbeddingSettings,
     GenerationSettings,
     GuardrailSettings,
+    JudgeSettings,
     LLMSettings,
     RerankerSettings,
     VectorDBSettings,
@@ -236,6 +237,41 @@ def test_generation_settings_uu_tien_key_2(monkeypatch: pytest.MonkeyPatch):
     )
 
     assert GenerationSettings().api_key == "org-b-key"  # type: ignore[call-arg]
+
+
+def test_judge_settings_uses_dedicated_key_and_independent_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.setenv("GROQ_JUDGE_API_KEY", "judge-key")
+    monkeypatch.setattr(
+        JudgeSettings,
+        "model_config",
+        {**JudgeSettings.model_config, "env_file": None},
+    )
+
+    settings = JudgeSettings()  # type: ignore[call-arg]
+
+    assert settings.api_key == "judge-key"
+    assert settings.model_name == "openai/gpt-oss-120b"
+    assert settings.max_retries == 1
+    assert settings.timeout_seconds == 45
+
+
+def test_judge_settings_falls_back_to_generation_keys(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("GROQ_JUDGE_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setattr(
+        JudgeSettings,
+        "model_config",
+        {**JudgeSettings.model_config, "env_file": None},
+    )
+
+    assert JudgeSettings().api_key == "org-b-key"  # type: ignore[call-arg]
 
 
 # ==========================================================================

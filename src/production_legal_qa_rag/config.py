@@ -142,6 +142,27 @@ class GenerationSettings(BaseSettings):
     timeout_seconds: int = 60
 
 
+class JudgeSettings(BaseSettings):
+    """Cấu hình Evidence Judge độc lập với client generation.
+
+    Judge dùng cùng cơ chế fallback key với generator nhưng có model, timeout và
+    retry riêng để thay đổi evaluator không ảnh hưởng prompt tạo answer.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True
+    )
+
+    api_key: str = Field(
+        validation_alias=AliasChoices(
+            "GROQ_JUDGE_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY"
+        )
+    )
+    model_name: str = "openai/gpt-oss-120b"
+    max_retries: int = 1
+    timeout_seconds: int = 45
+
+
 class RerankerSettings(BaseSettings):
     """Config reranker tự host trên LightningAI (retrieval_spec.md mục 9, 12).
 

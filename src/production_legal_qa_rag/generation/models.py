@@ -1,4 +1,4 @@
-"""Các model sự kiện công khai của luồng generation."""
+"""Các contract Pydantic cho generation, verification và event stream."""
 
 from __future__ import annotations
 
@@ -31,11 +31,71 @@ class Usage(BaseModel):
     reasoning_tokens: int | None = None
 
 
+class VerificationIssue(BaseModel):
+    """Một lỗi có thể gửi cho generator để viết lại toàn bộ câu trả lời."""
+
+    code: Literal[
+        "truncated",
+        "invalid_citation",
+        "unverified_sensitive_number",
+        "unsupported_claim",
+        "citation_mismatch",
+        "missing_material_condition",
+        "context_insufficient",
+    ]
+    claim: str = ""
+    detail: str
+    evidence_numbers: list[int] = Field(default_factory=list)
+
+
+class OutputWarning(BaseModel):
+    """Tín hiệu mềm do code hard gate phát hiện nhưng không cần chặn answer."""
+
+    code: Literal["unverified_number"]
+    message: str
+    detail: str = ""
+
+
+class HardGateResult(BaseModel):
+    """Kết quả deterministic gate trước khi gửi draft cho Evidence Judge."""
+
+    citations: list[Citation] = Field(default_factory=list)
+    hard_issues: list[VerificationIssue] = Field(default_factory=list)
+    warnings: list[OutputWarning] = Field(default_factory=list)
+
+
+class JudgeIssue(BaseModel):
+    """Một nhận định evidence-level của Judge, không chứa chain-of-thought."""
+
+    code: Literal[
+        "unsupported_claim",
+        "citation_mismatch",
+        "missing_material_condition",
+        "context_insufficient",
+    ]
+    claim: str
+    detail: str
+    evidence_numbers: list[int] = Field(default_factory=list)
+
+
+class JudgeVerdict(BaseModel):
+    """Phán quyết có cấu trúc của Evidence Judge."""
+
+    verdict: Literal["pass", "repair", "insufficient_evidence"]
+    issues: list[JudgeIssue] = Field(default_factory=list)
+
+
 class StatusEvent(BaseModel):
     """Báo hiệu bắt đầu một bước xử lý để giao diện cập nhật trạng thái."""
 
     type: Literal["status"] = "status"
-    stage: Literal["guardrail", "retrieval", "generation"]
+    stage: Literal[
+        "guardrail",
+        "retrieval",
+        "drafting",
+        "verification",
+        "repairing",
+    ]
 
 
 class TokenEvent(BaseModel):
@@ -49,7 +109,12 @@ class RefusalEvent(BaseModel):
     """Từ chối câu hỏi bị guardrail chặn."""
 
     type: Literal["refusal"] = "refusal"
-    reason: Literal["out_of_scope", "injection"]
+    reason: Literal[
+        "out_of_scope",
+        "injection",
+        "insufficient_evidence",
+        "unable_to_verify",
+    ]
     message: str
 
 

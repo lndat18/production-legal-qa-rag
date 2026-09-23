@@ -525,7 +525,7 @@ class _FakeGeneration:
 
     async def generate(self, query: str, chunks: Any) -> AsyncIterator[Any]:
         self.queries.append(query)
-        yield StatusEvent(stage="generation")
+        yield StatusEvent(stage="drafting")
         yield TokenEvent(text="Đáp án [1]")
         yield CitationsEvent(
             citations=[

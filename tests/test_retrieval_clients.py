@@ -666,24 +666,17 @@ def test_cli_sparse_exit_code_1_khi_loi(
 # ---------------------------------------------------------------- HyDE vs spec
 
 
-def _spec_hyde_prompt() -> tuple[str, str]:
-    """Đọc khối prompt trong retrieval_spec.md mục 4 (system, user)."""
-    spec = (
-        Path(__file__).resolve().parent.parent
-        / "src/production_legal_qa_rag/retrieval/retrieval_spec.md"
-    ).read_text(encoding="utf-8")
-    start = spec.index("[system]\n") + len("[system]\n")
-    user_marker = spec.index("\n\n[user]\n", start)
-    system = spec[start:user_marker]
-    user_start = user_marker + len("\n\n[user]\n")
-    user = spec[user_start : spec.index("\n```", user_start)]
-    return system, user
+def test_hyde_prompt_enforces_current_semantic_retrieval_contract():
+    """HyDE chỉ tăng semantic recall; không được trở thành nguồn citation."""
+    normalized = " ".join(HYDE_SYSTEM_PROMPT.split())
 
-
-def test_hyde_prompt_khop_tung_ky_tu_voi_spec_muc_4():
-    system, user = _spec_hyde_prompt()
-    assert HYDE_SYSTEM_PROMPT == system
-    assert HYDE_USER_TEMPLATE == user
+    assert "chỉ dùng để tìm kiếm điều luật tương tự" in normalized
+    assert "không phải câu trả lời cho người dùng" in normalized
+    assert "văn phong văn bản quy phạm pháp luật" in normalized
+    assert "TUYỆT ĐỐI không nêu số Điều, Khoản, Điểm" in normalized
+    assert "tên hay số hiệu văn bản, năm ban hành" in normalized
+    assert "Không nêu con số, mức tiền, tỉ lệ, thời hạn cụ thể" in normalized
+    assert HYDE_USER_TEMPLATE == "Câu hỏi: {query}"
 
 
 def test_hyde_system_prompt_khong_co_placeholder_format():
