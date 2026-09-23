@@ -162,6 +162,7 @@ class JudgeIssue(BaseModel):
     detail: str
     evidence_numbers: list[int] = []
 
+
 class JudgeVerdict(BaseModel):
     verdict: Literal["pass", "repair", "insufficient_evidence"]
     issues: list[JudgeIssue] = []
