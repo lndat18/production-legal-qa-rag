@@ -478,7 +478,7 @@ def test_judge_repair_after_hard_gate_repair_refuses_instead_of_regenerating_twi
         detail="Không được context hỗ trợ.",
         evidence_numbers=[1],
     )
-    pipeline, generator, _judge, _ = _pipeline(
+    pipeline, generator, judge, _ = _pipeline(
         chunks=[_chunk()],
         drafts=[_answer("Bản nháp [9].")],
         repairs=[_answer("Được nghỉ 12 ngày [1].")],
@@ -500,7 +500,7 @@ def test_judge_insufficient_evidence_maps_to_safe_refusal_without_tokens() -> No
         claim="Câu hỏi cần căn cứ không có trong context.",
         detail="Context không đủ.",
     )
-    pipeline, generator, judge, _ = _pipeline(
+    pipeline, generator, _judge, _ = _pipeline(
         chunks=[_chunk()],
         drafts=[_answer("Được nghỉ 12 ngày [1].")],
         judge_verdicts=[
