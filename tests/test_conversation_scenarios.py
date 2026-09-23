@@ -1,5 +1,5 @@
 """Kiểm thử mở rộng conversation/ và cache/models: schema, ca mục 13.4, admission,
-single-flight, cache ghi/không ghi. Toàn bộ dùng fake, không gọi Groq/Redis thật.
+single-flight, cache ghi/không ghi. Toàn bộ dùng fake, không gọi mạng.
 """
 
 from __future__ import annotations
@@ -9,18 +9,18 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any, Self
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from production_legal_qa_rag.cache.models import CachedAnswer
 from production_legal_qa_rag.config import AdmissionSettings, CondenseSettings
+from production_legal_qa_rag.conversation import admission as admission_module
 from production_legal_qa_rag.conversation.admission import (
     OVERLOADED_RETRY_AFTER_SECONDS,
     AdmissionController,
     AdmissionDenied,
-    AdmissionTicket,
 )
 from production_legal_qa_rag.conversation.condenser import (
     CONDENSE_SYSTEM_PROMPT,
@@ -122,21 +122,17 @@ def test_cached_answer_schema_roundtrip() -> None:
         CachedAnswer(text="t", citations=[{"n": "x"}], created_at=stamp)  # type: ignore[list-item]
 
 
-def test_admission_settings_defaults_env_and_required_redis(
+def test_admission_settings_defaults_have_no_redis_or_quota(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("REDIS_URL", raising=False)
-    with pytest.raises(ValidationError):
-        AdmissionSettings(_env_file=None)  # type: ignore[call-arg]
-    monkeypatch.setenv("REDIS_URL", "redis://h:1/0")
     settings = AdmissionSettings(_env_file=None)  # type: ignore[call-arg]
-    assert settings.redis_url == "redis://h:1/0"
-    assert (
-        settings.user_daily_llm_answers,
-        settings.global_daily_llm_answers,
-        settings.max_concurrent_answers,
-        settings.max_waiting,
-    ) == (5, 50, 2, 6)
+    assert (settings.max_concurrent_answers, settings.max_waiting) == (2, 6)
+    assert set(AdmissionSettings.model_fields) == {
+        "max_concurrent_answers",
+        "max_waiting",
+    }
+    assert not hasattr(admission_module, "AdmissionTicket")
 
 
 def test_condense_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,129 +307,12 @@ def test_condense_topic_change_returns_verbatim() -> None:
 
 
 # ================================================================== admission
-class _Pipe:
-    def __init__(self, redis: _Redis) -> None:
-        self._redis = redis
-        self._keys: list[str] = []
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def incr(self, key: str) -> None:
-        self._keys.append(key)
-
-    def expire(self, key: str, seconds: int) -> None:
-        self._redis.ttls[key] = seconds
-
-    async def execute(self) -> list[int]:
-        key = self._keys[0]
-        self._redis.counts[key] = self._redis.counts.get(key, 0) + 1
-        return [self._redis.counts[key], 1]
-
-
-class _Redis:
-    def __init__(self, fail_decr: bool = False) -> None:
-        self.counts: dict[str, int] = {}
-        self.ttls: dict[str, int] = {}
-        self.fail_decr = fail_decr
-
-    def pipeline(self, transaction: bool = True) -> _Pipe:
-        assert transaction is True
-        return _Pipe(self)
-
-    async def decr(self, key: str) -> None:
-        if self.fail_decr:
-            raise ConnectionError("down")
-        self.counts[key] -= 1
-
-
-def _controller(
-    redis: _Redis, clock: Callable[[], datetime] | None = None, **kw: int
-) -> AdmissionController:
-    settings = AdmissionSettings(redis_url="redis://x", **kw)
-    if clock is None:
-        return AdmissionController(settings, redis)  # type: ignore[arg-type]
-    return AdmissionController(settings, redis, clock)  # type: ignore[arg-type]
-
-
-def test_admission_keys_use_clock_day_and_48h_ttl() -> None:
-    redis = _Redis()
-    controller = _controller(redis, lambda: datetime(2026, 9, 21, 23, 59, tzinfo=UTC))
-
-    async def scenario() -> None:
-        async with controller.slot("alice"):
-            pass
-
-    asyncio.run(scenario())
-    assert set(redis.counts) == {"quota:user:alice:20260921", "quota:global:20260921"}
-    assert set(redis.ttls.values()) == {48 * 3600}
-
-
-def test_admission_quota_is_per_user() -> None:
-    redis = _Redis()
-    controller = _controller(redis, user_daily_llm_answers=1)
-
-    async def scenario() -> None:
-        for user in ("a", "b"):
-            async with controller.slot(user):
-                pass
-        with pytest.raises(AdmissionDenied):
-            async with controller.slot("a"):
-                pass
-
-    asyncio.run(scenario())
-
-
-def test_admission_user_denial_refunds_user_counter_only_to_prior_value() -> None:
-    redis = _Redis()
-    controller = _controller(redis, user_daily_llm_answers=0)
-
-    async def scenario() -> None:
-        with pytest.raises(AdmissionDenied) as info:
-            async with controller.slot("u"):
-                pass
-        assert info.value.kind == "user_quota"
-
-    asyncio.run(scenario())
-    assert all(v == 0 for v in redis.counts.values())
-    assert not any(k.startswith("quota:global") and v for k, v in redis.counts.items())
-
-
-def test_admission_global_denial_refunds_user_and_global() -> None:
-    redis = _Redis()
-    controller = _controller(redis, global_daily_llm_answers=0)
-
-    async def scenario() -> None:
-        with pytest.raises(AdmissionDenied) as info:
-            async with controller.slot("u"):
-                pass
-        assert info.value.kind == "global_budget"
-
-    asyncio.run(scenario())
-    assert all(v == 0 for v in redis.counts.values())
-
-
-def test_admission_no_refund_without_request_and_refund_on_request() -> None:
-    redis = _Redis()
-    controller = _controller(redis)
-
-    async def scenario() -> None:
-        async with controller.slot("u"):
-            pass
-        assert sum(redis.counts.values()) == 2
-        async with controller.slot("u") as ticket:
-            assert isinstance(ticket, AdmissionTicket)
-            ticket.request_refund()
-        assert sum(redis.counts.values()) == 2  # lượt 2 đã hoàn
-
-    asyncio.run(scenario())
+def _controller(**kw: int) -> AdmissionController:
+    return AdmissionController(AdmissionSettings(**kw))
 
 
 def test_admission_slot_released_when_body_raises() -> None:
-    controller = _controller(_Redis(), max_concurrent_answers=1, max_waiting=0)
+    controller = _controller(max_concurrent_answers=1, max_waiting=0)
 
     async def scenario() -> None:
         with pytest.raises(RuntimeError):
@@ -445,19 +324,8 @@ def test_admission_slot_released_when_body_raises() -> None:
     asyncio.run(scenario())
 
 
-def test_admission_refund_failure_is_swallowed() -> None:
-    controller = _controller(_Redis(fail_decr=True))
-
-    async def scenario() -> None:
-        async with controller.slot("u") as ticket:
-            ticket.request_refund()
-
-    asyncio.run(scenario())
-
-
-def test_admission_cancel_while_waiting_refunds_and_frees_queue() -> None:
-    redis = _Redis()
-    controller = _controller(redis, max_concurrent_answers=1, max_waiting=1)
+def test_admission_cancel_while_waiting_frees_queue() -> None:
+    controller = _controller(max_concurrent_answers=1, max_waiting=1)
     release = asyncio.Event()
 
     async def holder() -> None:
@@ -476,7 +344,6 @@ def test_admission_cancel_while_waiting_refunds_and_frees_queue() -> None:
         second.cancel()
         with pytest.raises(asyncio.CancelledError):
             await second
-        assert redis.counts["quota:user:w:" + _today()] == 0
         # Hàng đợi đã trống chỗ: người mới vào chờ được, không bị overloaded.
         third = asyncio.create_task(waiter())
         await asyncio.sleep(0)
@@ -487,12 +354,8 @@ def test_admission_cancel_while_waiting_refunds_and_frees_queue() -> None:
     asyncio.run(scenario())
 
 
-def _today() -> str:
-    return datetime.now(UTC).strftime("%Y%m%d")
-
-
 def test_admission_overloaded_carries_retry_after() -> None:
-    controller = _controller(_Redis(), max_concurrent_answers=1, max_waiting=0)
+    controller = _controller(max_concurrent_answers=1, max_waiting=0)
     release = asyncio.Event()
 
     async def holder() -> None:
@@ -511,10 +374,6 @@ def test_admission_overloaded_carries_retry_after() -> None:
         await task
 
     asyncio.run(scenario())
-
-
-def test_admission_denied_non_overload_has_no_retry_after() -> None:
-    assert AdmissionDenied("user_quota").retry_after_seconds is None
 
 
 # ============================================================== orchestrator
@@ -619,23 +478,20 @@ class _RetrievalCache:
 
 
 class _Admission:
-    """Admission ghi lại vé; tuỳ chọn từ chối."""
+    """Admission ghi lại slot; tuỳ chọn từ chối quá tải."""
 
     def __init__(self, deny: AdmissionDenied | None = None) -> None:
         self.deny = deny
-        self.tickets: list[AdmissionTicket] = []
         self.entered = 0
         self.exited = 0
 
     @asynccontextmanager
-    async def slot(self, user_id: str) -> AsyncIterator[AdmissionTicket]:
+    async def slot(self, user_id: str) -> AsyncIterator[None]:
         if self.deny is not None:
             raise self.deny
-        ticket = AdmissionTicket()
-        self.tickets.append(ticket)
         self.entered += 1
         try:
-            yield ticket
+            yield None
         finally:
             self.exited += 1
 
@@ -1008,7 +864,7 @@ def test_retrieval_miss_populates_retrieval_cache() -> None:
     assert trace.cache_status == "miss"
 
 
-def test_no_context_error_refunds_and_skips_generation() -> None:
+def test_no_context_error_releases_slot_and_skips_generation() -> None:
     generation, admission = _Generation(), _Admission()
     rcache = _RetrievalCache()
     events, trace = _run(
@@ -1023,10 +879,10 @@ def test_no_context_error_refunds_and_skips_generation() -> None:
     assert events[-2].type == "error" and events[-2].code == "no_context"
     assert trace.outcome == "error" and trace.error_code == "no_context"
     assert generation.queries == [] and rcache.sets == []
-    assert admission.tickets[0].refund_requested
+    assert admission.entered == admission.exited == 1
 
 
-def test_retrieval_exception_becomes_error_and_refunds() -> None:
+def test_retrieval_exception_becomes_error_and_releases_slot() -> None:
     admission = _Admission()
     events, trace = _run(
         _build(retrieve=_Retrieve(error=RuntimeError("boom")), admission=admission),
@@ -1034,45 +890,44 @@ def test_retrieval_exception_becomes_error_and_refunds() -> None:
     )
     assert events[-2].code == "retrieval_error" and events[-1].type == "done"
     assert trace.error_code == "retrieval_error"
-    assert admission.tickets[0].refund_requested
+    assert admission.entered == admission.exited == 1
 
 
-# ---------- refund theo generation
-def test_error_before_token_requests_refund() -> None:
+# ---------- generation errors still release the slot
+def test_error_before_token_releases_slot() -> None:
     admission = _Admission()
     generation = _Generation([ErrorEvent(code="llm_error", message="m"), DoneEvent()])
     _run(_build(generation=generation, admission=admission), [_u("q")])
-    assert admission.tickets[0].refund_requested
+    assert admission.entered == admission.exited == 1
 
 
-def test_error_after_token_does_not_refund() -> None:
+def test_error_after_token_releases_slot() -> None:
     admission = _Admission()
     generation = _Generation(
         [TokenEvent(text="x"), ErrorEvent(code="llm_error", message="m"), DoneEvent()]
     )
     _run(_build(generation=generation, admission=admission), [_u("q")])
-    assert not admission.tickets[0].refund_requested
-
-
-def test_success_does_not_refund() -> None:
-    admission = _Admission()
-    _run(_build(admission=admission), [_u("q")])
-    assert not admission.tickets[0].refund_requested
     assert admission.entered == admission.exited == 1
 
 
-def test_unexpected_generation_exception_before_token_refunds_quota() -> None:
+def test_success_releases_slot() -> None:
+    admission = _Admission()
+    _run(_build(admission=admission), [_u("q")])
+    assert admission.entered == admission.exited == 1
+
+
+def test_unexpected_generation_exception_before_token_releases_slot() -> None:
     admission = _Admission()
     generation = _Generation([], raises=RuntimeError("boom"))
     _run(_build(generation=generation, admission=admission), [_u("q")])
-    assert admission.tickets[0].refund_requested
+    assert admission.entered == admission.exited == 1
 
 
-def test_unexpected_exception_after_token_does_not_refund() -> None:
+def test_unexpected_exception_after_token_releases_slot() -> None:
     admission = _Admission()
     generation = _Generation([TokenEvent(text="x")], raises=RuntimeError("boom"))
     _run(_build(generation=generation, admission=admission), [_u("q")])
-    assert not admission.tickets[0].refund_requested
+    assert admission.entered == admission.exited == 1
 
 
 def test_unexpected_exception_becomes_llm_error_then_done() -> None:
@@ -1100,27 +955,24 @@ def test_unexpected_guardrail_exception_yields_error_done() -> None:
 
 # ---------- admission qua orchestrator
 @pytest.mark.parametrize(
-    ("denied", "code", "kind_message"),
+    "denied",
     [
-        (AdmissionDenied("user_quota"), "quota_exceeded", "hết số câu hỏi"),
-        (AdmissionDenied("global_budget"), "quota_exceeded", "hết lượt trả lời"),
-        (AdmissionDenied("overloaded", 10.0), "rate_limited", "quá tải"),
+        AdmissionDenied("overloaded"),
+        AdmissionDenied("overloaded", 10.0),
     ],
 )
-def test_denial_mapping_to_error_events(
-    denied: AdmissionDenied, code: str, kind_message: str
-) -> None:
+def test_overload_mapping_to_rate_limited_error(denied: AdmissionDenied) -> None:
     generation, retrieve = _Generation(), _Retrieve()
     events, trace = _run(
         _build(admission=_Admission(denied), generation=generation, retrieve=retrieve),
         [_u("q")],
     )
     error = events[-2]
-    assert error.code == code and kind_message in error.message
+    assert error.code == "rate_limited" and "quá tải" in error.message
     assert error.retry_after_seconds == denied.retry_after_seconds
     assert events[-1].type == "done"
     assert generation.queries == [] and retrieve.calls == []
-    assert trace.outcome == "error" and trace.error_code == code
+    assert trace.outcome == "error" and trace.error_code == "rate_limited"
     assert "retrieval" not in [e.stage for e in events if e.type == "status"]
 
 
@@ -1135,13 +987,12 @@ def test_answer_hit_bypasses_admission() -> None:
     assert admission.entered == 0 and trace.cache_status == "answer_hit"
 
 
-def _real_admission(**kw: int) -> tuple[AdmissionController, _Redis]:
-    redis = _Redis()
-    return _controller(redis, **kw), redis
+def _real_admission(**kw: int) -> AdmissionController:
+    return _controller(**kw)
 
 
 def test_spec_13_3_ten_concurrent_streams_limits() -> None:
-    controller, redis = _real_admission(max_concurrent_answers=2, max_waiting=6)
+    controller = _real_admission(max_concurrent_answers=2, max_waiting=6)
     gate = asyncio.Event()
     generation = _Generation(gate=gate)
     orchestrator = _build(generation=generation, admission=controller)
@@ -1165,70 +1016,10 @@ def test_spec_13_3_ten_concurrent_streams_limits() -> None:
     )
     assert generation.max_active == 2
     assert len(generation.queries) == 8
-    # Hai người bị từ chối được hoàn quota.
-    assert sum(v for k, v in redis.counts.items() if k.startswith("quota:global")) == 8
-
-
-def test_quota_exceeded_via_real_controller_for_same_user() -> None:
-    controller, _ = _real_admission(user_daily_llm_answers=1)
-    orchestrator = _build(admission=controller)
-    _, first = _run(orchestrator, [_u("q1")])
-    events, second = _run(orchestrator, [_u("q2")])
-    assert first.outcome == "answered"
-    assert events[-2].code == "quota_exceeded" and second.outcome == "error"
-
-
-def test_llm_error_before_token_refunds_real_quota() -> None:
-    controller, redis = _real_admission()
-    generation = _Generation([ErrorEvent(code="llm_error", message="m"), DoneEvent()])
-    _run(_build(generation=generation, admission=controller), [_u("q")])
-    assert all(v == 0 for v in redis.counts.values())
-
-
-def test_exception_before_token_refunds_real_quota() -> None:
-    controller, redis = _real_admission()
-    generation = _Generation([], raises=RuntimeError("boom"))
-    events, _ = _run(_build(generation=generation, admission=controller), [_u("q")])
-    assert events[-2].code == "llm_error"
-    assert redis.counts and all(v == 0 for v in redis.counts.values())
-
-
-def test_exception_after_token_keeps_real_quota() -> None:
-    controller, redis = _real_admission()
-    generation = _Generation([TokenEvent(text="x")], raises=RuntimeError("boom"))
-    _run(_build(generation=generation, admission=controller), [_u("q")])
-    assert redis.counts and all(v == 1 for v in redis.counts.values())
-
-
-def test_admission_refund_survives_cancellation_thanks_to_shield() -> None:
-    class SlowRedis(_Redis):
-        async def decr(self, key: str) -> None:
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
-            await super().decr(key)
-
-    redis = SlowRedis()
-    controller = _controller(redis)
-
-    async def body() -> None:
-        async with controller.slot("u") as ticket:
-            ticket.request_refund()
-
-    async def scenario() -> None:
-        task = asyncio.create_task(body())
-        await asyncio.sleep(0)  # đang ở giữa việc hoàn quota
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        for _ in range(10):
-            await asyncio.sleep(0)
-        assert all(v == 0 for v in redis.counts.values())
-
-    asyncio.run(scenario())
 
 
 def test_client_disconnect_releases_slot_and_skips_cache() -> None:
-    controller, _ = _real_admission(max_concurrent_answers=1, max_waiting=0)
+    controller = _real_admission(max_concurrent_answers=1, max_waiting=0)
     cache = _AnswerCache()
     gate = asyncio.Event()  # không bao giờ set: luồng kẹt sau token đầu tiên
     orchestrator = _build(

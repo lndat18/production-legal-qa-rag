@@ -23,7 +23,6 @@ from production_legal_qa_rag.cache.models import CachedAnswer
 from production_legal_qa_rag.conversation.admission import (
     AdmissionController,
     AdmissionDenied,
-    AdmissionTicket,
 )
 from production_legal_qa_rag.conversation.condenser import QueryCondenser
 from production_legal_qa_rag.conversation.history import HistoryWindow, build_window
@@ -60,12 +59,6 @@ logger = logging.getLogger(__name__)
 
 _NOT_FOUND_PHRASE: Final = "không tìm thấy quy định phù hợp"
 _INTERNAL_ERROR_MESSAGE: Final = "Đã xảy ra lỗi. Vui lòng thử lại sau."
-_QUOTA_MESSAGE: Final = (
-    "Bạn đã dùng hết số câu hỏi hôm nay. Vui lòng quay lại vào ngày mai."
-)
-_GLOBAL_BUDGET_MESSAGE: Final = (
-    "Hệ thống đã hết lượt trả lời trong ngày. Vui lòng quay lại vào ngày mai."
-)
 _OVERLOADED_MESSAGE: Final = "Hệ thống đang quá tải. Vui lòng thử lại sau."
 _RETRIEVAL_ERROR_MESSAGE: Final = (
     "Không thể tra cứu văn bản lúc này. Vui lòng thử lại sau."
@@ -247,40 +240,27 @@ class ChatOrchestrator:
     ) -> AsyncIterator[GenerationEvent]:
         """Cache miss: xin slot admission rồi retrieval + generation."""
         try:
-            async with self._admission.slot(ctx.user_id) as ticket:
-                async for event in self._retrieve_and_generate(
-                    standalone, trace, ticket
-                ):
+            async with self._admission.slot(ctx.user_id):
+                async for event in self._retrieve_and_generate(standalone, trace):
                     yield event
         except AdmissionDenied as denied:
             yield _denial_event(denied)
             yield DoneEvent()
 
     async def _retrieve_and_generate(
-        self, standalone: str, trace: TurnTrace, ticket: AdmissionTicket
+        self, standalone: str, trace: TurnTrace
     ) -> AsyncIterator[GenerationEvent]:
         yield StatusEvent(stage="retrieval")
         chunks, failure = await self._load_chunks(standalone, trace)
         if failure is not None:
-            ticket.request_refund()
             yield failure
             yield DoneEvent()
             return
         trace.chunk_ids = [chunk.chunk_id for chunk in chunks]
-        has_token = False
-        try:
-            async for event in self._generation.generate(standalone, chunks):
-                has_token = has_token or isinstance(event, TokenEvent)
-                if isinstance(event, ErrorEvent) and not has_token:
-                    ticket.request_refund()
-                if isinstance(event, DoneEvent):
-                    await self._store_answer(standalone, trace)
-                yield event
-        except Exception:
-            # Spec 8.4: lỗi hệ thống trước token thì hoàn quota, rồi thành llm_error.
-            if not has_token:
-                ticket.request_refund()
-            raise
+        async for event in self._generation.generate(standalone, chunks):
+            if isinstance(event, DoneEvent):
+                await self._store_answer(standalone, trace)
+            yield event
 
     async def _load_chunks(
         self, standalone: str, trace: TurnTrace
@@ -299,7 +279,7 @@ class ChatOrchestrator:
                 return [], ErrorEvent(
                     code="retrieval_error", message=_RETRIEVAL_ERROR_MESSAGE
                 )
-        # 18.2.2: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
+        # Mục 8: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
         # retrieve() không lọc gì — retrieval_spec.md mục 16 điểm 8).
         if not chunks:
             return [], ErrorEvent(code="no_context", message=_NO_CONTEXT_MESSAGE)
@@ -371,14 +351,11 @@ def _refusal_event(verdict: GuardrailVerdict) -> RefusalEvent:
 
 
 def _denial_event(denied: AdmissionDenied) -> ErrorEvent:
-    if denied.kind == "overloaded":
-        return ErrorEvent(
-            code="rate_limited",
-            message=_OVERLOADED_MESSAGE,
-            retry_after_seconds=denied.retry_after_seconds,
-        )
-    message = _QUOTA_MESSAGE if denied.kind == "user_quota" else _GLOBAL_BUDGET_MESSAGE
-    return ErrorEvent(code="quota_exceeded", message=message)
+    return ErrorEvent(
+        code="rate_limited",
+        message=_OVERLOADED_MESSAGE,
+        retry_after_seconds=denied.retry_after_seconds,
+    )
 
 
 def _internal_error_events() -> list[GenerationEvent]:

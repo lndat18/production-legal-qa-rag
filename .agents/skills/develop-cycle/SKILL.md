@@ -1,15 +1,19 @@
 ---
-description: Chạy vòng lặp developer → tester → reviewer cho một spec cụ thể
-argument-hint: <đường dẫn spec.md> <tên branch>
+name: develop-cycle
+description: Điều phối tuần tự developer → tester → reviewer để triển khai một spec đã chốt, bao gồm local gates, CI, PR và merge. Dùng khi người dùng yêu cầu chạy develop-cycle hoặc toàn bộ lifecycle này.
 ---
-Bạn là orchestrator cho quy trình implement code từ spec. Input là `$ARGUMENTS`, gồm chính xác hai phần: đường dẫn spec và tên branch (nếu chưa có branch thì tạo branch). Giả định spec đã được chốt cùng agent `architect` trước khi command này chạy.
+
+# Develop cycle
+
+Dùng workflow này khi người dùng yêu cầu `/develop-cycle <spec-path> <branch>` hoặc yêu cầu rõ ràng chạy trọn vòng developer → tester → reviewer cho một spec đã chốt. Không dùng nó cho sửa đổi nhỏ không cần PR/CI lifecycle.
+
+Đầu vào phải gồm đúng đường dẫn spec và tên branch. Có thể nhận spec path bọc trong dấu ngoặc kép nếu chứa khoảng trắng. Nếu thiếu, dư hoặc không thể tách an toàn hai giá trị, dừng và yêu cầu người dùng gọi lại theo dạng `/develop-cycle <spec-path> <branch>`.
 
 ## Preflight
 
-1. Tách và xác nhận spec path cùng branch name; cho phép bọc spec path trong dấu ngoặc kép nếu đường dẫn có khoảng trắng. Nếu thiếu, dư hoặc không thể tách an toàn hai tham số, dừng và yêu cầu người dùng gọi lại theo dạng `/develop-cycle <spec-path> <branch>`.
-2. Xác nhận spec tồn tại, branch tồn tại hoặc có thể được tạo an toàn từ `main`, và worktree không có thay đổi ngoài phạm vi task. Không tự đổi branch hoặc cất/loại bỏ thay đổi của người dùng khi worktree bẩn; dừng và báo rõ blocker.
-3. Xác nhận các custom agent `developer`, `tester`, `reviewer` đều có sẵn. Xác nhận GitHub CLI đã đăng nhập trước khi giao phần việc cần remote GitHub cho tester/reviewer.
-4. Lập state ledger ngay trong hội thoại gồm: spec path, branch, PR (ban đầu chưa có), `feedback_count = 0`, SHA mới nhất và feedback tích lũy. Chạy các agent tuần tự; không chạy song song các agent có thể ghi vào cùng branch.
+1. Xác nhận spec tồn tại, branch tồn tại hoặc có thể được tạo an toàn từ `main`, và worktree không có thay đổi ngoài phạm vi task. Không tự đổi branch hoặc cất/loại bỏ thay đổi của người dùng khi worktree bẩn; dừng và báo rõ blocker.
+2. Xác nhận các custom agent `developer`, `tester`, `reviewer` đều có sẵn. Xác nhận GitHub CLI đã đăng nhập trước khi giao phần việc cần remote GitHub cho tester/reviewer.
+3. Lập state ledger ngay trong hội thoại gồm: spec path, branch, PR (ban đầu chưa có), `feedback_count = 0`, SHA mới nhất và feedback tích lũy. Chạy các agent tuần tự; không chạy song song các agent có thể ghi vào cùng branch.
 
 ## Quy tắc điều phối
 
@@ -18,6 +22,7 @@ Bạn là orchestrator cho quy trình implement code từ spec. Input là `$ARGU
 - Mỗi feedback do CI fail hoặc reviewer `REVISE` làm tăng `feedback_count` thêm 1. Ngay khi biến đếm đạt 3, dừng toàn bộ quy trình, không gọi thêm agent và báo người dùng cần can thiệp thủ công kèm mọi feedback/SHA/PR hiện có.
 - Nếu một agent báo blocker, thiếu quyền, không thể xác minh trạng thái, hoặc developer báo **hard local gate** lỗi, dừng ngay. Không phỏng đoán, không bỏ qua gate và không gọi agent kế tiếp. `test_migration_required` được developer khai báo đầy đủ theo role không phải hard-gate failure: tester phải cập nhật test theo spec rồi để GitHub Actions quyết định.
 - Mỗi lần gọi agent phải yêu cầu một handoff có cấu trúc: trạng thái, SHA/commit liên quan, PR nếu có, feedback theo định dạng đã quy định và hành động kế tiếp.
+- Cấu hình `.codex/config.toml` cho phép các lệnh local và network cần thiết trong workflow không phải xin xác nhận từng lệnh. Không coi đó là quyền để phá vỡ giới hạn role hoặc thực hiện thao tác ngoài workflow.
 
 ## Vòng lặp
 

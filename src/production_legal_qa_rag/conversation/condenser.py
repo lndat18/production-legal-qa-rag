@@ -99,7 +99,7 @@ _WRAPPING_QUOTES: Final = "\"'`“”‘’«»"
 
 
 class CondenseReason(StrEnum):
-    """Mã lý do của một lần condense (conversation_spec.md mục 15.3)."""
+    """Mã lý do của một lần condense (conversation_spec.md mục 5)."""
 
     OK = "ok"
     NO_HISTORY = "no_history"
@@ -156,13 +156,13 @@ class QueryCondenser:
     async def condense_detailed(
         self, query: str, history: Sequence[ChatMessage]
     ) -> CondenseOutcome:
-        """Như ``condense`` nhưng kèm mã lý do và số đo (mục 15.3, bước 0).
+        """Như ``condense`` nhưng kèm mã lý do và số đo (conversation_spec.md mục 5).
 
         Không raise: mọi lỗi degrade về ``query`` với ``reason`` tương ứng.
         Log warning khi loại đầu ra chỉ có ``reason``, ``finish_reason`` và số
         token, không có nội dung (mục 12).
 
-        Retry (mục 15.3 bước C / 18.2.4): khi lần gọi đầu có
+        Retry khi lần gọi đầu có
         ``reason=CondenseReason.FINISH_LENGTH`` (lỗi ngẫu nhiên — reasoning ăn
         hết ``max_completion_tokens``, không phải lỗi xác định), gọi lại đúng 1
         lần với cùng tham số. Kết quả lần 2 luôn được dùng (dù vẫn
@@ -176,7 +176,7 @@ class QueryCondenser:
         outcome = await self._condense_once(query, history)
         if outcome.reason == CondenseReason.FINISH_LENGTH:
             logger.warning(
-                "Condense reason=%s ở lần gọi đầu, retry 1 lần (mục 18.2.4).",
+                "Condense reason=%s ở lần gọi đầu, retry 1 lần.",
                 CondenseReason.FINISH_LENGTH,
             )
             outcome = await self._condense_once(query, history)

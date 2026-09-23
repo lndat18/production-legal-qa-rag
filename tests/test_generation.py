@@ -415,6 +415,30 @@ def test_rate_limit_propagates_retry_after_seconds() -> None:
     assert judge.calls == []
 
 
+def test_judge_wrapped_rate_limit_preserves_retry_after_without_tokens() -> None:
+    class ProviderRateLimitError(Exception):
+        status_code = 429
+        response = SimpleNamespace(headers={"retry-after": "7.5"})
+
+    provider_error = ProviderRateLimitError("too many requests")
+    judge_error = JudgeError("Judge provider failed")
+    judge_error.__cause__ = provider_error
+    pipeline, generator, judge, _ = _pipeline(
+        chunks=[_chunk()],
+        drafts=[_answer("Người lao động được nghỉ 12 ngày [1].")],
+        judge_verdicts=[judge_error],
+    )
+
+    events = _collect(pipeline)
+
+    assert events[-2].type == "error"
+    assert events[-2].code == "rate_limited"
+    assert events[-2].retry_after_seconds == 7.5
+    assert events[-1] == DoneEvent()
+    assert len(judge.calls) == 1 and generator.repair_calls == []
+    assert not [event for event in events if event.type == "token"]
+
+
 def test_judge_repair_uses_the_only_repair_budget_and_fixed_context() -> None:
     issue = JudgeIssue(
         code="missing_material_condition",
