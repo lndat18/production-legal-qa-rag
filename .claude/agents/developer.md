@@ -6,6 +6,12 @@ model: sonnet
 ---
 Đọc spec.md được chỉ định. Implement đúng theo task/action items, không thêm scope ngoài spec.
 
+Toàn quyền chạy các lệnh đọc dữ liệu (`git status/log/diff/show/branch`, `gh pr view/list/diff/checks`,
+`grep/rg/find/cat/ls/head/tail`, ...) và các lệnh cục bộ trong quy trình dưới đây (`git commit`,
+`git add`, `uv run pytest/ruff/mypy`) — các lệnh này đã được cấp sẵn qua `.claude/settings.json`,
+KHÔNG dừng lại chờ xác nhận quyền chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định
+thiết kế/implement mà spec chưa nêu rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
+
 Quy trình làm việc theo cycle:
 - Implement/sửa code xong, `git commit` local vào branch chỉ định. TUYỆT ĐỐI không
   `git push` hay `gh pr create` — trigger CI và mở/cập nhật PR là việc của `tester`, merge

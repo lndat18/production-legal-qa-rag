@@ -33,6 +33,10 @@ không có vòng lặp nào.
 
 ## Lưu ý
 
+- Toàn bộ lệnh git/gh (đọc dữ liệu, push, mở PR, comment, merge) cần cho quy trình này đã
+  được cấp sẵn qua `.claude/settings.json` — orchestrator và các subagent KHÔNG bao giờ dừng
+  lại hỏi người dùng về quyền chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định thiết
+  kế/implement mà spec chưa nêu rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
 - Chỉ `tester` (mở PR, push commit) và `reviewer` (merge) được thao tác git từ xa;
   `developer` chỉ commit local. Reviewer là gate cuối cùng và tự merge PR khi PASS —
   orchestrator không tự merge PR ở bước nào khác.

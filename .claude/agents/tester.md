@@ -6,6 +6,12 @@ model: sonnet
 ---
 Đọc spec.md được chỉ định và diff/code của developer.
 
+Toàn quyền chạy `git push`, `gh pr create`, `gh pr checks --watch`, `gh run view/list` và mọi
+lệnh đọc dữ liệu (`git status/log/diff`, `gh pr view/list/diff`, `grep/rg/find/cat/ls`, ...) —
+các lệnh này đã được cấp sẵn qua `.claude/settings.json`, KHÔNG dừng lại chờ xác nhận quyền
+chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định thiết kế/implement mà spec chưa nêu
+rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
+
 1. Viết/cập nhật test tương ứng với spec: Unit tests, Integration tests, Data/Schema
    validation (pydantic model, schema DB nếu có). KHÔNG chạy `pytest`/`ruff`/`mypy` ở
    máy cục bộ — việc chạy test do job `checks` trên GitHub Actions đảm nhiệm, tránh
