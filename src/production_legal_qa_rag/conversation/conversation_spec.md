@@ -1611,7 +1611,7 @@ hạn token/ngày dùng chung của tài khoản Groq — xem dưới).
   rủi ro đã nêu ở trên chưa xảy ra trên thực tế, nhưng mẫu đo còn nhỏ (chưa đủ `--groups
   all`), để lại làm quan sát tiếp nếu phát hiện thêm ca lệch trong vận hành.
 
-#### 19.3.2 Disclaimer ngày cập nhật dữ liệu (B10)
+#### 19.3.2 Disclaimer ngày cập nhật dữ liệu (B10) — đã implement (2026-09-23)
 
 **Giải pháp:** thêm hằng số cố định (ví dụ `DATA_SNAPSHOT_DISCLAIMER`, nội dung mẫu:
 `"\n\n_Dữ liệu pháp luật trong hệ thống được cập nhật tới {DATE}; có thể chưa phản ánh
@@ -1642,12 +1642,39 @@ cắt bỏ luôn disclaimer này khi dọn history — cùng lý do đã cắt `
   hằng số disclaimer tồn tại, không rỗng. Nghiệm thu end-to-end (sau khi `api/` implement
   phần nối, ngoài phạm vi vòng này): 1 câu trả lời qua OpenWebUI có disclaimer xuất hiện
   đúng 1 lần cuối câu trả lời.
-- **Giả định cần người dùng duyệt lại:** (1) dùng hằng số ngày thủ công thay vì tự động;
-  (2) vị trí nối disclaimer ở lớp `api/`, theo đúng pattern `SOURCES_FOOTER_MARKER` — nếu
-  muốn đặt ở nơi khác (ví dụ hiển thị tĩnh trên UI OpenWebUI, không qua mỗi câu trả lời),
-  đổi thiết kế trước khi code.
+- **Giả định — đã duyệt: hằng số thủ công (người dùng xác nhận 2026-09-23).** (1) Dùng
+  hằng số ngày cố định, cập nhật **thủ công** mỗi lần re-index corpus (không tự động hoá)
+  — đã duyệt, giữ nguyên như đề xuất. (2) Vị trí nối disclaimer ở lớp `api/`, theo đúng
+  pattern `SOURCES_FOOTER_MARKER` — đã duyệt, giữ nguyên (không chuyển sang hiển thị tĩnh
+  trên UI OpenWebUI).
 - **Không tăng bề mặt bịa đặt:** nội dung disclaimer là chuỗi tĩnh, không do LLM sinh,
   không phụ thuộc context/câu hỏi.
+
+**Kết quả (2026-09-23):** implement ở nhánh `feat/data-snapshot-disclaimer`, phạm vi
+code thật chỉ `conversation/history.py` (package `api/` chưa có code — phần "nối vào
+luồng SSE" chỉ là ghi chú kế hoạch trong `api_spec.md`, không có gì để implement thật).
+
+- `conversation/history.py`: thêm `CORPUS_SNAPSHOT_DATE: Final = "2026-09-23"` (hằng số
+  ngày thủ công) và `DATA_SNAPSHOT_DISCLAIMER: Final` (chuỗi đã render sẵn từ
+  `CORPUS_SNAPSHOT_DATE`, đặt cạnh `SOURCES_FOOTER_MARKER`, cùng nhóm "phần đuôi cố định
+  do `api/` nối vào câu trả lời"). Không tìm được mốc re-index corpus rõ ràng trong lịch
+  sử git (các commit `embedding/`/`chunking/` chỉ phản ánh ngày merge code, không phải
+  ngày build index thật — `corpus_version` ở `cache_spec.md` cũng không mang ngày) nên
+  dùng ngày viết mục này (2026-09-23) làm placeholder, có ghi chú rõ trong code phải cập
+  nhật thủ công theo runbook re-index chính thức khi có.
+- `_clean_assistant` (bước làm sạch history, mục 4) mở rộng: cắt cả
+  `SOURCES_FOOTER_MARKER` lẫn `DATA_SNAPSHOT_DISCLAIMER` trước khi xoá `[n]` và cắt độ
+  dài, không phụ thuộc thứ tự xuất hiện của hai phần đuôi.
+- Test đơn vị (`tests/test_conversation.py`): `test_data_snapshot_disclaimer_is_non_empty`
+  (hằng số tồn tại, không rỗng) và
+  `test_window_cleans_both_sources_footer_and_data_snapshot_disclaimer` (message giả lập
+  nối cả `SOURCES_FOOTER_MARKER` lẫn `DATA_SNAPSHOT_DISCLAIMER` ở cuối, xác nhận
+  `build_window` chỉ giữ lại đúng phần câu trả lời thật).
+- `api/api_spec.md`: thêm 1 bullet ghi chú kế hoạch (mục 6, cạnh bảng chuyển đổi event)
+  cho việc `api/` (khi implement) nối `DATA_SNAPSHOT_DISCLAIMER` vào cuối luồng SSE, sau
+  khối `citations` và `warning`, đúng 1 lần trước `done`/`[DONE]`.
+- Không chạy được nghiệm thu end-to-end (qua OpenWebUI) vì `api/` chưa tồn tại — đúng như
+  đã nêu trong tiêu chí nghiệm thu ở trên, phần đó để lại cho khi `api/` implement.
 
 ### 19.4 Phạm vi thay đổi (tổng hợp theo file)
 

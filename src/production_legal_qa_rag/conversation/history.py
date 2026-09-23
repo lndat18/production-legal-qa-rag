@@ -16,6 +16,27 @@ from production_legal_qa_rag.conversation.models import ChatMessage
 
 # Khối "Nguồn" do `api/` nối vào câu trả lời; hằng số ở đây để `api/` import.
 SOURCES_FOOTER_MARKER: Final = "\n\n---\n**Nguồn**\n"
+
+# Ngày (thủ công) coi như thời điểm dữ liệu pháp luật trong corpus được cập nhật gần
+# nhất. KHÔNG có nguồn tự động đáng tin cậy để suy ra giá trị này (`corpus_version` ở
+# `cache_spec.md` chỉ là hash BM25, không phải ngày; mtime file không phản ánh ngày ban
+# hành/sửa đổi văn bản luật thật) — xem conversation_spec.md mục 19.2 dòng B10, 19.3.2.
+# Placeholder ban đầu: không tìm được mốc re-index corpus rõ ràng trong lịch sử git (các
+# commit embedding/chunking chỉ phản ánh ngày merge code, không phải ngày build index
+# thật), nên dùng ngày viết mục 19.3.2 (2026-09-23). PHẢI cập nhật thủ công mỗi lần
+# re-index corpus (gắn vào runbook re-index, đã chốt ở 19.3.2 — không tự động hoá).
+CORPUS_SNAPSHOT_DATE: Final = "2026-09-23"
+
+# Disclaimer cố định do `api/` nối vào cuối câu trả lời SSE, sau khối "Nguồn" (cùng nhóm
+# "phần đuôi cố định do `api/` nối vào câu trả lời" với `SOURCES_FOOTER_MARKER`; hằng số
+# ở đây để `api/` import — conversation_spec.md mục 19.3.2).
+DATA_SNAPSHOT_DISCLAIMER: Final = (
+    "\n\n_Dữ liệu pháp luật trong hệ thống được cập nhật tới "
+    f"{CORPUS_SNAPSHOT_DATE}; có thể chưa phản ánh sửa đổi, bổ sung mới nhất. Vui lòng "
+    "đối chiếu văn bản chính thức hoặc cơ quan có thẩm quyền khi cần độ chính xác cao "
+    "nhất._"
+)
+
 MAX_QUERY_CHARS: Final = 1000
 HISTORY_MAX_TURNS: Final = 3
 HISTORY_ASSISTANT_MAX_CHARS: Final = 600
@@ -93,8 +114,9 @@ def _clean_user(message: ChatMessage) -> ChatMessage:
 
 
 def _clean_assistant(message: ChatMessage) -> ChatMessage:
-    """Cắt khối Nguồn, xoá ``[n]`` và giới hạn độ dài câu trả lời cũ."""
+    """Cắt khối Nguồn + disclaimer, xoá ``[n]`` và giới hạn độ dài câu trả lời cũ."""
     text = message.content.split(SOURCES_FOOTER_MARKER, 1)[0]
+    text = text.split(DATA_SNAPSHOT_DISCLAIMER, 1)[0]
     text = _CITATION_MARK.sub("", text).strip()
     if len(text) > HISTORY_ASSISTANT_MAX_CHARS:
         text = text[:HISTORY_ASSISTANT_MAX_CHARS].rstrip() + _ELLIPSIS
