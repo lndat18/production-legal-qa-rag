@@ -1,12 +1,12 @@
-"""Dựng prompt và stream câu trả lời có căn cứ từ Groq."""
+"""Dựng prompt và stream câu trả lời có căn cứ từ Groq qua langchain-openai."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterable
-from typing import Final, cast
+from collections.abc import AsyncIterator
+from typing import Final
 
-from groq import AsyncGroq
-from groq.types.chat import ChatCompletionMessageParam
+from langchain_core.messages import UsageMetadata
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
 from production_legal_qa_rag.config import GenerationSettings
@@ -16,9 +16,17 @@ from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
 PROMPT_VERSION: Final = "v6"
+
+# Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
+# dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
+# JSON, tránh xung đột version `groq` với condenser.py/llm_client.py/hyde.py.
+_GROQ_OPENAI_BASE_URL: Final = "https://api.groq.com/openai/v1"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048
+# Tham số riêng của Groq, không thuộc schema OpenAI chuẩn của ChatOpenAI — phải
+# truyền qua extra_body để được giữ nguyên vẹn ở top-level request body.
+_EXTRA_BODY: Final = {"include_reasoning": False}
 
 GENERATION_SYSTEM_PROMPT: Final = """Bạn là trợ lý tra cứu pháp luật Việt Nam về lao động, bảo hiểm xã hội, bảo hiểm y
 tế, thuế thu nhập cá nhân và tiền lương. Bạn trả lời dựa HOÀN TOÀN vào các đoạn
@@ -240,17 +248,23 @@ class AnswerGenerator:
     def __init__(
         self,
         settings: GenerationSettings | None = None,
-        client: AsyncGroq | None = None,
+        client: ChatOpenAI | None = None,
     ) -> None:
         self._settings = settings
         self._client = LoopBoundClient(self._create_client, client)
 
-    def _create_client(self) -> AsyncGroq:
+    def _create_client(self) -> ChatOpenAI:
         settings = self._get_settings()
-        return AsyncGroq(
+        return ChatOpenAI(
+            base_url=_GROQ_OPENAI_BASE_URL,
             api_key=settings.api_key,
+            model=settings.model_name,
             max_retries=settings.max_retries,
             timeout=float(settings.timeout_seconds),
+            reasoning_effort=_REASONING_EFFORT,
+            temperature=_TEMPERATURE,
+            max_completion_tokens=_MAX_COMPLETION_TOKENS,
+            extra_body=_EXTRA_BODY,
         )
 
     def _get_settings(self) -> GenerationSettings:
@@ -333,24 +347,11 @@ class AnswerGenerator:
         self, messages: list[dict[str, str]]
     ) -> AsyncIterator[GenerationDelta]:
         """Gọi Groq stream với message đã được dựng bởi draft hoặc repair."""
-        settings = self._get_settings()
-        stream = await self._client.get().chat.completions.create(
-            model=settings.model_name,
-            messages=cast(Iterable[ChatCompletionMessageParam], messages),
-            stream=True,
-            include_reasoning=False,
-            reasoning_effort=_REASONING_EFFORT,
-            temperature=_TEMPERATURE,
-            max_completion_tokens=_MAX_COMPLETION_TOKENS,
-        )
-        async for chunk in stream:
-            choice = chunk.choices[0] if chunk.choices else None
-            text = choice.delta.content if choice and choice.delta.content else ""
-            finish_reason = choice.finish_reason if choice else None
+        async for chunk in self._client.get().astream(messages):
             yield GenerationDelta(
-                text=text,
-                finish_reason=finish_reason,
-                usage=_to_usage(chunk.usage),
+                text=chunk.content if isinstance(chunk.content, str) else "",
+                finish_reason=chunk.response_metadata.get("finish_reason"),
+                usage=_to_usage(chunk.usage_metadata),
             )
 
     async def _buffer(self, stream: AsyncIterator[GenerationDelta]) -> GeneratedAnswer:
@@ -371,16 +372,16 @@ class AnswerGenerator:
         )
 
 
-def _to_usage(raw_usage: object | None) -> Usage | None:
-    """Chuyển usage SDK có thể thiếu trường thành model nội bộ ổn định."""
-    if raw_usage is None:
+def _to_usage(usage_metadata: UsageMetadata | None) -> Usage | None:
+    """Chuyển usage_metadata của langchain-openai thành model nội bộ ổn định."""
+    if usage_metadata is None:
         return None
 
-    completion_details = getattr(raw_usage, "completion_tokens_details", None)
+    output_token_details = usage_metadata.get("output_token_details") or {}
     usage = Usage(
-        prompt_tokens=getattr(raw_usage, "prompt_tokens", None),
-        completion_tokens=getattr(raw_usage, "completion_tokens", None),
-        reasoning_tokens=getattr(completion_details, "reasoning_tokens", None),
+        prompt_tokens=usage_metadata.get("input_tokens"),
+        completion_tokens=usage_metadata.get("output_tokens"),
+        reasoning_tokens=output_token_details.get("reasoning"),
     )
     if all(
         value is None

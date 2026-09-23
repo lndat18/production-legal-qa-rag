@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from groq import AsyncGroq
+from langchain_openai import ChatOpenAI
 
 from production_legal_qa_rag.config import JudgeSettings
 from production_legal_qa_rag.generation.generator import build_context
@@ -13,6 +13,9 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 JUDGE_PROMPT_VERSION: Final = "v1"
+
+# Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8).
+_GROQ_OPENAI_BASE_URL: Final = "https://api.groq.com/openai/v1"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.0
 _MAX_COMPLETION_TOKENS: Final = 1024
@@ -52,17 +55,22 @@ class EvidenceJudge:
     def __init__(
         self,
         settings: JudgeSettings | None = None,
-        client: AsyncGroq | None = None,
+        client: ChatOpenAI | None = None,
     ) -> None:
         self._settings = settings
         self._client = LoopBoundClient(self._create_client, client)
 
-    def _create_client(self) -> AsyncGroq:
+    def _create_client(self) -> ChatOpenAI:
         settings = self._get_settings()
-        return AsyncGroq(
+        return ChatOpenAI(
+            base_url=_GROQ_OPENAI_BASE_URL,
             api_key=settings.api_key,
+            model=settings.model_name,
             max_retries=settings.max_retries,
             timeout=float(settings.timeout_seconds),
+            reasoning_effort=_REASONING_EFFORT,
+            temperature=_TEMPERATURE,
+            max_completion_tokens=_MAX_COMPLETION_TOKENS,
         )
 
     def _get_settings(self) -> JudgeSettings:
@@ -93,10 +101,11 @@ class EvidenceJudge:
             JudgeError: Provider lỗi, trả rỗng, JSON sai hoặc schema không hợp lệ.
         """
         try:
-            settings = self._get_settings()
-            response = await self._client.get().chat.completions.create(
-                model=settings.model_name,
-                messages=[
+            structured_client = self._client.get().with_structured_output(
+                JudgeVerdict, method="json_mode"
+            )
+            verdict = await structured_client.ainvoke(
+                [
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {
                         "role": "user",
@@ -107,16 +116,11 @@ class EvidenceJudge:
                             citations=_render_citations(citations),
                         ),
                     },
-                ],
-                response_format={"type": "json_object"},
-                reasoning_effort=_REASONING_EFFORT,
-                temperature=_TEMPERATURE,
-                max_completion_tokens=_MAX_COMPLETION_TOKENS,
+                ]
             )
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Judge trả về nội dung rỗng")
-            return JudgeVerdict.model_validate_json(content)
+            if not isinstance(verdict, JudgeVerdict):
+                raise TypeError("Judge trả về kết quả không đúng schema JudgeVerdict")
+            return verdict
         except Exception as error:
             raise JudgeError("Không thể xác minh evidence của câu trả lời.") from error
 

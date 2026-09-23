@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 from typing import Final
 
-from groq import AsyncGroq
+from langchain_openai import ChatOpenAI
 
 from production_legal_qa_rag.config import GuardrailSettings
 from production_legal_qa_rag.generation.models import GuardrailVerdict
@@ -38,6 +38,8 @@ _USER_TEMPLATE_WITH_RECENT_TURNS: Final = """Câu hỏi trước (chỉ để hi
 
 Câu hỏi: {query}"""
 
+# Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8).
+_GROQ_OPENAI_BASE_URL: Final = "https://api.groq.com/openai/v1"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.0
 _MAX_COMPLETION_TOKENS: Final = 512
@@ -49,17 +51,22 @@ class InputGuardrail:
     def __init__(
         self,
         settings: GuardrailSettings | None = None,
-        client: AsyncGroq | None = None,
+        client: ChatOpenAI | None = None,
     ) -> None:
         self._settings = settings
         self._client = LoopBoundClient(self._create_client, client)
 
-    def _create_client(self) -> AsyncGroq:
+    def _create_client(self) -> ChatOpenAI:
         settings = self._get_settings()
-        return AsyncGroq(
+        return ChatOpenAI(
+            base_url=_GROQ_OPENAI_BASE_URL,
             api_key=settings.api_key,
+            model=settings.model_name,
             max_retries=settings.max_retries,
             timeout=float(settings.timeout_seconds),
+            reasoning_effort=_REASONING_EFFORT,
+            temperature=_TEMPERATURE,
+            max_completion_tokens=_MAX_COMPLETION_TOKENS,
         )
 
     def _get_settings(self) -> GuardrailSettings:
@@ -81,24 +88,23 @@ class InputGuardrail:
             Verdict đã parse, hoặc verdict ``allow`` khi không thể kiểm tra.
         """
         try:
-            settings = self._get_settings()
-            response = await self._client.get().chat.completions.create(
-                model=settings.model_name,
-                messages=[
+            structured_client = self._client.get().with_structured_output(
+                GuardrailVerdict, method="json_mode"
+            )
+            verdict = await structured_client.ainvoke(
+                [
                     {"role": "system", "content": GUARDRAIL_SYSTEM_PROMPT},
                     {
                         "role": "user",
                         "content": _build_user_message(query, recent_user_turns),
                     },
-                ],
-                reasoning_effort=_REASONING_EFFORT,
-                temperature=_TEMPERATURE,
-                max_completion_tokens=_MAX_COMPLETION_TOKENS,
+                ]
             )
-            content = response.choices[0].message.content
-            if not content:
-                raise ValueError("Groq safeguard trả về nội dung rỗng")
-            return GuardrailVerdict.model_validate_json(content)
+            if not isinstance(verdict, GuardrailVerdict):
+                raise TypeError(
+                    "Guardrail trả về kết quả không đúng schema GuardrailVerdict"
+                )
+            return verdict
         except Exception:
             logger.warning(
                 "Guardrail lỗi; cho phép câu hỏi tiếp tục xử lý.", exc_info=True
