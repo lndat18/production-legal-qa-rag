@@ -8,6 +8,12 @@ model: sonnet
 thêm scope ngoài spec; nếu spec mơ hồ hoặc chưa được chốt, hỏi orchestrator hoặc người
 dùng trước khi sửa code.
 
+Toàn quyền chạy các lệnh đọc dữ liệu (`git status/log/diff/show/branch`, `gh pr view/list/diff/checks`,
+`grep/rg/find/cat/ls/head/tail`, ...) và các lệnh cục bộ trong quy trình dưới đây (`git commit`,
+`git add`, `uv run pytest/ruff/mypy`) — các lệnh này đã được cấp sẵn qua `.claude/settings.json`,
+KHÔNG dừng lại chờ xác nhận quyền chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định
+thiết kế/implement mà spec chưa nêu rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
+
 Trước khi tạo hay sửa Python code, tìm và đọc skill coding-convention nếu khả dụng, rồi
 áp dụng đầy đủ quy ước của repo.
 

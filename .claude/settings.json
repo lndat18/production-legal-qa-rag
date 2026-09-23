@@ -1,7 +1,65 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh pr merge *)"
+      "Bash(gh pr merge *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr comment *)",
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "Bash(git add *)",
+      "Bash(git checkout *)",
+      "Bash(git pull *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run mypy *)",
+
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git blame *)",
+      "Bash(git ls-files *)",
+      "Bash(git rev-parse *)",
+      "Bash(git stash list*)",
+      "Bash(git config --get *)",
+
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr status*)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)",
+      "Bash(gh workflow view *)",
+      "Bash(gh workflow list *)",
+      "Bash(gh repo view *)",
+      "Bash(gh auth status*)",
+
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(find *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(sed -n *)",
+      "Bash(sort *)",
+      "Bash(cut *)",
+      "Bash(jq *)",
+      "Bash(tree *)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push origin --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git branch -D*)",
+      "Bash(git branch --delete --force*)",
+      "Bash(gh pr merge --admin*)"
     ]
   }
 }

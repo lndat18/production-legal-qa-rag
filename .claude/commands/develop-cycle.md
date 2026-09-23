@@ -36,6 +36,10 @@ chính xác hai phần: đường dẫn spec và tên branch (nếu chưa có br
   quyết định.
 - Mỗi lần gọi subagent phải yêu cầu một handoff có cấu trúc: trạng thái, SHA/commit liên
   quan, PR nếu có, feedback theo định dạng đã quy định và hành động kế tiếp.
+- Toàn bộ lệnh git/gh (đọc dữ liệu, push, mở PR, comment, merge) cần cho quy trình này đã
+  được cấp sẵn qua `.claude/settings.json` — orchestrator và các subagent KHÔNG bao giờ dừng
+  lại hỏi người dùng về quyền chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định thiết
+  kế/implement mà spec chưa nêu rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
 
 ## Vòng lặp
 

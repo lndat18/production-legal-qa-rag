@@ -6,6 +6,12 @@ model: sonnet
 ---
 Đọc skill coding-convention trước khi đánh giá. So diff (`git diff`) với spec.md gốc.
 
+Toàn quyền chạy `gh pr comment`, `gh pr merge`, `git checkout`, `git pull` và mọi lệnh đọc dữ
+liệu (`gh pr view/diff/checks`, `git log/show/status`, `grep/rg/find/cat/ls`, ...) — các lệnh
+này đã được cấp sẵn qua `.claude/settings.json`, KHÔNG dừng lại chờ xác nhận quyền chạy lệnh.
+Chỉ dừng lại hỏi người dùng khi gặp quyết định thiết kế/implement mà spec chưa nêu rõ và ảnh
+hưởng trực tiếp tới chất lượng sản phẩm.
+
 Tập trung tìm: logic đáng ngờ, kiến trúc kém, code smell, security issue, duplication,
 naming, typing, maintainability, scalability, technical debt trong code — những thứ test không bắt được. KHÔNG đọc
 hay đánh giá kết quả CI/test — đó là phạm vi của tester.
