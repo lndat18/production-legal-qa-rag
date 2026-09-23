@@ -14,8 +14,8 @@ phase này**; phase hiện tại tập trung phục vụ người dùng cuối).
 - Condense: viết lại câu follow-up thành câu hỏi độc lập (mục 5).
 - Điều phối end-user `ChatOrchestrator.stream()` (mục 7): guardrail ‖ condense → cache →
   admission → retrieve → generate, và ghi `TurnTrace` cho `chatlog/`.
-- Admission: quota theo user/ngày, ngân sách toàn cục/ngày, giới hạn đồng thời + hàng đợi
-  ngắn (mục 8).
+- Admission: giới hạn đồng thời + hàng đợi ngắn (mục 8). Không còn quota theo user/ngày
+  hay ngân sách toàn cục/ngày (bỏ 2026-09-23, xem mục 8, mục 14 điểm 7).
 - ~~Adapter đánh giá `run_for_evaluation()`~~ → hoãn sang phase RAGAS (mục 9 giữ làm bản
   thiết kế tham khảo).
 
@@ -225,27 +225,66 @@ xoá nội dung injection. Chi tiết ở `generation_spec.md` mục 16.
 ## 8. Admission (`admission.py`)
 
 `AdmissionController.slot(user_id)` — async context manager bao quanh phần tốn LLM
-(retrieval + generation), **chỉ chạy khi cache miss**. Theo thứ tự:
+(retrieval + generation), **chỉ chạy khi cache miss**. Một trách nhiệm duy nhất: **giới
+hạn đồng thời**. Không còn quota đếm theo ngày (quyết định 2026-09-23, thay cho thiết kế
+3 lớp trước đó gồm quota user/ngày + ngân sách toàn cục/ngày + đồng thời).
 
-1. **Quota theo user/ngày:** `INCR quota:user:{user_id}:{yyyymmdd}` (Redis, `EXPIRE` 48h);
-   vượt `USER_DAILY_LLM_ANSWERS` → `AdmissionDenied(kind="user_quota")`.
-2. **Ngân sách toàn cục/ngày:** `INCR quota:global:{yyyymmdd}`; vượt
-   `GLOBAL_DAILY_LLM_ANSWERS` → `AdmissionDenied(kind="global_budget")`. Con số này bảo
-   vệ **TPD 200K** của `gpt-oss-120b` ở org B (nút thắt thật: ~3–4K token/câu → chỉ
-   ~50–60 câu cache-miss/ngày; RPD 1K không phải giới hạn chạm trước).
-3. **Đồng thời:** `asyncio.Semaphore(MAX_CONCURRENT_ANSWERS)` (in-process) + bộ đếm người
+1. **Đồng thời:** `asyncio.Semaphore(MAX_CONCURRENT_ANSWERS)` (in-process) + bộ đếm người
    đang chờ; vượt `MAX_WAITING` → `AdmissionDenied(kind="overloaded", retry_after_seconds)`.
    Người chờ trong hàng đợi giữ kết nối; lớp API gửi keep-alive (`api_spec.md` mục 6).
-4. Hoàn lại 1 đơn vị quota (user + global) nếu bước 3 bị từ chối hoặc luồng kết thúc bằng
-   `error` trước khi có token nào (không phạt người dùng vì lỗi hệ thống).
+   Đổi thành `error(code="rate_limited", retry_after_seconds)`.
+2. Không còn bước từ chối nào khác trước khi request chạm Groq: mọi request qua được
+   semaphore đều đi tới retrieval + generation thật.
 
-Đổi thành `error`: `user_quota`/`global_budget` → `error(code="quota_exceeded")`;
-`overloaded` → `error(code="rate_limited", retry_after_seconds)`.
+**Đã bỏ quota theo user/ngày (`USER_DAILY_LLM_ANSWERS = 5`) và ngân sách toàn cục/ngày
+(`GLOBAL_DAILY_LLM_ANSWERS = 50`, ước lượng từ TPD 200K ÷ 3–4K token/câu).** Lý do (quyết
+định trực tiếp với người dùng, không phải suy diễn): mục tiêu triển khai thực tế của dự án
+là "tôi dùng được + người được chia sẻ URL dùng được + người tự clone repo tự host dùng
+được" — không phải dịch vụ multi-tenant cần cá nhân hoá quota theo user. Nguyên văn quyết
+định: "bây giờ tôi muốn không limit nữa. Khi nào hết token thì thông báo. Đợi hệ thống
+reset. Tại vì mình không thiết kế theo hướng cá nhân hoá." Hai con số ước lượng trước trở
+thành rào cản giả tạo, chặn request **trước khi** nó chạm Groq, không phản ánh đúng hạn
+mức thật.
+
+Thay vào đó, dựa hẳn vào cơ chế bắt lỗi 429 **thật** đã có sẵn ở
+`generation/pipeline.py` (`_generator_error_event`/`_is_rate_limited`/
+`_retry_after_seconds`, dòng ~298-326, đã đọc code xác nhận): khi Groq trả 429
+(kiểm `status_code == 429` trên exception hoặc `error.response`), pipeline tự đọc header
+`retry-after` và phát `ErrorEvent(code="rate_limited", message=_RATE_LIMIT_MESSAGE,
+retry_after_seconds=...)` — đúng hành vi "hết token thì thông báo, đợi hệ thống reset"
+mong muốn, **không cần xây thêm gì**. Quota đếm trước và cơ chế 429 thật là hai cơ chế độc
+lập, không tương tác — quota chặn sớm hơn và không đọc được hạn mức thật của Groq; bỏ quota
+để luồng thật sự chạm tới Groq và cơ chế 429 thật được kích hoạt.
+
+**`AdmissionTicket`/`request_refund()` — đã đọc code xác nhận, cần người dùng xác nhận
+trước khi implement:** chữ ký gọi ở `orchestrator.py` giữ nguyên (lỗi hệ thống trước token
+đầu tiên vẫn gọi `ticket.request_refund()`), nhưng hành vi hoàn duy nhất mà
+`refund_requested` từng kích hoạt là hoàn quota Redis (`_refund(charged)`); giải phóng slot
+đồng thời (`self._semaphore.release()`) đã luôn chạy **vô điều kiện** trong `finally`,
+không phụ thuộc `refund_requested` — cơ chế vé không liên quan gì tới việc nhả slot đồng
+thời. Sau khi bỏ quota, `request_refund()` không còn hành vi nào để thực hiện (no-op). Đề
+xuất xoá hẳn `AdmissionTicket`/`request_refund()` khi implement (tránh over-engineering giữ
+API chết); phương án khác là giữ làm no-op để không phải sửa `orchestrator.py` — để ngỏ cho
+quyết định implement.
 
 Đây là giới hạn của **mỗi process**: semaphore không chia sẻ giữa worker. Bản đầu chạy
 1 worker (`api_spec.md` mục 8); khi cần nhiều replica, chuyển semaphore sang Redis phía
-sau cùng interface `AdmissionController` — không đổi orchestrator. Redis lỗi → quota
-fail-open (log warning), semaphore in-process vẫn bảo vệ Groq.
+sau cùng interface `AdmissionController` — không đổi orchestrator.
+
+**Redis không còn cần thiết trong `AdmissionController` (hệ quả kéo theo, đã đọc code xác
+nhận):** Redis trong `admission.py` hiện tại **chỉ** phục vụ `_increment`/`_refund` của
+quota; semaphore/hàng đợi là `asyncio.Semaphore` in-process thuần, không đụng Redis. Bỏ
+quota thì `AdmissionSettings.redis_url` và `Redis.from_url` (`_create_redis`) trong
+`AdmissionController.__init__` cũng nên bị loại — xem mục 10. **Lưu ý quan trọng:** Redis
+vẫn cần thiết cho **hệ thống nói chung**, chỉ không phải ở `AdmissionController` nữa —
+`cache/cache_spec.md` (mục 6, 8) dùng Redis riêng cho `AnswerCache`/`RetrievalCache`/khoá
+single-flight, lý do hoàn toàn khác, độc lập với admission. `cache_spec.md` mục 8 hiện ghi
+"`REDIS_URL` nằm trong `AdmissionSettings`/`RedisSettings`" — sau thay đổi này, phương án
+`AdmissionSettings` không còn hợp lý (không còn field nào trong `AdmissionSettings` dùng
+Redis); nên chuyển hẳn sang một `RedisSettings` riêng dùng chung cho `cache/` (và cho
+`AdmissionController` sau này nếu chuyển semaphore sang Redis cho multi-worker). Không sửa
+`cache_spec.md` ở đây — chỉ ghi nhận để người dùng xác nhận khi cập nhật `cache_spec.md`
+hoặc implement.
 
 ## 9. Adapter đánh giá (`evaluation.py`) — PHASE SAU, KHÔNG implement bây giờ
 
@@ -271,14 +310,19 @@ Theo pattern `GuardrailSettings`, thêm:
 
 - `CondenseSettings`: `api_key` (`GROQ_API_KEY`), `model_name = "openai/gpt-oss-20b"`,
   `max_retries = 1`, `timeout_seconds = 20`.
-- `AdmissionSettings` (số liệu vận hành, đổi được không cần deploy):
-  `redis_url` (`REDIS_URL`), `user_daily_llm_answers = 5`,
-  `global_daily_llm_answers = 50` (≈ 200K TPD ÷ 3–4K token/câu, chừa dư địa cho HyDE), `max_concurrent_answers = 2`, `max_waiting = 6`.
-  `max_concurrent_answers = 2` vì mỗi câu ~3–4K token trên TPM 8K.
+- `AdmissionSettings` (số liệu vận hành, đổi được không cần deploy): chỉ còn
+  `max_concurrent_answers = 2` (mỗi câu ~3–4K token trên TPM 8K) và `max_waiting = 6`.
+  **Đã bỏ `user_daily_llm_answers`, `global_daily_llm_answers`, `redis_url`** (quyết định
+  2026-09-23, mục 8): không còn quota đếm theo ngày nên không còn field nào trong
+  `AdmissionSettings` cần Redis (đã đọc code `admission.py` xác nhận — semaphore/hàng đợi
+  không đụng Redis). `REDIS_URL`/`Redis` client cho `cache/` (mục 8, tham chiếu
+  `cache_spec.md`) là nhu cầu khác, không còn thuộc `AdmissionSettings` — cần một
+  `RedisSettings` riêng khi implement `cache/` (ngoài phạm vi thay đổi này, chỉ ghi nhận hệ
+  quả kéo theo).
 - Hằng số nội bộ `conversation/`: `HISTORY_MAX_TURNS`, `HISTORY_ASSISTANT_MAX_CHARS`,
   `MAX_QUERY_CHARS`, `GUARDRAIL_CONTEXT_TURNS`, tham số Groq của condense, prompt.
 
-Module không đọc `.env` trực tiếp. Cập nhật `.env.example` (`REDIS_URL`).
+Module không đọc `.env` trực tiếp.
 
 ## 11. Module (`src/production_legal_qa_rag/conversation/`)
 
@@ -298,8 +342,8 @@ Module không đọc `.env` trực tiếp. Cập nhật `.env.example` (`REDIS_U
 | `messages` không hợp lệ                    | `InvalidConversationError` → API 422 (trước khi stream)         |
 | Condense lỗi/quá tải/đầu ra không hợp lệ   | Dùng câu gốc, log warning, `standalone_query = query`           |
 | Guardrail lỗi                              | Fail-open như `generation_spec.md` mục 4                        |
-| Redis lỗi (cache/quota/lock)               | Coi như miss / không giới hạn quota / không khoá; log warning   |
-| `AdmissionDenied`                          | `error(quota_exceeded \| rate_limited)` + `done`                |
+| Redis lỗi (cache/lock, ngoài `AdmissionController` — mục 8) | Coi như miss / không khoá; log warning         |
+| `AdmissionDenied` (`kind="overloaded"`, hàng đợi đầy) | `error(code="rate_limited", retry_after_seconds)` + `done` |
 | Lỗi retrieval/generation                   | Như `generation_spec.md` mục 9 (giữ nguyên event/code)          |
 
 Không log nội dung câu hỏi/câu trả lời ra log ứng dụng (stdout). Nội dung chỉ vào bảng
@@ -373,6 +417,15 @@ Không log nội dung câu hỏi/câu trả lời ra log ứng dụng (stdout). 
    khi generator bị đóng giữa chừng bởi caller (ở đây do vòng lặp gọi `break` sau
    `DoneEvent`, không phải do lỗi runtime). Chưa sửa — ngoài phạm vi 17.2.5; cần điều tra
    thêm ở `orchestrator.py` (không đổi trong PR này).
+7. **Bỏ quota admission theo user/ngày và toàn cục/ngày (mục 8, quyết định 2026-09-23):**
+   thay đổi thiết kế có chủ đích cho mục tiêu triển khai thực tế hiện tại (dùng cá nhân +
+   chia sẻ URL + self-host qua clone repo — không phải multi-tenant SaaS cần cá nhân hoá
+   quota). Đánh đổi chấp nhận: không còn bảo vệ **sớm** khỏi burst 429 dồn dập khi TPD thật
+   của Groq gần hết (trước đây quota đếm trước có thể chặn sớm ở mức ước lượng, giờ chỉ
+   còn phản ứng **sau khi** Groq đã từ chối bằng 429 thật, không còn dự đoán trước) — chấp
+   nhận được vì mục tiêu hiện tại không phải multi-tenant; nếu sau này đổi hướng
+   multi-tenant thật (nhiều người dùng không quen biết, cần công bằng giữa họ), cần xét
+   lại quota theo user.
 
 ## 15. Cải thiện độ chính xác condense
 
