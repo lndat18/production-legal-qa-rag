@@ -167,8 +167,11 @@ class GenerationPipeline:
                     query, chunks, draft.text, hard_gate.citations
                 )
                 _validate_judge_verdict(judge_verdict, len(chunks))
-            except Exception:  # noqa: BLE001 - every Judge failure must fail closed.
-                yield _unable_to_verify_event()
+            except Exception as error:  # noqa: BLE001 - every Judge failure must fail closed.
+                if _is_rate_limited(error):
+                    yield _generator_error_event(error)
+                else:
+                    yield _unable_to_verify_event()
                 yield DoneEvent(usage=total_usage)
                 return
 
@@ -306,24 +309,41 @@ def _generator_error_event(error: Exception) -> ErrorEvent:
 
 
 def _is_rate_limited(error: Exception) -> bool:
-    """Nhận diện lỗi 429 từ Groq hoặc fake client dùng trong kiểm thử."""
-    return (
-        getattr(error, "status_code", None) == 429
-        or getattr(getattr(error, "response", None), "status_code", None) == 429
+    """Nhận diện lỗi 429 từ Groq, kể cả khi adapter đã bọc exception."""
+    return any(
+        getattr(provider_error, "status_code", None) == 429
+        or getattr(getattr(provider_error, "response", None), "status_code", None)
+        == 429
+        for provider_error in _provider_errors(error)
     )
 
 
 def _retry_after_seconds(error: Exception) -> float | None:
-    """Đọc header retry-after khi server cung cấp giá trị giây hợp lệ."""
-    response = getattr(error, "response", None)
-    headers = getattr(response, "headers", None) or getattr(error, "headers", None)
-    if headers is None:
-        return None
-    value = headers.get("retry-after")
-    try:
-        return float(value) if value is not None else None
-    except TypeError, ValueError:
-        return None
+    """Đọc retry-after của provider, kể cả khi adapter đã bọc exception."""
+    for provider_error in _provider_errors(error):
+        headers = getattr(provider_error, "headers", None) or getattr(
+            getattr(provider_error, "response", None), "headers", None
+        )
+        if headers is None:
+            continue
+        value = headers.get("retry-after")
+        try:
+            return float(value) if value is not None else None
+        except TypeError, ValueError:
+            continue
+    return None
+
+
+def _provider_errors(error: Exception) -> tuple[Exception, ...]:
+    """Trả chuỗi exception đã bọc, không lặp khi cause/context tạo vòng."""
+    errors: list[Exception] = []
+    current: BaseException | None = error
+    seen_ids: set[int] = set()
+    while isinstance(current, Exception) and id(current) not in seen_ids:
+        errors.append(current)
+        seen_ids.add(id(current))
+        current = current.__cause__ or current.__context__
+    return tuple(errors)
 
 
 _default_pipeline: GenerationPipeline | None = None
