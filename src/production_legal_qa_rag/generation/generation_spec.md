@@ -202,7 +202,22 @@ Message refusal là hằng số. Không trả draft một phần và không đ�
 
 ## 8. Cấu hình và module
 
-Không thêm framework. Dùng groq, AsyncGroq, Pydantic v2 và code Python hiện có.
+Dùng langchain-groq (`ChatGroq`) thay AsyncGroq thô, để rút boilerplate client/parse
+JSON:
+
+- generator.py: `ChatGroq.astream()` thay `chat.completions.create(stream=True)`.
+  GenerationDelta vẫn map từ chunk trung gian như hiện tại (text, finish_reason,
+  usage) — không đổi hợp đồng generator/pipeline.
+- judge.py, guardrail.py: `ChatGroq.with_structured_output(PydanticModel,
+  method="json_mode")` thay `response_format={"type": "json_object"}` +
+  `model_validate_json` tay. Parse lỗi/JSON sai của LangChain vẫn phải map về
+  JudgeError (judge.py) hoặc verdict allow fail-open (guardrail.py) như cũ — hành
+  vi fail-closed/fail-open ở mục 6 và guardrail không đổi.
+- Vẫn giữ pattern LoopBoundClient bọc quanh instance `ChatGroq` (không đổi qua
+  event loop), do ChatGroq cũng giữ AsyncGroq client nội bộ với cùng giới hạn nêu ở
+  loop_bound.py.
+- Đây là đổi thư viện gọi model, không đổi workflow, event, hard gate hay policy ở
+  mục 1-7. Pydantic v2 vẫn là nguồn sự thật cho mọi schema.
 
 - GuardrailSettings: input safeguard, fail-open.
 - GenerationSettings: generator, ưu tiên GROQ_API_KEY_2.
