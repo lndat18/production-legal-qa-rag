@@ -95,7 +95,6 @@ class StatusEvent(BaseModel):
         "drafting",
         "verification",
         "repairing",
-        "generation",
     ]
 
 

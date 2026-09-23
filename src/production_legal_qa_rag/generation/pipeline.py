@@ -14,13 +14,14 @@ from production_legal_qa_rag.generation.guardrail import (
     OUT_OF_SCOPE_MESSAGE,
     InputGuardrail,
 )
-from production_legal_qa_rag.generation.judge import EvidenceJudge, JudgeError
+from production_legal_qa_rag.generation.judge import EvidenceJudge
 from production_legal_qa_rag.generation.models import (
     CitationsEvent,
     DoneEvent,
     ErrorEvent,
     GenerationEvent,
     GuardrailVerdict,
+    JudgeIssue,
     JudgeVerdict,
     RefusalEvent,
     StatusEvent,
@@ -166,7 +167,7 @@ class GenerationPipeline:
                     query, chunks, draft.text, hard_gate.citations
                 )
                 _validate_judge_verdict(judge_verdict, len(chunks))
-            except JudgeError, ValueError:
+            except Exception:  # noqa: BLE001 - every Judge failure must fail closed.
                 yield _unable_to_verify_event()
                 yield DoneEvent(usage=total_usage)
                 return
@@ -255,9 +256,9 @@ def _validate_judge_verdict(verdict: JudgeVerdict, context_size: int) -> None:
             raise ValueError("Judge tham chiếu evidence ngoài context")
 
 
-def _to_verification_issue(issue: object) -> VerificationIssue:
+def _to_verification_issue(issue: JudgeIssue) -> VerificationIssue:
     """Chuyển JudgeIssue đã validate sang input repair không có dữ liệu thừa."""
-    return VerificationIssue.model_validate(issue)
+    return VerificationIssue.model_validate(issue.model_dump())
 
 
 def _merge_usage(left: Usage | None, right: Usage | None) -> Usage | None:
