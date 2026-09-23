@@ -90,7 +90,7 @@ class GuardrailSettings(BaseSettings):
 
 
 class CondenseSettings(BaseSettings):
-    """Cấu hình Groq cho bước condense câu follow-up (conversation_spec.md mục 10).
+    """Cấu hình Groq cho bước condense câu follow-up (conversation_spec.md mục 5).
 
     Dùng model ``gpt-oss-20b`` để ngân sách rate limit tách khỏi HyDE và
     generation (cùng ``gpt-oss-120b``). Timeout ngắn vì condense lỗi thì

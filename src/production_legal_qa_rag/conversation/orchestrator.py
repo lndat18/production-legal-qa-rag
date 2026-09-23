@@ -279,7 +279,7 @@ class ChatOrchestrator:
                 return [], ErrorEvent(
                     code="retrieval_error", message=_RETRIEVAL_ERROR_MESSAGE
                 )
-        # 18.2.2: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
+        # Mục 8: chặn sớm khi 5 chunk quá ít liên quan (gate của conversation/,
         # retrieve() không lọc gì — retrieval_spec.md mục 16 điểm 8).
         if not chunks:
             return [], ErrorEvent(code="no_context", message=_NO_CONTEXT_MESSAGE)

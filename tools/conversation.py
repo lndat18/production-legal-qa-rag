@@ -1,9 +1,9 @@
 """Chạy thử thủ công luồng chat nhiều lượt (condense -> guardrail -> ... -> generation).
 
-Bộ hội thoại mẫu chia 3 nhóm (spec mục 13.4, 17.2.5), chọn qua ``--groups``:
+Bộ hội thoại mẫu chia 3 nhóm (spec mục 15), chọn qua ``--groups``:
 
 - ``core``: 4 ca gốc (kế thừa Điều, đại từ, đổi chủ đề, injection).
-- ``regression``: ca 4, 6, 7, 9, 10 của bảng mục 13.4 (ca 8 bỏ qua — cần giả lập
+- ``regression``: ca 4, 6, 7, 9, 10 của bảng mục 15 (ca 8 bỏ qua — cần giả lập
   Groq lỗi/429, để bộ kiểm thử tự động đảm nhiệm).
 - ``general``: 3 hội thoại tổng quát mới (đa chủ thể, phân loại thiếu, tính toán).
 
@@ -42,7 +42,7 @@ app = typer.Typer(add_completion=False)
 
 # Mỗi hội thoại là danh sách message; message cuối (user) là câu cần trả lời.
 
-# Nhóm "core": 4 ca gốc của bảng mục 13.4 (ca 1, 2, 3, 5).
+# Nhóm "core": 4 ca gốc của bảng mục 15 (ca 1, 2, 3, 5).
 _CORE_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     "Kế thừa Điều (ca 2)": [
         ChatMessage(role="user", content="Khoản 1 Điều 113 Bộ luật Lao động nói gì?"),
@@ -74,7 +74,7 @@ _CORE_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     ],
 }
 
-# Nhóm "regression": ca 4, 6, 7, 9, 10 của bảng mục 13.4 (ca 8 bỏ qua, xem docstring).
+# Nhóm "regression": ca 4, 6, 7, 9, 10 của bảng mục 15 (ca 8 bỏ qua, xem docstring).
 _REGRESSION_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     "Chung cache - A hỏi thẳng (ca 4)": [
         ChatMessage(role="user", content="Khoản 2 Điều 113 Bộ luật Lao động nói gì?"),
@@ -127,7 +127,7 @@ _REGRESSION_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     ],
 }
 
-# Nhóm "general": 3 hội thoại tổng quát mới (17.2.5 mục 2).
+# Nhóm "general": 3 hội thoại tổng quát mới (mục 15).
 _GENERAL_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     "Đa chủ thể - loại hợp đồng": [
         ChatMessage(
@@ -164,7 +164,7 @@ _GENERAL_CONVERSATIONS: dict[str, list[ChatMessage]] = {
 
 
 class ConversationGroup(str, Enum):
-    """Nhóm hội thoại mẫu chọn qua ``--groups`` (spec mục 17.2.5)."""
+    """Nhóm hội thoại mẫu chọn qua ``--groups`` (spec mục 15)."""
 
     CORE = "core"
     REGRESSION = "regression"
@@ -308,7 +308,7 @@ def main(
         ConversationGroup.ALL,
         help=(
             "Nhóm hội thoại mẫu cần chạy: core (4 ca gốc), regression (ca 4/6/7/9/10 "
-            "mục 13.4), general (3 ca tổng quát mới), all (mặc định, cả 3 nhóm). Bỏ "
+            "mục 15), general (3 ca tổng quát mới), all (mặc định, cả 3 nhóm). Bỏ "
             "qua khi dùng --query."
         ),
     ),

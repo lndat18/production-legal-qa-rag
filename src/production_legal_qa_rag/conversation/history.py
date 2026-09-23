@@ -20,16 +20,16 @@ SOURCES_FOOTER_MARKER: Final = "\n\n---\n**Nguồn**\n"
 # Ngày (thủ công) coi như thời điểm dữ liệu pháp luật trong corpus được cập nhật gần
 # nhất. KHÔNG có nguồn tự động đáng tin cậy để suy ra giá trị này (`corpus_version` ở
 # `cache_spec.md` chỉ là hash BM25, không phải ngày; mtime file không phản ánh ngày ban
-# hành/sửa đổi văn bản luật thật) — xem conversation_spec.md mục 19.2 dòng B10, 19.3.2.
+# hành/sửa đổi văn bản luật thật). Theo conversation_spec.md mục 4, ngày này phải
+# được cập nhật thủ công mỗi lần re-index corpus, không tự động hoá.
 # Placeholder ban đầu: không tìm được mốc re-index corpus rõ ràng trong lịch sử git (các
 # commit embedding/chunking chỉ phản ánh ngày merge code, không phải ngày build index
-# thật), nên dùng ngày viết mục 19.3.2 (2026-09-23). PHẢI cập nhật thủ công mỗi lần
-# re-index corpus (gắn vào runbook re-index, đã chốt ở 19.3.2 — không tự động hoá).
+# thật), nên dùng ngày của bản spec hiện tại (2026-09-23).
 CORPUS_SNAPSHOT_DATE: Final = "2026-09-23"
 
 # Disclaimer cố định do `api/` nối vào cuối câu trả lời SSE, sau khối "Nguồn" (cùng nhóm
 # "phần đuôi cố định do `api/` nối vào câu trả lời" với `SOURCES_FOOTER_MARKER`; hằng số
-# ở đây để `api/` import — conversation_spec.md mục 19.3.2).
+# ở đây để `api/` import — conversation_spec.md mục 4).
 DATA_SNAPSHOT_DISCLAIMER: Final = (
     "\n\n_Dữ liệu pháp luật trong hệ thống được cập nhật tới "
     f"{CORPUS_SNAPSHOT_DATE}; có thể chưa phản ánh sửa đổi, bổ sung mới nhất. Vui lòng "
