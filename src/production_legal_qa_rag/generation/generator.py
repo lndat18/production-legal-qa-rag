@@ -10,12 +10,12 @@ from groq.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel
 
 from production_legal_qa_rag.config import GenerationSettings
-from production_legal_qa_rag.generation.models import Usage
+from production_legal_qa_rag.generation.models import Usage, VerificationIssue
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v5"
+PROMPT_VERSION: Final = "v6"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.1
 _MAX_COMPLETION_TOKENS: Final = 2048
@@ -122,12 +122,37 @@ hỏi cho mức giảm trừ [2] rồi kết hợp với thuế suất [1] để
 quy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa tính tiếp)."""
 
 _USER_TEMPLATE: Final = "Văn bản:\n{context}\n\nCâu hỏi: {query}"
+_REPAIR_SYSTEM_SUFFIX: Final = """
+
+Bạn đang viết lại toàn bộ draft sau kiểm tra. Chỉ dùng cùng Văn bản đã cho; không
+thêm tài liệu hoặc kiến thức khác. Sửa hoặc bỏ claim được nêu trong issue, giữ claim
+có căn cứ, và không tranh luận với issue. Vẫn tuân thủ toàn bộ quy tắc citation,
+con số và điều kiện áp dụng ở trên."""
+_REPAIR_USER_TEMPLATE: Final = """Văn bản:
+{context}
+
+Câu hỏi: {query}
+
+Draft cũ:
+{draft}
+
+Issues cần sửa:
+{issues}"""
 
 
 class GenerationDelta(BaseModel):
     """Một chunk thô từ Groq, gồm nội dung và metadata cuối stream nếu có."""
 
     text: str = ""
+    finish_reason: str | None = None
+    usage: Usage | None = None
+
+
+class GeneratedAnswer(BaseModel):
+    """Một draft đã buffer hoàn toàn, chưa chắc đã qua verification."""
+
+    text: str
+    fragments: list[str]
     finish_reason: str | None = None
     usage: Usage | None = None
 
@@ -177,6 +202,38 @@ def build_messages(query: str, chunks: list[RetrievedChunk]) -> list[dict[str, s
     ]
 
 
+def build_repair_messages(
+    query: str,
+    chunks: list[RetrievedChunk],
+    draft: str,
+    issues: list[VerificationIssue],
+) -> list[dict[str, str]]:
+    """Dựng prompt viết lại toàn bộ draft bằng query/context cố định.
+
+    Args:
+        query: Câu hỏi người dùng không thay đổi.
+        chunks: Context rerank ban đầu, không được retrieve lại.
+        draft: Bản trả lời trước khi phát hiện lỗi.
+        issues: Issue không chứa chain-of-thought cần được sửa.
+
+    Returns:
+        Hai message system/user cho lần repair duy nhất.
+    """
+    rendered_issues = "\n".join(issue.model_dump_json() for issue in issues)
+    return [
+        {"role": "system", "content": GENERATION_SYSTEM_PROMPT + _REPAIR_SYSTEM_SUFFIX},
+        {
+            "role": "user",
+            "content": _REPAIR_USER_TEMPLATE.format(
+                context=build_context(chunks),
+                query=query,
+                draft=draft,
+                issues=rendered_issues,
+            ),
+        },
+    ]
+
+
 class AnswerGenerator:
     """Sở hữu Groq client và stream các delta nội dung của câu trả lời."""
 
@@ -214,12 +271,72 @@ class AnswerGenerator:
         Yields:
             Nội dung delta cùng finish reason/usage khi Groq cung cấp.
         """
+        async for delta in self._stream_messages(build_messages(query, chunks)):
+            yield delta
+
+    async def stream_repair(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        draft: str,
+        issues: list[VerificationIssue],
+    ) -> AsyncIterator[GenerationDelta]:
+        """Stream một bản viết lại từ cùng query, context và issue đã phát hiện.
+
+        Args:
+            query: Câu hỏi người dùng không thay đổi.
+            chunks: Context rerank cố định, không retrieve lại.
+            draft: Bản trả lời cần được thay thế toàn bộ.
+            issues: Lỗi hard gate hoặc Judge cần sửa.
+
+        Yields:
+            Delta nội dung và metadata của lần repair duy nhất.
+        """
+        async for delta in self._stream_messages(
+            build_repair_messages(query, chunks, draft, issues)
+        ):
+            yield delta
+
+    async def draft(self, query: str, chunks: list[RetrievedChunk]) -> GeneratedAnswer:
+        """Sinh và buffer toàn bộ draft đầu tiên trước khi pipeline xác minh.
+
+        Args:
+            query: Câu hỏi người dùng.
+            chunks: Context cố định đã rerank.
+
+        Returns:
+            Draft cùng các mảnh token gốc, finish reason và usage.
+        """
+        return await self._buffer(self.stream(query, chunks))
+
+    async def repair(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        draft: str,
+        issues: list[VerificationIssue],
+    ) -> GeneratedAnswer:
+        """Viết lại và buffer một answer từ cùng query/context/issue.
+
+        Args:
+            query: Câu hỏi người dùng không thay đổi.
+            chunks: Context cố định ban đầu.
+            draft: Draft cần thay thế toàn bộ.
+            issues: Lỗi đã xác định, không chứa chain-of-thought.
+
+        Returns:
+            Bản repair được buffer để pipeline đưa qua hard gate và Judge.
+        """
+        return await self._buffer(self.stream_repair(query, chunks, draft, issues))
+
+    async def _stream_messages(
+        self, messages: list[dict[str, str]]
+    ) -> AsyncIterator[GenerationDelta]:
+        """Gọi Groq stream với message đã được dựng bởi draft hoặc repair."""
         settings = self._get_settings()
         stream = await self._client.get().chat.completions.create(
             model=settings.model_name,
-            messages=cast(
-                Iterable[ChatCompletionMessageParam], build_messages(query, chunks)
-            ),
+            messages=cast(Iterable[ChatCompletionMessageParam], messages),
             stream=True,
             include_reasoning=False,
             reasoning_effort=_REASONING_EFFORT,
@@ -235,6 +352,23 @@ class AnswerGenerator:
                 finish_reason=finish_reason,
                 usage=_to_usage(chunk.usage),
             )
+
+    async def _buffer(self, stream: AsyncIterator[GenerationDelta]) -> GeneratedAnswer:
+        """Tiêu thụ stream nội bộ để draft không được phát trước verification."""
+        fragments: list[str] = []
+        finish_reason: str | None = None
+        usage: Usage | None = None
+        async for delta in stream:
+            if delta.text:
+                fragments.append(delta.text)
+            finish_reason = delta.finish_reason or finish_reason
+            usage = delta.usage or usage
+        return GeneratedAnswer(
+            text="".join(fragments),
+            fragments=fragments,
+            finish_reason=finish_reason,
+            usage=usage,
+        )
 
 
 def _to_usage(raw_usage: object | None) -> Usage | None:
