@@ -237,7 +237,7 @@ xoá nội dung injection. Chi tiết ở `generation_spec.md` mục 16.
 3. single-flight theo key câu trả lời (cache_spec mục 6, nếu có cấu hình):
      follower: chờ leader -> đọc lại cache -> replay (leader lỗi/ngắt: tự chạy thay vì chờ vô hạn)
      leader:
-4.   async with admission.slot(ctx.user_id) as ticket:             # mục 9; từ chối -> error(...)
+4.   async with admission.slot(ctx.user_id):                       # mục 9; từ chối -> error(...)
        yield status(retrieval)
        chunks = await retrieval_cache.get(standalone) or retrieve(standalone)
        rỗng, hoặc is_low_relevance(chunks) (mục 8) -> error(no_context); done
