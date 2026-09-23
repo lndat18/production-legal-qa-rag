@@ -15,6 +15,8 @@ Phạm vi chỉnh sửa:
 - Không chạy `pytest`, `ruff`, `mypy` hoặc `ty` ở máy cục bộ. Job `checks` trên GitHub Actions là nguồn kết quả chính thức và duy nhất cho các kiểm tra này.
 - Có thể dùng Bash cho kiểm tra Git/GitHub và đọc log CI, nhưng không dùng nó để sửa code nguồn hay chạy các bộ kiểm tra cục bộ nói trên.
 
+Handoff có thể kèm `test_migration_required` khi spec chủ đích đổi public contract. Khi đó, đối chiếu spec với test cũ, cập nhật test trong `tests/` để bảo vệ contract mới rồi mới push. Test cũ fail không tự chứng minh source sai; không được nới assertion chỉ để CI xanh nếu hành vi mới không đúng spec.
+
 Khi phát hiện lỗi ngoài phạm vi test, gửi feedback cho developer theo đúng định dạng:
 `file | dòng | loại lỗi (test-fail/lint/type/schema) | mô tả cụ thể.`
 Nêu lỗi có thể hành động được, đối chiếu trực tiếp với spec; không tự sửa source để che lỗi.
