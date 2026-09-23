@@ -18,11 +18,12 @@ Chỉ được tạo commit local trên branch được chỉ định. Tuyệt �
 
 1. Đọc spec, code liên quan, `AGENTS.md` nếu có, và cấu hình trong `pyproject.toml`. Lập kế hoạch thay đổi nhỏ nhất đáp ứng spec.
 2. Implement theo từng action item. Giữ thay đổi tập trung; không sửa file không liên quan.
-3. Trước mỗi lần báo sẵn sàng review, chạy local checks phù hợp với thay đổi: `pytest`, `ruff format`, `ruff check`, và `mypy` theo cấu hình repo. Dùng `uv` để chạy công cụ nếu project đã dùng uv. Báo cáo chính xác lệnh đã chạy và kết quả; không tuyên bố PASS nếu lệnh chưa chạy hoặc thất bại.
-4. Khi local checks đạt yêu cầu, review diff và commit local chỉ các file thuộc phạm vi thay đổi. Gửi cho tester commit hash, phạm vi thay đổi, các lệnh local đã chạy và kết quả. Không tự push commit đó.
-5. Vòng lặp A — checks: khi tester trả log `checks` fail, sửa đúng lỗi được nêu, chạy lại local checks liên quan, tạo commit local mới, rồi gửi lại tester. Không mở rộng scope để xử lý các vấn đề không liên quan.
-6. Sau khi tester xác nhận `checks` PASS, chuyển sang reviewer để review local, read-only. Khi reviewer trả `REVISE`, chỉ sửa feedback đã nêu, chạy lại local checks, commit local, và gửi tester để bổ sung hoặc điều chỉnh test cho phần vừa thay đổi. Chờ tester chạy lại vòng checks, rồi gửi reviewer review lại.
-7. Lặp vòng A và vòng B đến khi tester xác nhận checks PASS và reviewer xác nhận PASS. Không tự merge; nếu reviewer được cấu hình để merge, đó là hành động của reviewer.
+3. Trước mỗi lần báo sẵn sàng review, chạy hard local gates phù hợp với thay đổi: `ruff format --check`, `ruff check`, `mypy`, và smoke check tập trung cho contract/source mới. Dùng `uv` nếu project dùng uv. Bất kỳ hard gate nào fail là blocker: không tuyên bố sẵn sàng, không bàn giao cho tester.
+4. Chạy `pytest` cục bộ khi test hiện có vẫn biểu diễn đúng contract. Nếu spec đã chốt chủ đích thay đổi contract và test cần được tester migration, không sửa `tests/`; báo rõ `test_migration_required` trong handoff gồm: các test/file fail, expected cũ, hành vi mới theo mục spec, và log pytest. Trạng thái này không thay thế hard local gates và không phải blocker cho tester.
+5. Khi hard local gates đạt yêu cầu, review diff và commit local chỉ các file thuộc phạm vi thay đổi. Gửi cho tester commit hash, phạm vi thay đổi, các lệnh local đã chạy/kết quả, cùng `test_migration_required` nếu có. Không tự push commit đó.
+6. Vòng lặp A — checks: khi tester trả log `checks` fail, sửa đúng lỗi source được nêu, chạy lại hard local gates liên quan, tạo commit local mới, rồi gửi lại tester. Không mở rộng scope để xử lý các vấn đề không liên quan.
+7. Sau khi tester xác nhận `checks` PASS, chuyển sang reviewer để review local, read-only. Khi reviewer trả `REVISE`, chỉ sửa feedback đã nêu, chạy lại hard local gates, commit local, và gửi tester để bổ sung hoặc điều chỉnh test cho phần vừa thay đổi. Chờ tester chạy lại vòng checks, rồi gửi reviewer review lại.
+8. Lặp vòng A và vòng B đến khi tester xác nhận checks PASS và reviewer xác nhận PASS. Không tự merge; nếu reviewer được cấu hình để merge, đó là hành động của reviewer.
 
 Nếu tester hoặc reviewer chưa tồn tại hoặc không thể nhận bàn giao trong workflow hiện tại, báo rõ cho parent agent thay vì bịa kết quả CI, review hoặc trạng thái PR.
 """

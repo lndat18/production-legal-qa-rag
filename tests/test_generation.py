@@ -14,21 +14,28 @@ from production_legal_qa_rag.generation.generator import (
     GENERATION_SYSTEM_PROMPT,
     PROMPT_VERSION,
     AnswerGenerator,
+    GeneratedAnswer,
     GenerationDelta,
     build_context,
     build_messages,
+    build_repair_messages,
 )
 from production_legal_qa_rag.generation.guardrail import (
     INJECTION_MESSAGE,
     OUT_OF_SCOPE_MESSAGE,
     InputGuardrail,
 )
+from production_legal_qa_rag.generation.judge import EvidenceJudge, JudgeError
 from production_legal_qa_rag.generation.models import (
     Citation,
     DoneEvent,
     ErrorEvent,
     GenerationEvent,
     GuardrailVerdict,
+    JudgeIssue,
+    JudgeVerdict,
+    Usage,
+    VerificationIssue,
 )
 from production_legal_qa_rag.generation.output_check import check_output
 from production_legal_qa_rag.generation.pipeline import GenerationPipeline
@@ -73,35 +80,74 @@ class _FakeGuardrail:
 class _FakeGenerator:
     def __init__(
         self,
-        deltas: list[GenerationDelta] | None = None,
-        error: Exception | None = None,
+        drafts: list[GeneratedAnswer] | None = None,
+        repairs: list[GeneratedAnswer] | None = None,
+        draft_error: Exception | None = None,
+        repair_error: Exception | None = None,
     ) -> None:
-        self.deltas = deltas or []
-        self.error = error
-        self.calls: list[tuple[str, list[RetrievedChunk]]] = []
+        self.drafts = drafts or []
+        self.repairs = repairs or []
+        self.draft_error = draft_error
+        self.repair_error = repair_error
+        self.draft_calls: list[tuple[str, list[RetrievedChunk]]] = []
+        self.repair_calls: list[
+            tuple[str, list[RetrievedChunk], str, list[VerificationIssue]]
+        ] = []
 
-    async def stream(
-        self, query: str, chunks: list[RetrievedChunk]
-    ) -> AsyncIterator[GenerationDelta]:
-        self.calls.append((query, chunks))
-        for delta in self.deltas:
-            yield delta
-        if self.error is not None:
-            raise self.error
+    async def draft(self, query: str, chunks: list[RetrievedChunk]) -> GeneratedAnswer:
+        self.draft_calls.append((query, chunks))
+        if self.draft_error is not None:
+            raise self.draft_error
+        return self.drafts.pop(0)
+
+    async def repair(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        draft: str,
+        issues: list[VerificationIssue],
+    ) -> GeneratedAnswer:
+        self.repair_calls.append((query, chunks, draft, issues))
+        if self.repair_error is not None:
+            raise self.repair_error
+        return self.repairs.pop(0)
+
+
+class _FakeJudge:
+    def __init__(self, verdicts: list[JudgeVerdict | Exception] | None = None) -> None:
+        self.verdicts = verdicts or [JudgeVerdict(verdict="pass")]
+        self.calls: list[tuple[str, list[RetrievedChunk], str, list[Citation]]] = []
+
+    async def judge(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        draft: str,
+        citations: list[Citation],
+    ) -> JudgeVerdict:
+        self.calls.append((query, chunks, draft, citations))
+        result = self.verdicts.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
 def _pipeline(
     *,
     verdict: GuardrailVerdict | None = None,
     chunks: list[RetrievedChunk] | None = None,
-    deltas: list[GenerationDelta] | None = None,
-    generation_error: Exception | None = None,
+    drafts: list[GeneratedAnswer] | None = None,
+    repairs: list[GeneratedAnswer] | None = None,
+    judge_verdicts: list[JudgeVerdict | Exception] | None = None,
+    draft_error: Exception | None = None,
+    repair_error: Exception | None = None,
     retrieve_error: Exception | None = None,
-) -> tuple[GenerationPipeline, _FakeGenerator, list[str]]:
+) -> tuple[GenerationPipeline, _FakeGenerator, _FakeJudge, list[str]]:
     guardrail = _FakeGuardrail(
         verdict or GuardrailVerdict(verdict="allow", reason="ok")
     )
-    generator = _FakeGenerator(deltas, generation_error)
+    generator = _FakeGenerator(drafts, repairs, draft_error, repair_error)
+    judge = _FakeJudge(judge_verdicts)
     calls: list[str] = []
 
     async def retrieve(query: str) -> list[RetrievedChunk]:
@@ -112,17 +158,41 @@ def _pipeline(
 
     return (
         GenerationPipeline(  # type: ignore[arg-type]
-            guardrail=guardrail, generator=generator, retrieve=retrieve
+            guardrail=guardrail,
+            generator=generator,
+            judge=judge,
+            retrieve=retrieve,
         ),
         generator,
+        judge,
         calls,
     )
 
 
-def test_event_flow_allow_streams_citations_then_done() -> None:
-    pipeline, generator, retrieve_calls = _pipeline(
+def _answer(
+    text: str,
+    *,
+    fragments: list[str] | None = None,
+    finish_reason: str | None = None,
+    usage: Usage | None = None,
+) -> GeneratedAnswer:
+    return GeneratedAnswer(
+        text=text,
+        fragments=fragments if fragments is not None else [text],
+        finish_reason=finish_reason,
+        usage=usage,
+    )
+
+
+def test_answer_stream_buffers_draft_until_hard_gate_and_judge_pass() -> None:
+    pipeline, generator, judge, retrieve_calls = _pipeline(
         chunks=[_chunk()],
-        deltas=[GenerationDelta(text="Được nghỉ 12 ngày [1].")],
+        drafts=[
+            _answer(
+                "Được nghỉ 12 ngày [1].",
+                fragments=["Được nghỉ ", "12 ngày [1]."],
+            )
+        ],
     )
 
     events = _collect(pipeline, "Được nghỉ bao nhiêu ngày?")
@@ -131,6 +201,8 @@ def test_event_flow_allow_streams_citations_then_done() -> None:
         "status",
         "status",
         "status",
+        "status",
+        "token",
         "token",
         "citations",
         "done",
@@ -138,10 +210,13 @@ def test_event_flow_allow_streams_citations_then_done() -> None:
     assert [event.stage for event in events if event.type == "status"] == [
         "guardrail",
         "retrieval",
-        "generation",
+        "drafting",
+        "verification",
     ]
-    assert events[3].text == "Được nghỉ 12 ngày [1]."
-    assert events[4].citations == [
+    assert "".join(event.text for event in events if event.type == "token") == (
+        "Được nghỉ 12 ngày [1]."
+    )
+    assert events[-2].citations == [
         Citation(
             n=1,
             chunk_id="chunk-1",
@@ -150,15 +225,23 @@ def test_event_flow_allow_streams_citations_then_done() -> None:
         )
     ]
     assert retrieve_calls == ["Được nghỉ bao nhiêu ngày?"]
-    assert generator.calls == [("Được nghỉ bao nhiêu ngày?", [_chunk()])]
+    assert generator.draft_calls == [("Được nghỉ bao nhiêu ngày?", [_chunk()])]
+    assert judge.calls == [
+        (
+            "Được nghỉ bao nhiêu ngày?",
+            [_chunk()],
+            "Được nghỉ 12 ngày [1].",
+            events[-2].citations,
+        )
+    ]
 
 
 def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval() -> (
     None
 ):
-    pipeline, generator, retrieve_calls = _pipeline(
+    pipeline, generator, judge, retrieve_calls = _pipeline(
         chunks=[_chunk()],
-        deltas=[GenerationDelta(text="Được nghỉ 12 ngày [1].")],
+        drafts=[_answer("Được nghỉ 12 ngày [1].")],
     )
 
     async def collect() -> list[GenerationEvent]:
@@ -170,13 +253,18 @@ def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval()
 
     assert [event.type for event in events] == [
         "status",
+        "status",
         "token",
         "citations",
         "done",
     ]
-    assert events[0].stage == "generation"
+    assert [event.stage for event in events if event.type == "status"] == [
+        "drafting",
+        "verification",
+    ]
     assert retrieve_calls == []
-    assert generator.calls == [("Câu hỏi độc lập", [_chunk()])]
+    assert generator.draft_calls == [("Câu hỏi độc lập", [_chunk()])]
+    assert len(judge.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -189,7 +277,7 @@ def test_generate_streams_from_standalone_query_without_guardrail_or_retrieval()
 def test_guardrail_refusal_skips_retrieval_and_generation(
     verdict: str, message: str
 ) -> None:
-    pipeline, generator, retrieve_calls = _pipeline(
+    pipeline, generator, judge, retrieve_calls = _pipeline(
         verdict=GuardrailVerdict(  # type: ignore[arg-type]
             verdict=verdict, reason="blocked"
         )
@@ -201,32 +289,35 @@ def test_guardrail_refusal_skips_retrieval_and_generation(
     assert events[1].reason == verdict
     assert events[1].message == message
     assert retrieve_calls == []
-    assert generator.calls == []
+    assert generator.draft_calls == []
+    assert judge.calls == []
 
 
 def test_no_context_does_not_call_generation() -> None:
-    pipeline, generator, _ = _pipeline(chunks=[])
+    pipeline, generator, judge, _ = _pipeline(chunks=[])
 
     events = _collect(pipeline)
 
     assert [event.type for event in events] == ["status", "status", "error", "done"]
     assert events[2].code == "no_context"
-    assert generator.calls == []
+    assert generator.draft_calls == []
+    assert judge.calls == []
 
 
 @pytest.mark.parametrize("error", [RetrievalError("down"), RuntimeError("down")])
 def test_retrieval_errors_are_converted_to_error_then_done(error: Exception) -> None:
-    pipeline, generator, _ = _pipeline(retrieve_error=error)
+    pipeline, generator, judge, _ = _pipeline(retrieve_error=error)
 
     events = _collect(pipeline)
 
     assert [event.type for event in events] == ["status", "status", "error", "done"]
     assert events[2].code == "retrieval_error"
-    assert generator.calls == []
+    assert generator.draft_calls == []
+    assert judge.calls == []
 
 
-def test_empty_generation_content_is_llm_error_then_done() -> None:
-    pipeline, _, _ = _pipeline(chunks=[_chunk()], deltas=[GenerationDelta()])
+def test_empty_draft_is_llm_error_then_done() -> None:
+    pipeline, _, judge, _ = _pipeline(chunks=[_chunk()], drafts=[_answer("")])
 
     events = _collect(pipeline)
 
@@ -238,33 +329,55 @@ def test_empty_generation_content_is_llm_error_then_done() -> None:
         "done",
     ]
     assert events[-2].code == "llm_error"
+    assert judge.calls == []
 
 
-def test_length_finish_after_content_emits_truncated_warning() -> None:
-    pipeline, _, _ = _pipeline(
+def test_hard_gate_repairs_truncated_draft_before_any_token_is_released() -> None:
+    pipeline, generator, judge, retrieve_calls = _pipeline(
         chunks=[_chunk()],
-        deltas=[GenerationDelta(text="Nội dung 12 ngày [1].", finish_reason="length")],
+        drafts=[_answer("Nội dung 12 ngày [1].", finish_reason="length")],
+        repairs=[_answer("Được nghỉ 12 ngày [1].")],
     )
 
     events = _collect(pipeline)
 
     assert [event.type for event in events] == [
+        "status",
+        "status",
+        "status",
         "status",
         "status",
         "status",
         "token",
         "citations",
-        "warning",
         "done",
     ]
-    assert events[-2].code == "truncated"
+    assert [event.stage for event in events if event.type == "status"] == [
+        "guardrail",
+        "retrieval",
+        "drafting",
+        "repairing",
+        "drafting",
+        "verification",
+    ]
+    assert [event.text for event in events if event.type == "token"] == [
+        "Được nghỉ 12 ngày [1]."
+    ]
+    assert generator.repair_calls[0][0:3] == (
+        "Câu hỏi",
+        [_chunk()],
+        "Nội dung 12 ngày [1].",
+    )
+    assert [issue.code for issue in generator.repair_calls[0][3]] == ["truncated"]
+    assert [call[2] for call in judge.calls] == ["Được nghỉ 12 ngày [1]."]
+    assert retrieve_calls == ["Câu hỏi"]
 
 
-def test_stream_failure_after_token_ends_in_llm_error_and_done() -> None:
-    pipeline, _, _ = _pipeline(
+def test_second_hard_gate_failure_refuses_without_leaking_either_draft() -> None:
+    pipeline, generator, judge, _ = _pipeline(
         chunks=[_chunk()],
-        deltas=[GenerationDelta(text="Phần đã nhận")],
-        generation_error=RuntimeError("stream closed"),
+        drafts=[_answer("Bản nháp [9].")],
+        repairs=[_answer("Bản sửa vẫn sai [8].")],
     )
 
     events = _collect(pipeline)
@@ -273,11 +386,15 @@ def test_stream_failure_after_token_ends_in_llm_error_and_done() -> None:
         "status",
         "status",
         "status",
-        "token",
-        "error",
+        "status",
+        "status",
+        "refusal",
         "done",
     ]
-    assert events[-2].code == "llm_error"
+    assert events[-2].reason == "unable_to_verify"
+    assert not [event for event in events if event.type == "token"]
+    assert len(generator.repair_calls) == 1
+    assert judge.calls == []
 
 
 def test_rate_limit_propagates_retry_after_seconds() -> None:
@@ -285,8 +402,8 @@ def test_rate_limit_propagates_retry_after_seconds() -> None:
         status_code = 429
         response = SimpleNamespace(headers={"retry-after": "2.5"})
 
-    pipeline, _, _ = _pipeline(
-        chunks=[_chunk()], generation_error=RateLimitError("too many requests")
+    pipeline, _, judge, _ = _pipeline(
+        chunks=[_chunk()], draft_error=RateLimitError("too many requests")
     )
 
     events = _collect(pipeline)
@@ -295,6 +412,156 @@ def test_rate_limit_propagates_retry_after_seconds() -> None:
     assert events[-2].code == "rate_limited"
     assert events[-2].retry_after_seconds == 2.5
     assert events[-1] == DoneEvent()
+    assert judge.calls == []
+
+
+def test_judge_repair_uses_the_only_repair_budget_and_fixed_context() -> None:
+    issue = JudgeIssue(
+        code="missing_material_condition",
+        claim="Người lao động luôn được nghỉ 12 ngày.",
+        detail="Nguồn có điều kiện áp dụng.",
+        evidence_numbers=[1],
+    )
+    pipeline, generator, judge, retrieve_calls = _pipeline(
+        chunks=[_chunk(content="Đủ điều kiện thì được nghỉ 12 ngày.")],
+        drafts=[_answer("Người lao động được nghỉ 12 ngày [1].")],
+        repairs=[_answer("Nếu đủ điều kiện thì được nghỉ 12 ngày [1].")],
+        judge_verdicts=[
+            JudgeVerdict(verdict="repair", issues=[issue]),
+            JudgeVerdict(verdict="pass"),
+        ],
+    )
+
+    events = _collect(pipeline)
+
+    assert [event.type for event in events] == [
+        "status",
+        "status",
+        "status",
+        "status",
+        "status",
+        "status",
+        "status",
+        "token",
+        "citations",
+        "done",
+    ]
+    assert [event.stage for event in events if event.type == "status"] == [
+        "guardrail",
+        "retrieval",
+        "drafting",
+        "verification",
+        "repairing",
+        "drafting",
+        "verification",
+    ]
+    assert [event.text for event in events if event.type == "token"] == [
+        "Nếu đủ điều kiện thì được nghỉ 12 ngày [1]."
+    ]
+    assert generator.repair_calls[0][1] == [
+        _chunk(content="Đủ điều kiện thì được nghỉ 12 ngày.")
+    ]
+    assert generator.repair_calls[0][3] == [
+        VerificationIssue.model_validate(issue.model_dump())
+    ]
+    assert retrieve_calls == ["Câu hỏi"]
+    assert len(judge.calls) == 2
+
+
+def test_judge_repair_after_hard_gate_repair_refuses_instead_of_regenerating_twice() -> (
+    None
+):
+    issue = JudgeIssue(
+        code="unsupported_claim",
+        claim="Claim sai.",
+        detail="Không được context hỗ trợ.",
+        evidence_numbers=[1],
+    )
+    pipeline, generator, judge, _ = _pipeline(
+        chunks=[_chunk()],
+        drafts=[_answer("Bản nháp [9].")],
+        repairs=[_answer("Được nghỉ 12 ngày [1].")],
+        judge_verdicts=[JudgeVerdict(verdict="repair", issues=[issue])],
+    )
+
+    events = _collect(pipeline)
+
+    assert events[-2].type == "refusal"
+    assert events[-2].reason == "unable_to_verify"
+    assert len(generator.repair_calls) == 1
+    assert len(judge.calls) == 1
+    assert not [event for event in events if event.type == "token"]
+
+
+def test_judge_insufficient_evidence_maps_to_safe_refusal_without_tokens() -> None:
+    issue = JudgeIssue(
+        code="context_insufficient",
+        claim="Câu hỏi cần căn cứ không có trong context.",
+        detail="Context không đủ.",
+    )
+    pipeline, generator, _judge, _ = _pipeline(
+        chunks=[_chunk()],
+        drafts=[_answer("Được nghỉ 12 ngày [1].")],
+        judge_verdicts=[JudgeVerdict(verdict="insufficient_evidence", issues=[issue])],
+    )
+
+    events = _collect(pipeline)
+
+    assert [event.type for event in events] == [
+        "status",
+        "status",
+        "status",
+        "status",
+        "refusal",
+        "done",
+    ]
+    assert events[-2].reason == "insufficient_evidence"
+    assert generator.repair_calls == []
+    assert not [event for event in events if event.type == "token"]
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    [
+        RuntimeError("judge down"),
+        JudgeVerdict(
+            verdict="pass",
+            issues=[
+                JudgeIssue(
+                    code="unsupported_claim",
+                    claim="Claim sai.",
+                    detail="Không hợp lệ khi pass.",
+                )
+            ],
+        ),
+        JudgeVerdict(
+            verdict="repair",
+            issues=[
+                JudgeIssue(
+                    code="citation_mismatch",
+                    claim="Claim sai.",
+                    detail="Nguồn không có.",
+                    evidence_numbers=[2],
+                )
+            ],
+        ),
+    ],
+)
+def test_judge_error_or_invalid_verdict_fails_closed(
+    verdict: JudgeVerdict | Exception,
+) -> None:
+    pipeline, generator, _, _ = _pipeline(
+        chunks=[_chunk()],
+        drafts=[_answer("Được nghỉ 12 ngày [1].")],
+        judge_verdicts=[verdict],
+    )
+
+    events = _collect(pipeline)
+
+    assert events[-2].type == "refusal"
+    assert events[-2].reason == "unable_to_verify"
+    assert generator.repair_calls == []
+    assert not [event for event in events if event.type == "token"]
 
 
 def test_build_context_includes_table_only_when_chunk_marks_it_as_table() -> None:
@@ -341,8 +608,32 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
+def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
+    issue = VerificationIssue(
+        code="citation_mismatch",
+        claim="Người lao động luôn được nghỉ.",
+        detail="Nguồn có điều kiện áp dụng.",
+        evidence_numbers=[1],
+    )
+
+    messages = build_repair_messages(
+        "Câu hỏi gốc",
+        [_chunk()],
+        "Draft cũ [1].",
+        [issue],
+    )
+
+    assert "Bạn đang viết lại toàn bộ draft sau kiểm tra." in messages[0]["content"]
+    assert messages[1]["content"] == (
+        "Văn bản:\n[1] Điều 1\nNgười lao động được nghỉ 12 ngày.\n\n"
+        "Câu hỏi: Câu hỏi gốc\n\n"
+        "Draft cũ:\nDraft cũ [1].\n\n"
+        f"Issues cần sửa:\n{issue.model_dump_json()}"
+    )
+
+
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v5"
+    assert PROMPT_VERSION == "v6"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -534,32 +825,65 @@ def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
     )
 
 
+class _FakeChunk:
+    """Fake AIMessageChunk tối giản, chỉ mang trường mà _stream_messages() đọc."""
+
+    def __init__(
+        self,
+        content: str,
+        *,
+        finish_reason: str | None = None,
+        usage_metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.content = content
+        self.response_metadata: dict[str, Any] = (
+            {"finish_reason": finish_reason} if finish_reason is not None else {}
+        )
+        self.usage_metadata = usage_metadata
+
+
+class _FakeChatModel:
+    """Fake ChatOpenAI-like client hỗ trợ ``.astream()`` trả về chunk cố định."""
+
+    def __init__(self, chunks: list[_FakeChunk]) -> None:
+        self._chunks = chunks
+        self.received_messages: list[dict[str, str]] | None = None
+
+    async def astream(
+        self, messages: list[dict[str, str]]
+    ) -> AsyncIterator[_FakeChunk]:
+        self.received_messages = messages
+        for chunk in self._chunks:
+            yield chunk
+
+
+class _FakeStructuredOutputRunnable:
+    """Fake runnable trả về kết quả cố định hoặc raise lỗi thật từ ``ainvoke``."""
+
+    def __init__(self, result: Any) -> None:
+        self._result = result
+        self.received_messages: list[dict[str, str]] | None = None
+
+    async def ainvoke(self, messages: list[dict[str, str]]) -> Any:
+        self.received_messages = messages
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
+
+
+class _FakeStructuredOutputClient:
+    """Fake ChatOpenAI-like client hỗ trợ ``with_structured_output(...).ainvoke()``."""
+
+    def __init__(self, result: Any) -> None:
+        self.runnable = _FakeStructuredOutputRunnable(result)
+        self.received_args: tuple[Any, str | None] | None = None
+
+    def with_structured_output(self, schema: Any, method: str | None = None) -> Any:
+        self.received_args = (schema, method)
+        return self.runnable
+
+
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> AsyncIterator[Any]:
-        calls.append(kwargs)
-
-        async def stream() -> AsyncIterator[Any]:
-            yield SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        delta=SimpleNamespace(content="Trả lời [1]"),
-                        finish_reason="stop",
-                    )
-                ],
-                usage=SimpleNamespace(
-                    prompt_tokens=10,
-                    completion_tokens=5,
-                    completion_tokens_details=SimpleNamespace(reasoning_tokens=2),
-                ),
-            )
-
-        return stream()
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="generation-key",
         model_name="generation-model",
@@ -567,56 +891,144 @@ def test_answer_generator_calls_groq_with_stream_contract() -> None:
         timeout_seconds=60,
     )
 
+    created_client = AnswerGenerator(settings)._create_client()
+    assert created_client.model_name == "generation-model"
+    assert created_client.max_tokens == 2048
+    assert created_client.temperature == 0.1
+    assert created_client.reasoning_effort == "low"
+    assert created_client.extra_body == {"include_reasoning": False}
+
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk(
+                "Trả lời [1]",
+                finish_reason="stop",
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                    "output_token_details": {"reasoning": 2},
+                },
+            )
+        ]
+    )
+
     async def collect() -> list[GenerationDelta]:
         return [
             delta
             async for delta in AnswerGenerator(
                 settings,
-                client=client,  # type: ignore[arg-type]
+                client=fake_client,  # type: ignore[arg-type]
             ).stream("Câu hỏi", [_chunk()])
         ]
 
     deltas = asyncio.run(collect())
 
-    assert calls[0]["model"] == "generation-model"
-    assert calls[0]["stream"] is True
-    assert calls[0]["include_reasoning"] is False
-    assert calls[0]["reasoning_effort"] == "low"
-    assert calls[0]["temperature"] == 0.1
-    assert calls[0]["max_completion_tokens"] == 2048
+    assert fake_client.received_messages == build_messages("Câu hỏi", [_chunk()])
     assert deltas == [
         GenerationDelta(
             text="Trả lời [1]",
             finish_reason="stop",
-            usage={
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "reasoning_tokens": 2,
-            },
+            usage=Usage(prompt_tokens=10, completion_tokens=5, reasoning_tokens=2),
         )
     ]
 
 
-def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
-    calls: list[dict[str, Any]] = []
+def test_answer_generator_buffers_internal_stream_before_pipeline_verification() -> (
+    None
+):
+    settings = SimpleNamespace(
+        api_key="generation-key",
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Phần một "),
+            _FakeChunk(
+                "phần hai [1].",
+                finish_reason="stop",
+                usage_metadata={
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                },
+            ),
+        ]
+    )
 
-    async def create(**kwargs: Any) -> Any:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content=(
-                            '{"verdict":"out_of_scope","reason":"Không thuộc miền."}'
-                        )
-                    )
-                )
-            ]
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
+    answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
+
+    assert answer == GeneratedAnswer(
+        text="Phần một phần hai [1].",
+        fragments=["Phần một ", "phần hai [1]."],
+        finish_reason="stop",
+        usage=Usage(prompt_tokens=10, completion_tokens=5),
+    )
+
+
+def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
+    settings = SimpleNamespace(
+        api_key="judge-key",
+        model_name="judge-model",
+        max_retries=1,
+        timeout_seconds=45,
+    )
+
+    created_client = EvidenceJudge(settings)._create_client()
+    assert created_client.model_name == "judge-model"
+    assert created_client.max_tokens == 1024
+    assert created_client.temperature == 0.0
+    assert created_client.reasoning_effort == "low"
+
+    citation = Citation(
+        n=1,
+        chunk_id="chunk-1",
+        source_document="bo-luat-lao-dong",
+        breadcrumb="Điều 1",
+    )
+    fake_client = _FakeStructuredOutputClient(JudgeVerdict(verdict="pass"))
+
+    verdict = asyncio.run(
+        EvidenceJudge(settings, client=fake_client).judge(  # type: ignore[arg-type]
+            "Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation]
+        )
+    )
+
+    assert verdict == JudgeVerdict(verdict="pass")
+    assert fake_client.received_args == (JudgeVerdict, "json_mode")
+    assert fake_client.runnable.received_messages is not None
+    assert (
+        "Draft:\nĐược nghỉ 12 ngày [1]."
+        in fake_client.runnable.received_messages[1]["content"]
+    )
+    assert (
+        "Citation hợp lệ trong draft: [1] Điều 1"
+        in fake_client.runnable.received_messages[1]["content"]
+    )
+
+    invalid_client = _FakeStructuredOutputClient(ValueError("không phải JSON"))
+    with pytest.raises(JudgeError):
+        asyncio.run(
+            EvidenceJudge(
+                settings,
+                client=invalid_client,  # type: ignore[arg-type]
+            ).judge("Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation])
         )
 
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+    wrong_type_client = _FakeStructuredOutputClient({"verdict": "pass", "issues": []})
+    with pytest.raises(JudgeError):
+        asyncio.run(
+            EvidenceJudge(
+                settings,
+                client=wrong_type_client,  # type: ignore[arg-type]
+            ).judge("Câu hỏi", [_chunk()], "Được nghỉ 12 ngày [1].", [citation])
+        )
+
+
+def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
     settings = SimpleNamespace(
         api_key="guardrail-key",
         model_name="safeguard-model",
@@ -624,49 +1036,46 @@ def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
         timeout_seconds=30,
     )
 
+    created_client = InputGuardrail(settings)._create_client()
+    assert created_client.model_name == "safeguard-model"
+    assert created_client.max_tokens == 512
+    assert created_client.temperature == 0.0
+    assert created_client.reasoning_effort == "low"
+
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="out_of_scope", reason="Không thuộc miền.")
+    )
+
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input("Kể chuyện cười")
     )
 
     assert verdict == GuardrailVerdict(
         verdict="out_of_scope", reason="Không thuộc miền."
     )
-    assert calls[0]["model"] == "safeguard-model"
-    assert calls[0]["reasoning_effort"] == "low"
-    assert calls[0]["temperature"] == 0.0
-    assert calls[0]["max_completion_tokens"] == 512
-    assert calls[0]["messages"][1] == {"role": "user", "content": "Kể chuyện cười"}
+    assert fake_client.received_args == (GuardrailVerdict, "json_mode")
+    assert fake_client.runnable.received_messages is not None
+    assert fake_client.runnable.received_messages[1] == {
+        "role": "user",
+        "content": "Kể chuyện cười",
+    }
 
 
 def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
-    calls: list[dict[str, Any]] = []
-
-    async def create(**kwargs: Any) -> Any:
-        calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(
-                    message=SimpleNamespace(
-                        content='{"verdict":"allow","reason":"Trong miền."}'
-                    )
-                )
-            ]
-        )
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
     settings = SimpleNamespace(
         api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="allow", reason="Trong miền.")
     )
 
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input(
             "Còn trường hợp này?",
             recent_user_turns=("Lượt cũ nhất", "Lượt gần", "Lượt mới nhất"),
@@ -674,12 +1083,13 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
     )
 
     assert verdict.verdict == "allow"
-    system_prompt = calls[0]["messages"][0]["content"]
+    assert fake_client.runnable.received_messages is not None
+    system_prompt = fake_client.runnable.received_messages[0]["content"]
     assert (
         "Câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
         in system_prompt
     )
-    assert calls[0]["messages"][1] == {
+    assert fake_client.runnable.received_messages[1] == {
         "role": "user",
         "content": (
             "Câu hỏi trước (chỉ để hiểu ngữ cảnh):\n"
@@ -690,38 +1100,54 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
 
 
 @pytest.mark.parametrize(
-    "response", ["not json", "", '{"verdict":"other","reason":"x"}']
+    "failure",
+    [ValueError("invalid json từ Groq"), TypeError("schema không hợp lệ")],
 )
-def test_guardrail_invalid_response_fails_open(response: str) -> None:
-    async def create(**kwargs: Any) -> Any:
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=response))]
-        )
-
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    )
+def test_guardrail_invalid_response_fails_open(failure: Exception) -> None:
     settings = SimpleNamespace(
         api_key="key", model_name="model", max_retries=2, timeout_seconds=30
     )
+    fake_client = _FakeStructuredOutputClient(failure)
 
     verdict = asyncio.run(
         InputGuardrail(
             settings,
-            client=client,  # type: ignore[arg-type]
+            client=fake_client,  # type: ignore[arg-type]
         ).check_input("Câu hỏi")
     )
 
     assert verdict.verdict == "allow"
 
 
+def test_guardrail_wrong_verdict_type_from_structured_output_fails_open() -> None:
+    """with_structured_output có thể trả object không đúng schema GuardrailVerdict
+    (ví dụ provider không tuân JSON mode); check_input() phải tự phát hiện qua
+    isinstance() và fail-open thay vì để lộ verdict sai kiểu cho pipeline.
+    """
+    settings = SimpleNamespace(
+        api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient({"verdict": "allow", "reason": "x"})
+
+    verdict = asyncio.run(
+        InputGuardrail(
+            settings,
+            client=fake_client,  # type: ignore[arg-type]
+        ).check_input("Câu hỏi")
+    )
+
+    assert verdict.verdict == "allow"
+    assert verdict.reason == "Không kiểm tra được guardrail; fail-open."
+
+
 def test_output_check_keeps_only_valid_citations_and_reports_invalid_ones() -> None:
     result = check_output("Theo quy định [2], [9] và [2].", [_chunk(), _chunk(2)])
 
     assert [citation.n for citation in result.citations] == [2]
-    assert [(warning.code, warning.detail) for warning in result.warnings] == [
-        ("invalid_citation", "9")
+    assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
+        ("invalid_citation", "Citation ngoài phạm vi context: [9]")
     ]
+    assert result.warnings == []
 
 
 def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
@@ -737,14 +1163,23 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
         ],
     )
 
+    assert result.hard_issues == []
     assert result.warnings == []
 
 
-def test_output_check_ignores_list_markers_and_unqualified_years() -> None:
+def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_ones() -> (
+    None
+):
     result = check_output("1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()])
 
+    assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
+        (
+            "unverified_sensitive_number",
+            "Số pháp lý nhạy cảm không tìm thấy trong context: 99",
+        )
+    ]
     assert [(warning.code, warning.detail) for warning in result.warnings] == [
-        ("unverified_number", "99, 2025")
+        ("unverified_number", "2025, 2024")
     ]
 
 
@@ -754,6 +1189,7 @@ def test_output_check_refusal_without_citation_or_number_has_no_warning() -> Non
     )
 
     assert result.citations == []
+    assert result.hard_issues == []
     assert result.warnings == []
 
 
@@ -775,3 +1211,5 @@ def test_generation_event_union_rejects_invalid_schema() -> None:
         )
     with pytest.raises(ValidationError):
         Citation(n=1, chunk_id="id", source_document="doc")  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"type": "status", "stage": "generation"})

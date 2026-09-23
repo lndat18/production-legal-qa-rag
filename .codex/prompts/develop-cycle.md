@@ -16,7 +16,7 @@ Bạn là orchestrator cho quy trình implement code từ spec. Input là `$ARGU
 - Chỉ `tester` được push hoặc mở PR. Chỉ `reviewer` được merge. Orchestrator tuyệt đối không tự `git push`, `gh pr create` hay `gh pr merge`.
 - `developer` chỉ commit local trên branch đã chỉ định. Truyền cho agent này spec path, branch và toàn bộ feedback tích lũy của vòng trước.
 - Mỗi feedback do CI fail hoặc reviewer `REVISE` làm tăng `feedback_count` thêm 1. Ngay khi biến đếm đạt 3, dừng toàn bộ quy trình, không gọi thêm agent và báo người dùng cần can thiệp thủ công kèm mọi feedback/SHA/PR hiện có.
-- Nếu một agent báo blocker, thiếu quyền, không thể xác minh trạng thái, hoặc developer báo check cục bộ lỗi, dừng ngay. Không phỏng đoán, không bỏ qua gate và không gọi agent kế tiếp.
+- Nếu một agent báo blocker, thiếu quyền, không thể xác minh trạng thái, hoặc developer báo **hard local gate** lỗi, dừng ngay. Không phỏng đoán, không bỏ qua gate và không gọi agent kế tiếp. `test_migration_required` được developer khai báo đầy đủ theo role không phải hard-gate failure: tester phải cập nhật test theo spec rồi để GitHub Actions quyết định.
 - Mỗi lần gọi agent phải yêu cầu một handoff có cấu trúc: trạng thái, SHA/commit liên quan, PR nếu có, feedback theo định dạng đã quy định và hành động kế tiếp.
 
 ## Vòng lặp
@@ -29,13 +29,13 @@ Gọi subagent `developer` với:
 
 - spec path và branch;
 - feedback tích lũy của vòng trước (nếu có);
-- yêu cầu đọc spec, implement đúng scope, chạy các local checks mà developer agent quy định và commit local.
+- yêu cầu đọc spec, implement đúng scope, chạy hard local gates mà developer agent quy định, báo kết quả `pytest` và khai báo `test_migration_required` nếu contract mới làm test cũ lỗi, rồi commit local.
 
-Nếu developer báo bất kỳ local check nào fail, dừng ngay và báo lỗi/log cho người dùng; không gọi tester. Nếu thành công, lưu SHA developer bàn giao.
+Nếu developer báo hard local gate fail, dừng ngay và báo lỗi/log cho người dùng; không gọi tester. Nếu `pytest` chỉ fail vì `test_migration_required` đã nêu rõ file/test, hành vi cũ, hành vi mới và mục spec, lưu migration manifest cùng SHA rồi tiếp tục tester. Nếu thành công, lưu SHA developer bàn giao.
 
 ### 2. Test, PR và CI — vòng A
 
-Gọi subagent `tester` với spec path, branch, SHA/diff hiện tại, PR hiện tại (nếu có) và feedback cần được bảo vệ bằng test.
+Gọi subagent `tester` với spec path, branch, SHA/diff hiện tại, PR hiện tại (nếu có), migration manifest (nếu có) và feedback cần được bảo vệ bằng test.
 
 Tester phải viết/cập nhật test trong phạm vi `tests/`, push branch và chỉ mở PR nếu state ledger chưa có PR. Tester theo dõi `checks` bằng GitHub CLI và trả về một trong ba trạng thái:
 

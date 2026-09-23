@@ -1,253 +1,223 @@
-# Embedding — Chunk → Vector → Pinecone
+# Embedding — Chunk → Vector Store: Reference Spec
 
-## 1. Mục tiêu & phạm vi
+## 1. Mục đích
 
-Sinh vector embedding cho từng `Chunk` (đầu ra của `chunking/`, xem
-`chunking_spec.md` mục 2) bằng HuggingFace Inference API (model
-`CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2`), rồi upsert lên Pinecone để
-phục vụ bước retrieval sau này.
+Chuyển các `Chunk` đã được chuẩn hoá thành vector có thể tìm kiếm, nhưng vẫn
+giữ được citation và dữ liệu cần để sinh câu trả lời sau này.
 
-**Phạm vi**: đọc toàn bộ `data/chunks/*.json` hiện có (2026-09-17: 6 file,
-**2.228 chunk** — 579 + 328 + 121 + 60 + 704 + 436) mỗi lần chạy, xoá sạch
-index Pinecone rồi upsert lại toàn bộ từ đầu (xem mục 5, 8).
+Nguyên tắc cốt lõi:
 
-Pipeline chia làm **2 pha tách biệt** (xác nhận với người dùng 2026-09-17):
-pha 1 gọi HF Inference API cho toàn bộ chunk và ghi kết quả ra file trung
-gian (mục 2), pha 2 mới đọc file trung gian rồi upsert lên Pinecone. Lý do
-tách: lệnh gọi HF là tài nguyên **bị giới hạn quota** (1.000 request/ngày),
-trong khi Pinecone không bị giới hạn kiểu đó — nếu gộp chung 1 pha mà bước
-upsert lỗi giữa chừng (sai config, mất mạng...), kết quả embed đã tốn quota
-gọi HF sẽ mất, phải gọi lại từ đầu. Ghi checkpoint ra đĩa giữa 2 pha tránh
-rủi ro này.
+> **Embed là một snapshot bất biến; vector store chỉ công bố snapshot hoàn
+> chỉnh.**
 
-**Ngoài phạm vi (chủ động không làm)**:
+Embedding API là tài nguyên tốn tiền/quota và vector store là trạng thái có
+thể thay đổi. Vì vậy phải checkpoint kết quả embedding trước, rồi mới publish
+lên vector store. Không trộn hai trách nhiệm vào một vòng lặp mạng duy nhất.
 
-- Retrieval/query logic — thuộc spec khác.
-- Incremental/delta embedding (chỉ diff chunk mới/thay đổi) — đã xác nhận
-  với người dùng (2026-09-17): chấp nhận full re-embed mỗi lần, đơn giản
-  hơn, và với batch request (mục 4) tổng số request vẫn nằm rất xa dưới
-  ngân sách 1.000 request/ngày nên không cấp thiết phải tối ưu.
-- Idempotent tracking qua Postgres/DB khác — nhất quán quyết định đã có ở
-  `formatting_spec.md` mục 1.2.
-- Multi-namespace/multi-tenant Pinecone — 1 index, không namespace riêng.
-- Resume pha 1 giữa các lần chạy khác nhau (vd. skip chunk đã embed từ lần
-  chạy trước nếu bị crash giữa chừng) — đã xác nhận với người dùng
-  (2026-09-17): không cần, mỗi lần chạy pha 1 luôn embed lại toàn bộ từ đầu
-  và ghi đè file trung gian cũ (mục 2). File trung gian chỉ là checkpoint
-  nội bộ giữa pha 1 và pha 2 của **cùng 1 lần chạy**, không dùng để skip gì
-  giữa các lần chạy khác nhau.
-- Dispatch nhiều HF token chạy đồng thời (như Groq 2-key ở
-  `formatting_spec.md` mục 1.3) — chỉ 1 `HF_TOKEN`, xử lý batch tuần tự (mục
-  4). Quy mô ~90 request/lần chạy (ước tính, mục 4) không cần tối ưu song
-  song; nếu corpus tăng quy mô lớn, đây là chỗ đầu tiên cần xét lại.
-- Tự host embedding model (vd. `sentence-transformers` chạy local) — dùng
-  HuggingFace Inference API cloud-hosted theo yêu cầu ban đầu người dùng.
+### Trong phạm vi
 
-## 2. Input & Output
+- Đọc `Chunk` JSON, tiền xử lý đúng theo embedding model, gọi model theo batch.
+- Ghi checkpoint `EmbeddedChunk` atomic, validate và publish lên vector store.
+- Tạo index, metadata retrieval và kiểm soát quota/retry.
 
-- **Input**: `data/chunks/*.json` (mỗi file 1 mảng JSON các `Chunk`, schema
-  đầy đủ xem `chunking_spec.md` mục 2). Field dùng ở bước này: `chunk_id`,
-  `content` (chuỗi đem đi embed), `breadcrumb`, `source_document`,
-  `has_table`, `raw_table`. **Không ghi/sửa vào các file này** — `embedding/`
-  chỉ đọc, output của pha 1 đi vào file trung gian riêng (không mutate
-  output của `chunking/`, giữ đúng ranh giới sở hữu giữa 2 package, và tránh
-  bị `chunking/` ghi đè mất khi chạy lại — `data/chunks/*.json` luôn được
-  ghi atomic toàn bộ file mỗi lần `chunking/` chạy).
+### Ngoài phạm vi
 
-- **Output trung gian (pha 1 — embed)**: `data/embeddings/*.json`, ánh xạ
-  1-1 theo tên file nguồn từ `data/chunks/` (giữ nguyên tên). Mỗi file là 1
-  mảng JSON các `EmbeddedChunk` (`embedding/models.py`) — toàn bộ field của
-  `Chunk` cộng thêm `embedding: list[float]`. Chỉ chứa chunk **embed thành
-  công**; chunk thuộc batch lỗi (mục 4) không xuất hiện trong file này. Ghi
-  atomic (file tạm + rename, giống `chunking/`/`formatting/`) ngay sau khi
-  xử lý xong file nguồn tương ứng — không đợi hết toàn bộ corpus mới ghi.
+- Chunking, retrieval/reranking, generation, quyền truy cập người dùng.
+- Database trạng thái, delta embedding, multi-tenant hay song song nhiều key,
+  trừ khi quy mô thực tế chứng minh cần thiết.
 
-- **Output cuối (pha 2 — upsert)**: Pinecone index (tên lấy từ
-  `VectorDBSettings.index_name`, mục 7), mỗi `EmbeddedChunk` đọc từ
-  `data/embeddings/*.json` → 1 vector:
+Với corpus nhỏ hoặc vừa, full rebuild là mặc định đơn giản nhất. Chỉ làm
+incremental khi chi phí đo được của full rebuild đáng kể.
 
-  | Field Pinecone | Giá trị |
-  | --- | --- |
-  | `id` | `chunk_id` (deterministic sẵn từ chunking, đảm bảo upsert ghi đè đúng vị trí nếu chạy lại) |
-  | `values` | `EmbeddedChunk.embedding` (dimension xác định qua model config, mục 5 — không hardcode) |
-  | `metadata.content` | `EmbeddedChunk.content` |
-  | `metadata.breadcrumb` | `EmbeddedChunk.breadcrumb` |
-  | `metadata.source_document` | `EmbeddedChunk.source_document` |
-  | `metadata.has_table` | `EmbeddedChunk.has_table` |
-  | `metadata.raw_table` | `EmbeddedChunk.raw_table` — **chỉ set key này khi `has_table=True`**; Pinecone metadata không nhận giá trị `null`, nên khi `has_table=False` bỏ hẳn key thay vì gán `None` |
+## 2. Bất biến hệ thống
 
-  Không lưu `token_count`/`is_split`/`split_index`/`split_total` vào
-  metadata — không phục vụ retrieval/generation, tránh phình metadata không
-  cần thiết (đã xác nhận với người dùng 2026-09-17). Không lưu
-  `standardization_table` riêng vì đã nằm trong `content` (chunking_spec mục
-  5.4).
+1. **Cùng model, cùng tiền xử lý.** Text index và text query phải qua chính
+   xác cùng segmentation/normalization trước khi embed. Lệch preprocessing là
+   lỗi semantic: hệ thống vẫn chạy nhưng vector không còn cùng không gian.
+2. **Không sửa output của bước trước.** `data/chunks/` chỉ đọc; checkpoint
+   embedding nằm ở vùng output riêng.
+3. **Snapshot phải tự nhất quán.** Một lần publish chỉ đọc danh sách checkpoint
+   thuộc đúng lần build đó; không quét mù các file cũ trong output directory.
+4. **Không publish index partial mặc định.** Batch/file embed lỗi được log và
+   checkpoint phần thành công được giữ để điều tra, nhưng pha publish dừng nếu
+   snapshot chưa complete. Partial publish chỉ là lựa chọn vận hành rõ ràng,
+   không phải hành vi ngầm định.
+5. **ID và metadata ổn định.** Vector dùng `chunk_id` deterministic của
+   chunking; metadata phải đủ để truy hồi, lọc và trích dẫn mà không cần mở lại
+   file corpus.
+6. **Validate ở biên.** JSON checkpoint, response model và record vector DB
+   đều được validate trước khi chuyển sang bước tiếp theo.
 
-## 3. Segment tiếng Việt trước khi embed
+## 3. Contract dữ liệu
 
-Model PhoBERT-based được huấn luyện trên văn bản đã word-segment — giống lý
-do `chunking/tokenizer.py` phải segment trước khi đếm token (xem module đó,
-mục 6 `chunking_spec.md`). Trước khi gửi `content` cho HF Inference API,
-segment bằng `pyvi.ViTokenizer.tokenize()`.
+### Input
 
-Gọi trực tiếp `pyvi` tại đây (1 dòng), **không** tái dùng
-`chunking/tokenizer.py` — module đó gắn với việc đếm token bằng
-`AutoTokenizer`, không phải mối quan tâm của `embedding/`; tái dùng chỉ vì 1
-lệnh gọi `pyvi` chung sẽ tạo coupling không cần thiết giữa 2 package.
+`data/chunks/**/*.json`, mỗi file là mảng Pydantic `Chunk`. Các field đầu vào
+cần giữ nguyên gồm `chunk_id`, `content`, `breadcrumb`, `source_document`,
+`has_table` và `raw_table`.
 
-## 4. HuggingFace Inference API — batch & rate limiting
+### Checkpoint
 
-**Free tier: 1.000 request/ngày** (theo người dùng cung cấp). `HF_TOKEN` bắt
-buộc phải có để đạt được quota này (anonymous thấp hơn nhiều).
+`EmbeddedChunk` kế thừa đầy đủ `Chunk` và thêm:
 
-**[Giả định cần xác thực thực nghiệm khi implement — chưa test tại thời
-điểm viết spec, 2026-09-17]**: 3 điều sau phải được xác nhận bằng cách gọi
-thử API thật (vài batch nhỏ) trước khi chốt hằng số cuối cùng, cùng tinh
-thần với cách `formatting_spec.md` mục 1.2 đã đo token corpus thật trước khi
-chốt `CHUNK_TOKEN_LIMIT`:
+```python
+embedding: list[float]
+```
 
-1. Endpoint có nhận **list nhiều text trong 1 request** không (`inputs:
-   [text1, text2, ...]` → trả về list vector cùng thứ tự) — đây là điều
-   kiện tiên quyết để batch giảm số request.
-2. Giới hạn payload/batch size tối đa trước khi bị lỗi (số text và/hoặc
-   tổng ký tự mỗi request).
-3. Quota RPD thực tế khi có `HF_TOKEN` — đúng 1.000/ngày như đã biết chưa,
-   có giới hạn theo phút (RPM) riêng không.
+Checkpoint được ghi atomic (temporary sibling rồi rename), một file nguồn ứng
+với một file checkpoint. Mỗi build phải có một **manifest snapshot** chứa:
 
-**Chiến lược (giá trị khởi điểm, điều chỉnh theo kết quả xác thực ở
-trên)**:
+- danh sách file nguồn và checkpoint tương ứng;
+- tổng chunk, tổng embed thành công, danh sách chunk/batch lỗi;
+- model name, dimension và version/timestamp build.
 
-- `HF_BATCH_SIZE = 25` (hằng số nội bộ module, không thuộc `config.py` —
-  xem mục 7) — 2.228 chunk / 25 ≈ **90 request** cho 1 lần chạy full corpus,
-  dư rất nhiều so với ngân sách 1.000/ngày kể cả khi phải retry.
-- Không cần rate limiter theo phút (TPM/RPM) như Groq — quy mô ~90
-  request/lần chạy khó chạm giới hạn theo phút dù có tồn tại. Chỉ cần đếm
-  **tổng request đã gọi trong ngày** (in-process, không cần persist qua các
-  lần chạy khác nhau vì mỗi lần chạy đã nằm rất xa ngưỡng): dừng lại, raise
-  lỗi rõ ràng nếu vượt `HF_RPD_SAFE_LIMIT` (90% × 1.000 = 900) thay vì cố
-  gọi tiếp rồi nhận lỗi 429 giữa chừng. Bộ đếm này **dùng chung xuyên suốt
-  toàn bộ pha 1** (mục 8), không reset theo từng file nguồn — giống sliding
-  window của `formatting/` (mục 1.2 `formatting_spec.md`, "dùng chung cho
-  toàn bộ `convert_directory()`, không reset theo từng file").
-- Retry theo `max_retries`/`timeout_seconds` (cùng tinh thần `LLMSettings`,
-  mục 7) khi request lỗi.
-- **Lỗi 1 batch (hết `max_retries`) → bỏ qua toàn bộ chunk thuộc batch đó**
-  (không upsert), log QC warning liệt kê `chunk_id` bị bỏ, không chặn các
-  batch còn lại — nhất quán pattern lỗi của `formatting/` (1 phần lỗi không
-  làm hỏng toàn bộ lần chạy).
+Pha publish chỉ nhận manifest `complete`. Manifest giải quyết hai lỗi vận hành
+hay gặp: dùng lại checkpoint của source đã bị xoá, và vô tình publish một lần
+embed đang dở dang.
 
-## 5. Pinecone — tạo index & upsert (pha 2)
+### Record vector store
 
-Toàn bộ mục này chỉ chạy **sau khi pha 1 (mục 4) đã xử lý xong hết mọi file
-nguồn** và ghi đủ `data/embeddings/*.json` (mục 2) — không upsert xen kẽ
-theo từng file/batch trong lúc pha 1 đang chạy.
+| Field | Giá trị |
+| --- | --- |
+| `id` | `chunk_id` |
+| `values` | `embedding` |
+| `metadata.content` | `content` gốc, không phải bản đã word-segment |
+| `metadata.breadcrumb` | Citation đầy đủ |
+| `metadata.source_document` | Định danh văn bản |
+| `metadata.has_table` | Cờ bảng |
+| `metadata.raw_table` | Chỉ có khi `has_table=True` |
 
-- **Dimension không cần gọi Inference API để biết**: đọc
-  `AutoConfig.from_pretrained(model_name).hidden_size` (tải config.json từ
-  HF Hub, không tính vào quota Inference API — khác hẳn việc gọi embedding
-  thật ở mục 4). Dùng giá trị này khi tạo index, không hardcode số dimension
-  trong `config.py` (tránh sai lệch nếu đổi model sau).
-- **Tạo index nếu chưa tồn tại** (kiểm tra qua `list_indexes()`): serverless
-  spec, `cloud="aws"`, `region="us-east-1"` (mặc định free tier serverless),
-  `metric="cosine"` (chuẩn cho sentence embedding).
-- **Trước khi upsert: xoá sạch toàn bộ vector hiện có trong index**
-  (`index.delete(delete_all=True)`) — tránh orphan vector khi `chunk_id` cũ
-  không còn tồn tại ở lần chunking sau (đã xác nhận với người dùng
-  2026-09-17, nhất quán quyết định "full re-embed mỗi lần" ở mục 1).
-- **Upsert theo batch** (khuyến nghị Pinecone: ~100 vector/lần gọi, hằng số
-  `PINECONE_UPSERT_BATCH_SIZE` — độc lập với `HF_BATCH_SIZE` ở mục 4, 2 bước
-  batch riêng không cần đồng bộ kích thước).
+Không lưu metadata chỉ hữu ích lúc ingest, như token count hoặc quan hệ split,
+trừ khi một use case retrieval chứng minh cần chúng. Với Pinecone, bỏ hẳn key
+`raw_table` khi không có bảng thay vì gửi `null`.
 
-## 6. Tools & Integrations
+`EmbeddedChunk`, `PineconeMetadata` và `PineconeRecord` là Pydantic v2 models;
+không trao đổi `dict` thô giữa các module.
 
-- `huggingface_hub` (`InferenceClient`) — gọi Inference API.
-- `pinecone` (SDK chính thức) — tạo/xoá/upsert index, serverless.
-- `pyvi` — word-segment (đã là dependency có sẵn từ `chunking/`).
-- `transformers` (`AutoConfig`) — chỉ đọc `hidden_size`, không load full
-  model (đã có `transformers` dependency từ `chunking/tokenizer.py`).
+## 4. Tiền xử lý và model
 
-## 7. Config tập trung (`src/production_legal_qa_rag/config.py`)
+Model multilingual/PhoBERT thường yêu cầu word segmentation tiếng Việt. Với
+profile hiện tại, dùng `pyvi.ViTokenizer.tokenize()` cho `Chunk.content` ngay
+trước khi gọi embedding API. Checkpoint và metadata vẫn giữ content nguyên văn.
 
-- `EmbeddingSettings` thêm field mới:
-  `hf_token: str = Field(validation_alias="HF_TOKEN")` — **bắt buộc**
-  (không có default), theo đề xuất ban đầu của người dùng để đạt quota
-  1.000 request/ngày.
-- `VectorDBSettings` thêm 2 field mới cho việc tạo index serverless (mục
-  5): `cloud: str = "aws"`, `region: str = "us-east-1"`.
-- **Không** đưa `HF_BATCH_SIZE`, `HF_RPD_SAFE_LIMIT`,
-  `PINECONE_UPSERT_BATCH_SIZE` vào `config.py` — đây là hằng số nội bộ cơ
-  chế batch/rate-limit của riêng `embedding/`, giống cách
-  `formatting/llm_client.py` giữ `TPM_SAFE_LIMIT`/`RPM_SAFE_LIMIT` nội bộ
-  thay vì đặt trong `config.py` (tinh thần chunking_spec.md mục 7: chỉ khai
-  vào `config.py` field dùng chung nhiều package).
+Code embedding index và query có thể là hai module độc lập, nhưng phải cùng
+quy tắc tiền xử lý. Không tái sử dụng module tokenizer của chunking chỉ vì có
+một hàm giống nhau nếu điều đó làm hai package phụ thuộc sai chiều.
 
-## 8. Workflow & quản lý trạng thái
+`EmbeddingSettings` là nguồn chung của:
 
-**Pha 1 — embed (mục 4)**, lặp tuần tự theo từng file trong
-`data/chunks/*.json` (giống vòng lặp theo file của `chunking/`/
-`formatting/`), bộ đếm rate limiter (`HF_RPD_SAFE_LIMIT`) dùng chung xuyên
-suốt cả pha, không reset giữa các file:
+- `model_name`;
+- secret/token của provider;
+- token budget nếu chunking dùng cùng model.
 
-1. Đọc 1 file `data/chunks/X.json`, parse thành `list[Chunk]` — tái dùng
-   `Chunk` từ `production_legal_qa_rag.chunking.models` (không định nghĩa
-   lại schema).
-2. Segment `content` từng chunk bằng `pyvi` (mục 3), chia thành batch theo
-   `HF_BATCH_SIZE` (mục 4).
-3. Gọi HF Inference API tuần tự từng batch, thu vector tương ứng theo đúng
-   thứ tự input. Batch lỗi (hết `max_retries`) → bỏ qua các chunk thuộc
-   batch đó, log QC warning.
-4. Build `EmbeddedChunk` (mục 2) cho các chunk embed thành công của file
-   này.
-5. Ghi `data/embeddings/X.json` atomic (file tạm + rename) — ghi đè hoàn
-   toàn nếu file đã tồn tại từ lần chạy trước (không resume, mục 1).
+Dimension index lấy từ model config hoặc response đã xác thực; không hard-code.
+Đổi model là đổi không gian vector: phải xác nhận dimension và rebuild index,
+không được trộn vector hai model trong cùng index.
 
-Sau khi **toàn bộ file nguồn đã qua pha 1** mới chuyển sang pha 2 — không
-upsert xen kẽ trong lúc pha 1 đang chạy (mục 1, lý do tách 2 pha).
+## 5. Gọi embedding API
 
-**Pha 2 — upsert (mục 5)**:
+Batch để giảm số request, nhưng giữ thứ tự input để ghép vector trở lại đúng
+`chunk_id`.
 
-6. Đọc toàn bộ `data/embeddings/*.json`, gộp thành 1 danh sách
-   `EmbeddedChunk` duy nhất.
-7. Build Pinecone record (`id`, `values`, `metadata` — mục 2) từ mỗi
-   `EmbeddedChunk`.
-8. Xoá sạch index hiện có (mục 5), sau đó upsert toàn bộ record theo batch
-   (`PINECONE_UPSERT_BATCH_SIZE`).
-9. In tổng kết: tổng số chunk (từ `data/chunks/`), số chunk embed thành
-   công (từ `data/embeddings/`), số chunk bị bỏ qua kèm danh sách QC
-   warning (batch/chunk_id lỗi ở pha 1).
+Trước khi chốt hằng số production, đo với provider thật:
 
-Không có DB/trạng thái nào được lưu giữa các lần chạy khác nhau — mỗi lần
-chạy xử lý lại toàn bộ input hiện có, cả pha 1 lẫn pha 2 (mục 1).
-`data/embeddings/*.json` chỉ là checkpoint nội bộ giữa 2 pha của **cùng 1
-lần chạy**. Lỗi 1 batch không chặn các batch/file còn lại (partial
-success), nhất quán pattern hiện có ở `formatting/`/`chunking/`.
+1. API có nhận một list text và trả vector cùng thứ tự không.
+2. Giới hạn batch/payload, timeout và quota theo ngày/phút.
+3. Kiểu response, dimension và lỗi rate-limit thực tế.
 
-## 9. Cấu trúc module trong `src/production_legal_qa_rag/embedding/`
+Sau đó áp dụng:
 
-- `models.py` — `EmbeddedChunk` (`Chunk` + field `embedding: list[float]`,
-  mục 2) và Pydantic model cho Pinecone record (`id`, `values`, `metadata`)
-  dùng để validate trước khi upsert (coding-convention: cấu trúc dữ liệu
-  trao đổi giữa các bước dùng Pydantic, không dict thô).
-- `hf_client.py` — wrapper gọi HF Inference API: segment, chia batch, rate
-  limiter theo request/ngày, retry.
-- `pinecone_client.py` — tạo index nếu chưa có, xoá toàn bộ vector, upsert
-  theo batch.
-- `pipeline.py` — điều phối toàn bộ workflow (mục 8, 2 pha): `embed()` (pha
-  1: đọc `data/chunks/` → ghi `data/embeddings/`) và `upsert()` (pha 2: đọc
-  `data/embeddings/` → Pinecone), gọi tuần tự từ entrypoint CLI (`tools/`,
-  Typer theo coding-convention).
-- `__init__.py`
+- batch size bảo thủ, là hằng số nội bộ `embedding/`;
+- timeout hữu hạn và retry giới hạn cho lỗi tạm thời;
+- request counter dùng chung cho toàn bộ build, dừng trước ngưỡng quota an toàn;
+- validate số vector, từng vector số thực, và dimension nhất quán trong batch.
 
-## 10. Tiêu chí hoàn thành
+Khi một batch hết retry, log `chunk_id` cụ thể. Không tự biến lỗi đó thành vector
+rỗng, không đổi thứ tự các chunk còn lại, và không âm thầm publish snapshot.
 
-- Chạy pipeline trên toàn bộ `data/chunks/*.json` hiện có (2.228 chunk)
-  không crash; log rõ số chunk thành công/bị bỏ qua.
-- Sau pha 1: `data/embeddings/*.json` tồn tại đủ 1-1 theo tên file nguồn
-  `data/chunks/*.json`, mỗi `EmbeddedChunk` có `embedding` đúng dimension
-  model thật; `data/chunks/*.json` không bị thay đổi.
-- Pinecone index sau khi chạy chứa đúng số vector = số chunk embed thành
-  công, mỗi vector có đủ metadata theo mục 2 (trừ `raw_table` khi
-  `has_table=False`).
-- Vector dimension khớp đúng với model thật (đọc từ `AutoConfig`, không
-  hardcode sai).
-- 1 lần chạy full corpus không vượt quota HF Inference API 1.000
-  request/ngày (ước tính ~90 request với `HF_BATCH_SIZE=25`, mục 4).
+## 6. Publish vector store
+
+Pha này chỉ bắt đầu khi manifest complete.
+
+1. Đọc checkpoint được manifest liệt kê và validate lại.
+2. Tạo index nếu chưa có: metric phù hợp model (thường cosine), cloud/region từ
+   settings; chờ index ready trước data-plane request.
+3. Chuyển từng `EmbeddedChunk` thành record đã validate, rồi upsert theo batch
+   riêng với batch embedding.
+4. Xác nhận số vector đã publish khớp snapshot trước khi đánh dấu build thành
+   công.
+
+### Chính sách thay thế index
+
+Với ingestion offline và một corpus nhỏ, có thể `delete_all` rồi upsert full
+snapshot: cách này loại orphan vector khi chunking đổi. Trade-off là index có
+khoảng trống/partial nếu lỗi xảy ra sau delete.
+
+Nếu index đang phục vụ traffic, build snapshot vào namespace/index phiên bản
+mới, validate count, rồi chuyển consumer sang version mới. Không bổ sung cơ chế
+này sớm khi chưa có yêu cầu availability; nhưng cũng không gọi quy trình
+`delete_all → upsert` là atomic.
+
+## 7. Workflow
+
+```text
+Chunk JSON (read-only)
+  → preprocess + embed theo batch
+  → validate vector
+  → atomic EmbeddedChunk checkpoints
+  → complete snapshot manifest
+  → validate toàn snapshot
+  → full refresh hoặc publish version mới
+  → vector store
+```
+
+Tách CLI thành hai thao tác rõ ràng:
+
+- `embed`: tạo checkpoint và manifest.
+- `upsert`: chỉ publish một manifest complete được chỉ định.
+
+CLI ở `tools/` dùng Typer, còn business logic nằm trong package. Batch chạy
+tuần tự mặc định; tăng concurrency chỉ sau khi quota và giới hạn provider đã
+được đo.
+
+## 8. Module boundaries
+
+| Module | Trách nhiệm duy nhất |
+| --- | --- |
+| `models.py` | Pydantic `EmbeddedChunk`, metadata, vector record và manifest. |
+| `hf_client.py` | Preprocess, batching, retry, quota, validate response API. |
+| `pinecone_client.py` | Lifecycle index và publish record theo batch. |
+| `pipeline.py` | Điều phối snapshot: input → checkpoint → manifest → publish. |
+| `tools/embed_documents.py` | Typer entrypoint mỏng. |
+
+Config môi trường tập trung ở `config.py`; không đọc `.env` trực tiếp từ client
+hay CLI. Constants chỉ thuộc một cơ chế (batch size, retry) ở module đó, không
+biến mọi chi tiết thành environment variable.
+
+## 9. Tiêu chí hoàn thành
+
+- Input chunk không bị sửa; checkpoint atomic và truy vết được về đúng source.
+- Mọi vector trong snapshot có cùng dimension, đúng thứ tự với `chunk_id` và
+  được tạo bằng preprocessing giống query-time.
+- Manifest complete có mapping 1-1 source/checkpoint, count chính xác, không
+  chứa checkpoint cũ ngoài snapshot.
+- Record có ID deterministic và metadata citation đầy đủ; không gửi metadata
+  `null` provider không hỗ trợ.
+- Quota, retry và batch lỗi có log rõ; snapshot lỗi không tự publish.
+- Index mới tồn tại đủ số vector của snapshot và không chứa orphan vector sau
+  full rebuild.
+
+## 10. Áp dụng cho hệ thống mới
+
+Chốt trước khi code:
+
+1. Model, dimension, preprocessing bắt buộc và metric vector.
+2. Nguồn dữ liệu bất biến cùng schema checkpoint/metadata tối thiểu.
+3. Quota, batch/payload, retry và mức lỗi nào cho phép publish.
+4. Chiến lược snapshot: full refresh offline hay versioned publish không
+   downtime.
+5. Ngưỡng thực tế để cần delta embedding, resume hoặc concurrency.
+
+Nếu chưa có dữ liệu đo, chọn sequential full rebuild + checkpoint + manifest.
+Đó là baseline nhỏ nhất vẫn bảo vệ được chi phí API, tính đúng semantic và sự
+toàn vẹn của index.
