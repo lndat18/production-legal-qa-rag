@@ -565,7 +565,7 @@ class _Generation:
             events
             if events is not None
             else [
-                StatusEvent(stage="generation"),
+                StatusEvent(stage="drafting"),
                 TokenEvent(text="Đáp án [1]"),
                 CitationsEvent(citations=[_CITATION]),
                 DoneEvent(),
@@ -755,7 +755,7 @@ def test_first_turn_skips_condense_and_status_order() -> None:
     assert [e.stage for e in events if e.type == "status"] == [
         "guardrail",
         "retrieval",
-        "generation",
+        "drafting",
     ]
     assert trace.standalone_query == "Câu hỏi?" and trace.raw_query == "Câu hỏi?"
     assert trace.verdict is not None and trace.verdict.verdict == "allow"

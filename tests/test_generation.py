@@ -463,7 +463,9 @@ def test_judge_repair_uses_the_only_repair_budget_and_fixed_context() -> None:
     assert generator.repair_calls[0][1] == [
         _chunk(content="Đủ điều kiện thì được nghỉ 12 ngày.")
     ]
-    assert generator.repair_calls[0][3] == [VerificationIssue.model_validate(issue)]
+    assert generator.repair_calls[0][3] == [
+        VerificationIssue.model_validate(issue.model_dump())
+    ]
     assert retrieve_calls == ["Câu hỏi"]
     assert len(judge.calls) == 2
 
