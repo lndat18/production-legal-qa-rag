@@ -983,8 +983,7 @@ def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> N
     assert calls[0]["temperature"] == 0.0
     assert "Draft:\nĐược nghỉ 12 ngày [1]." in calls[0]["messages"][1]["content"]
     assert (
-        "Citation hợp lệ trong draft: [1] Điều 1"
-        in calls[0]["messages"][1]["content"]
+        "Citation hợp lệ trong draft: [1] Điều 1" in calls[0]["messages"][1]["content"]
     )
 
     async def invalid_create(**kwargs: Any) -> Any:
