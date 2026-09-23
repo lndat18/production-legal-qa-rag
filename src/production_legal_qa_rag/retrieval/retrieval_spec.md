@@ -391,6 +391,7 @@ khởi tạo 1 lần, dùng lại cho mọi query.
 | `citation.py`           | `extract_citation_numbers/khoans`, `citation_extras`, `parse_breadcrumb`, `DOCUMENTS`, `detect_document`, `structural_terms`/`breadcrumb_structural_terms` (chung 1 hàm định dạng token) |
 | `reranker_client.py`    | HTTP client, timeout/retry/validate/fallback                                                                                                                                                                                 |
 | `pipeline.py`           | `retrieve()` điều phối, sở hữu client                                                                                                                                                                                 |
+| `relevance.py`          | `MIN_RERANK_SCORE`, `is_low_relevance(chunks)` — tín hiệu độ liên quan dựa trên `rerank_score`; **không** được `retrieve()` gọi, chỉ export cho `conversation/orchestrator.py` tự quyết định `no_context` (mục 16 điểm 8, `conversation_spec.md` mục 18.2.2) |
 
 `tools/sparse_index_documents.py` tách biệt khỏi `retrieve()`. `retrieval/test.py`
 là script thử tay gọi reranker/pipeline thật (không thuộc kiến trúc chính thức).
@@ -456,3 +457,28 @@ top 5. Ghi lại hạng/điểm từng câu để theo dõi (không phải đi�
    sớm nhánh B, circuit breaker reranker, quota HF); hạ `RERANK_SECONDS_PER_PASSAGE`
    khi có GPU.
 6. Phương án Agentic cho câu cả Điều/Điểm trở lên/nhiều Điều (spec riêng).
+7. **Mở rộng truy vấn theo từ đồng nghĩa pháp lý — hoãn (2026-09-22):** ca follow-up đổi
+   chủ thể giới tính ("Vậy chồng thì sao?" sau câu hỏi về "nghỉ thai sản") cho thấy câu
+   hỏi đúng thuật ngữ nhưng ít từ khoá trùng corpus có thể vẫn trượt retrieval. Đã quyết
+   định **không** sửa `retrieval/` cho ca này (nguyên nhân gốc nằm ở condense sinh sai
+   thuật ngữ, không phải retrieval — xem `conversation/conversation_spec.md` mục 17.1.1,
+   17.2.2); chỉ ghi lại làm phương án dự phòng nếu sau khi sửa condense mà vẫn trượt
+   (`conversation_spec.md` mục 17.5.1).
+8. **`relevance.py` (mới, 2026-09-22, `conversation_spec.md` mục 18.2.2) — gate độ liên
+   quan bằng `rerank_score`:** module này **không đổi hợp đồng `retrieve()`** (vẫn luôn
+   trả top `FINAL_TOP_K` theo rerank, không lọc gì — giữ nguyên mục 1 "không có nhánh xử
+   lý riêng, không nới `FINAL_TOP_K`"); quyết định "coi 5 chunk là không đủ liên quan →
+   từ chối" là chính sách của `conversation/orchestrator.py`, không phải của `retrieve()`.
+   `rerank_score` là **logit thô** của `AITeamVN/Vietnamese_Reranker` (không qua sigmoid,
+   xem `reranker_server/server.py`), chưa có ngưỡng nào được hiệu chỉnh trong dự án trước
+   đây — `MIN_RERANK_SCORE` đo lần đầu ở 18.2.2 trên rất ít ca (~4-5) và chỉ 1 lần/câu.
+   **REVISE (2026-09-22, PR #41):** đo lại 3 lần/câu trên 15 câu (12 câu hợp lệ + 3 câu
+   rìa corpus) phát hiện `retrieval/hyde.py` (`temperature = 0.2`) gây dao động
+   `rerank_score` đáng kể (spread quan sát tới ~2.8 điểm) ở câu có tín hiệu rìa/yếu, dù ổn
+   định (spread ~0) ở câu có tín hiệu mạnh (viện dẫn Khoản, từ khoá trùng corpus). Không
+   tìm được ngưỡng an toàn tuyệt đối cho 2/3 câu rìa đã đo — `MIN_RERANK_SCORE` đổi thành
+   `-6.8` chấp nhận rủi ro tồn đọng đã ghi rõ (`conversation_spec.md` mục 18.2.2). Rủi ro
+   chưa đủ dữ liệu để tin cậy cao vẫn còn, có thể cần hiệu chỉnh lại ở phase RAGAS, khi có
+   nhãn `expected_chunks` đã duyệt (mục 15.5 `conversation_spec.md`), hoặc khi giải quyết
+   tận gốc nhiễu HyDE (đo trung bình nhiều lần gọi, hoặc hạ `temperature` HyDE — cả hai
+   ngoài phạm vi 18.2.2).

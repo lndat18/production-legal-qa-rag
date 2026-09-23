@@ -89,6 +89,40 @@ class GuardrailSettings(BaseSettings):
     timeout_seconds: int = 30
 
 
+class CondenseSettings(BaseSettings):
+    """Cấu hình Groq cho bước condense câu follow-up (conversation_spec.md mục 10).
+
+    Dùng model ``gpt-oss-20b`` để ngân sách rate limit tách khỏi HyDE và
+    generation (cùng ``gpt-oss-120b``). Timeout ngắn vì condense lỗi thì
+    degrade về câu gốc, không đáng để người dùng chờ.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = "openai/gpt-oss-20b"
+    max_retries: int = 1
+    timeout_seconds: int = 20
+
+
+class AdmissionSettings(BaseSettings):
+    """Hạn mức và đồng thời của phần tốn LLM (conversation_spec.md mục 8, 10).
+
+    Số liệu vận hành, chỉnh qua env được mà không cần deploy lại.
+    ``global_daily_llm_answers`` ≈ TPD 200K của ``gpt-oss-120b`` chia 3-4K
+    token/câu, chừa dư địa cho HyDE. ``max_concurrent_answers`` = 2 vì mỗi câu
+    ~3-4K token trên TPM 8K.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    redis_url: str = Field(validation_alias="REDIS_URL")
+    user_daily_llm_answers: int = 5
+    global_daily_llm_answers: int = 50
+    max_concurrent_answers: int = 2
+    max_waiting: int = 6
+
+
 class GenerationSettings(BaseSettings):
     """Cấu hình Groq cho bước sinh câu trả lời có stream.
 

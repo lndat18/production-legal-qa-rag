@@ -341,8 +341,197 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
-def test_prompt_version_starts_at_v1_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v1"
+def test_prompt_version_bumped_for_cache_keying() -> None:
+    assert PROMPT_VERSION == "v5"
+
+
+def test_generation_prompt_has_ambiguous_classification_rule() -> None:
+    """Mục 17.2.3 quy tắc 9: khi câu hỏi thiếu yếu tố phân loại quan trọng (cư trú,
+    loại hợp đồng lao động...) và "Văn bản" có quy định khác nhau theo từng trường
+    hợp, prompt phải yêu cầu liệt kê riêng biệt từng trường hợp thay vì tự chọn một
+    trường hợp trả lời như chắc chắn duy nhất (ca gốc: thuế TNCN cư trú/không cư trú).
+    """
+    assert "RIÊNG BIỆT từng trường hợp bằng gạch đầu dòng" in GENERATION_SYSTEM_PROMPT
+    assert "cư trú hay không cư trú, loại hợp đồng lao động" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "Không trộn các trường hợp vào cùng một cách tính" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "không tự chọn một trường" in GENERATION_SYSTEM_PROMPT
+        and "hợp để trả lời như thể đó là câu trả lời chắc chắn duy nhất."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_has_no_multi_step_calculation_rule() -> None:
+    """Mục 17.2.3 quy tắc 10: khi câu trả lời đầy đủ đòi hỏi nhiều bước tính toán
+    (ví dụ thuế luỹ tiến từng phần) mà "Văn bản" không có sẵn kết quả cuối, prompt
+    phải cấm tự tính ra một con số kết quả cuối cùng, chỉ nêu nguyên văn mức/ngưỡng.
+    """
+    assert "KHÔNG tự thực" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "hiện phép tính nhiều bước để đưa ra một con số kết quả cuối cùng"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "biểu thuế luỹ" in GENERATION_SYSTEM_PROMPT
+    assert "tiến từng phần, cộng trừ nhiều khoản" in GENERATION_SYSTEM_PROMPT
+    assert (
+        "người dùng hoặc cơ quan có thẩm quyền (thuế, bảo hiểm xã"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "hội) là nơi tính cụ thể." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_forbids_combining_two_khoan_into_final_number() -> None:
+    """Mục 20 (đợt 2/3, siết lại quy tắc 10 sau khi `reasoning_effort=medium` không
+    đạt): cấm rõ ràng việc cộng/trừ/nhân/chia hay kết hợp số liệu — kể cả chỉ từ MỘT
+    đoạn/Khoản kết hợp với số liệu trong câu hỏi (không chỉ "hai đoạn/Khoản khác
+    nhau" như bản v3) — để tạo ra bất kỳ con số trung gian/kết quả nào không xuất
+    hiện nguyên văn trong "Văn bản" (ca gốc: thuế TNCN 30 triệu tự trừ giảm trừ gia
+    cảnh rồi kết hợp với thuế suất Điều 9 Khoản 2 thành một số tiền cuối cùng).
+    """
+    assert (
+        "Đặc biệt: KHÔNG được cộng, trừ, nhân, chia hay kết hợp số"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "liệu — dù chỉ lấy từ MỘT đoạn/Khoản kết hợp với số liệu nêu trong câu hỏi"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "hay lấy từ hai đoạn/\n    Khoản khác nhau (kể cả cùng một Điều, ví dụ hai bậc của biểu thuế luỹ tiến)"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "để tạo\n    ra BẤT KỲ con số trung gian hay con số kết quả nào không xuất hiện nguyên văn trong"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "vào để tính." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_has_rule_10_worked_example() -> None:
+    """Mục 20 (đợt 2/3): thêm ví dụ minh hoạ cụ thể quy tắc 10 (phong cách few-shot
+    như `condenser.py`) — 1 ca thuế TNCN đủ dữ liệu để tính, minh hoạ cả đầu ra đúng
+    (từ chối tính, chỉ nêu nguyên văn tỷ lệ/mức) và đầu ra sai (tự trừ/nhân ra số
+    cuối cùng), giúp model phân biệt rõ ranh giới hơn so với chỉ mô tả bằng lời. Số
+    liệu trong ví dụ (20/11/5/10 triệu) khác ca thật (30 triệu) để tránh model chép
+    nguyên số thay vì học nguyên tắc.
+    """
+    assert (
+        "Ví dụ minh hoạ quy tắc 10 (chỉ minh hoạ cách áp dụng, không phải nội dung"
+        ' "Văn bản" thật):' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Câu hỏi: Thu nhập 20 triệu đồng một tháng thì đóng thuế thu nhập cá nhân"
+        " bao nhiêu?" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Đầu ra đúng: Theo biểu thuế luỹ tiến từng phần, thu nhập tính thuế đến 5"
+        " triệu đồng/tháng" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "Tôi không tự trừ thu nhập\ntrong câu hỏi cho mức giảm trừ này hay tự tính"
+        " số thuế cụ thể cho trường hợp thu nhập 20\ntriệu đồng"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'Đầu ra SAI, KHÔNG được làm: "Thu nhập tính thuế = 20 triệu - 11 triệu = 9'
+        " triệu đồng.\nThuế phải nộp = 5 triệu x 5% + 4 triệu x 10% = 0,65 triệu"
+        ' đồng."' in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'vi phạm\nquy tắc 10, kể cả khi chỉ dừng ở bước trừ "9 triệu đồng" mà chưa'
+        " tính tiếp)." in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_has_no_cross_topic_chunk_merging_rule() -> None:
+    """Mục 18.2.1 quy tắc 11: cấm ghép các đoạn thuộc Điều/Khoản khác chủ đề pháp lý,
+    không liên quan trực tiếp tới nhau và tới câu hỏi, thành một câu trả lời liền
+    mạch như thể chúng bổ sung cho nhau; chỉ dùng đoạn liên quan trực tiếp, hoặc từ
+    chối theo quy tắc 5 nếu không có đoạn nào liên quan trực tiếp.
+    """
+    assert (
+        'Nếu các đoạn trong phần "Văn bản" thuộc nhiều Điều/Khoản không cùng một chủ đề pháp'
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "KHÔNG cố ghép nối\n    chúng thành một câu trả lời liền mạch như thể chúng bổ sung cho nhau."
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "nếu không có đoạn nào liên\n    quan trực tiếp, dùng đúng câu từ chối ở quy tắc 5."
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "không tự suy luận để ghép thành câu trả lời đầy đủ."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_forbids_recalling_previous_conversation_answers() -> None:
+    """Mục 18.2.1 quy tắc 12: model chỉ thấy "Văn bản" và "Câu hỏi" hiện tại, không
+    được xem lại các câu trả lời trước đó; nếu câu hỏi là meta-request (tóm tắt/nhắc
+    lại nội dung đã nói trước đó) thay vì một câu hỏi pháp luật độc lập, phải từ chối
+    theo quy tắc 5, không được dùng "Văn bản" hiện tại để dựng câu trả lời trông giống
+    như đang tóm tắt hội thoại cũ (ca gốc: "tóm tắt lại các câu trả lời ở trên").
+    """
+    assert (
+        "Bạn KHÔNG được xem lại các câu trả lời trước đó trong cuộc hội thoại"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert '"tóm tắt lại các câu\n    trả lời ở trên"' in GENERATION_SYSTEM_PROMPT
+    assert (
+        'từ chối rõ ràng theo đúng quy tắc 5, không dùng các đoạn "Văn bản" hiện tại'
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert "trông giống như đang tóm tắt hội thoại\n    cũ." in GENERATION_SYSTEM_PROMPT
+
+
+def test_generation_prompt_has_inverted_pyramid_conclusion_first_rule() -> None:
+    """Mục 19.3.1 (B4, kim tự tháp ngược) quy tắc 13: khi câu trả lời có một nội
+    dung/kết luận rõ ràng (không thuộc diện quy tắc 5 từ chối hay quy tắc 9 liệt kê
+    nhiều trường hợp), nêu ngay kết luận đó trong 1-2 câu đầu rồi mới trình bày căn cứ
+    chi tiết. Ca thuộc quy tắc 5/9 thì câu đầu tiên vẫn phải đúng là nội dung từ chối/
+    liệt kê, không được thay bằng một kết luận giả tạo.
+    """
+    assert (
+        "Khi câu trả lời có một nội dung/kết luận rõ ràng theo"
+        ' "Văn bản" (không thuộc diện quy\n    tắc 5 từ chối hay quy tắc 9 liệt kê'
+        " nhiều trường hợp): nêu ngay nội dung/kết luận đó\n    trong 1-2 câu đầu tiên,"
+        " rồi mới trình bày căn cứ pháp lý chi tiết." in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "câu/đoạn đầu tiên phải đúng là nội dung từ chối/liệt kê đó — không thay\n"
+        "    bằng một kết luận chắc chắn giả tạo để trông có vẻ dứt khoát hơn thực tế."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
+    """Mục 19.3.1 (B6, blockquote trích dẫn nguyên văn) quy tắc 14: khi trích nguyên
+    văn một câu/đoạn ngắn (tối đa khoảng 2 dòng) làm bằng chứng, đặt trong khối
+    blockquote markdown (mỗi dòng bắt đầu "> "), không diễn giải bên trong khối; phần
+    giải thích đặt ở văn xuôi thường ngay sau, tách biệt. Không bắt buộc dùng cho mọi
+    câu trả lời.
+    """
+    assert (
+        "Khi trích dẫn nguyên văn một câu hoặc đoạn ngắn (không quá khoảng 2 dòng)"
+        ' trực tiếp từ\n    "Văn bản" để làm bằng chứng, đặt đúng nguyên văn câu/đoạn đó'
+        ' trong khối trích dẫn\n    markdown (mỗi dòng bắt đầu bằng "> "), không diễn'
+        " giải hay chỉnh sửa bên trong khối\n    này" in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        "phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích\n"
+        "    dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời"
+        in GENERATION_SYSTEM_PROMPT
+    )
+    assert (
+        'Ngay\n    sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm'
+        " đúng ký hiệu nguồn\n    dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc"
+        ' vuông ASCII "[" và "]" — không\n    thay bằng bất kỳ ký hiệu ngoặc nào khác'
+        in GENERATION_SYSTEM_PROMPT
+    )
 
 
 def test_answer_generator_calls_groq_with_stream_contract() -> None:

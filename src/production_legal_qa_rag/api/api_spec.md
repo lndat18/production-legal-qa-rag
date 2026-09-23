@@ -120,6 +120,11 @@ suy nghĩ"), nên:
 | `error`           | `delta.content = message` (nếu đã có chữ thì xuống dòng trước, thêm `⚠️`); HTTP vẫn 200; `rate_limited` kèm "thử lại sau N giây" |
 | `done`            | Chunk kết thúc (+ `usage` nếu được yêu cầu) rồi `data: [DONE]`                                  |
 
+- **Disclaimer thời điểm dữ liệu (kế hoạch, chưa implement — `api/` chưa có code):** nối
+  `DATA_SNAPSHOT_DISCLAIMER` (hằng số ở `conversation/history.py`, cùng chỗ với
+  `SOURCES_FOOTER_MARKER`) vào `delta.content` đúng 1 lần, ở phần cuối cùng của luồng
+  trả lời — sau khối nguồn (`citations`), và sau cả khối `warning` nếu có (luôn là phần
+  đuôi cuối cùng trước `done`/`[DONE]`) — xem `conversation_spec.md` mục 19.3.2.
 - **Keep-alive:** khi chờ hàng đợi admission hoặc reasoning lâu, gửi 1 dòng comment SSE
   (`: keep-alive`) mỗi `KEEPALIVE_SECONDS = 15` để proxy/trình duyệt không cắt kết nối.
   Nếu OpenWebUI không chấp nhận comment thì thay bằng chunk `delta` rỗng — xác nhận khi
