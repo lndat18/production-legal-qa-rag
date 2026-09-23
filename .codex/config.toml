@@ -1,0 +1,16 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# Migrated from .claude/settings.json. Codex applies permissions by approval and
+# sandbox policy rather than by individual shell-command allow/deny patterns.
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# The tester and reviewer need GitHub CLI access for the approved develop cycle.
+network_access = true
+
+[agents]
+enabled = true
+# developer, tester, and reviewer mutate or publish the same branch in sequence.
+max_concurrent_threads_per_session = 1
+interrupt_message = true

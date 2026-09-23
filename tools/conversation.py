@@ -7,8 +7,8 @@ Bộ hội thoại mẫu chia 3 nhóm (spec mục 13.4, 17.2.5), chọn qua ``--
   Groq lỗi/429, để bộ kiểm thử tự động đảm nhiệm).
 - ``general``: 3 hội thoại tổng quát mới (đa chủ thể, phân loại thiếu, tính toán).
 
-Mỗi hội thoại tốn quota ``GLOBAL_DAILY_LLM_ANSWERS`` toàn cục ở bước generation (mục 10
-``config.py``); không chạy ``all`` tuỳ tiện nhiều lần một ngày.
+Mỗi hội thoại có thể gọi Groq ở bước generation. Khi Groq hết hạn mức, luồng phát lỗi
+``rate_limited`` và nêu thời gian thử lại khi API cung cấp thông tin đó.
 """
 
 from __future__ import annotations
@@ -238,8 +238,6 @@ async def _run_conversation(
         label = "Người dùng" if message.role == "user" else "Trợ lý"
         typer.echo(f"{label}: {message.content}")
 
-    # `user_id` riêng theo hội thoại (không dùng chung "manual-test") để tránh bị
-    # `USER_DAILY_LLM_ANSWERS` chặn khi chạy nhiều ca liên tiếp (spec mục 17.2.5).
     user_id = f"manual-test-{_slugify(title)}"
     ctx = RequestContext(user_id=user_id, request_id=uuid.uuid4().hex)
     trace = TurnTrace()
@@ -311,14 +309,14 @@ def main(
         help=(
             "Nhóm hội thoại mẫu cần chạy: core (4 ca gốc), regression (ca 4/6/7/9/10 "
             "mục 13.4), general (3 ca tổng quát mới), all (mặc định, cả 3 nhóm). Bỏ "
-            "qua khi dùng --query. Mỗi ca tốn quota GLOBAL_DAILY_LLM_ANSWERS toàn cục."
+            "qua khi dùng --query."
         ),
     ),
 ) -> None:
     """Chạy bộ hội thoại mẫu, hoặc một câu tùy chọn (có thể kèm 1 lượt trước).
 
-    Cần ``GROQ_API_KEY`` và ``REDIS_URL`` trong ``.env``; retrieval cần
-    ``PINECONE_API_KEY`` và các index Pinecone đã được nạp dữ liệu.
+    Cần ``GROQ_API_KEY`` trong ``.env``; retrieval cần ``PINECONE_API_KEY`` và
+    các index Pinecone đã được nạp dữ liệu.
     """
     if query is None:
         selected_groups: list[ConversationGroup] = (

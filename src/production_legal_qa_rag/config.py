@@ -106,19 +106,14 @@ class CondenseSettings(BaseSettings):
 
 
 class AdmissionSettings(BaseSettings):
-    """Hạn mức và đồng thời của phần tốn LLM (conversation_spec.md mục 8, 10).
+    """Giới hạn đồng thời của phần tốn LLM (conversation_spec.md mục 9, 12).
 
-    Số liệu vận hành, chỉnh qua env được mà không cần deploy lại.
-    ``global_daily_llm_answers`` ≈ TPD 200K của ``gpt-oss-120b`` chia 3-4K
-    token/câu, chừa dư địa cho HyDE. ``max_concurrent_answers`` = 2 vì mỗi câu
-    ~3-4K token trên TPM 8K.
+    Admission không giữ quota theo user hay theo ngày. Khi Groq hết hạn mức,
+    pipeline nhận 429 thật và chuyển thành event ``rate_limited``.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    redis_url: str = Field(validation_alias="REDIS_URL")
-    user_daily_llm_answers: int = 5
-    global_daily_llm_answers: int = 50
     max_concurrent_answers: int = 2
     max_waiting: int = 6
 
