@@ -112,6 +112,29 @@ def test_window_cleans_both_sources_footer_and_data_snapshot_disclaimer() -> Non
     assert window.history[-1].content == "Đáp án"
 
 
+def test_window_cleans_disclaimer_before_sources_footer() -> None:
+    """`api/` có thể nối disclaimer trước khối Nguồn (thứ tự ngược lại)."""
+    answered = (
+        "Đáp án [1]" + DATA_SNAPSHOT_DISCLAIMER + SOURCES_FOOTER_MARKER + "[1] Điều 5"
+    )
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Đáp án"
+
+
+def test_window_cleans_disclaimer_only_without_sources_footer() -> None:
+    """Câu trả lời không có nguồn trích dẫn (guardrail từ chối) vẫn có disclaimer."""
+    answered = "Không tìm thấy căn cứ pháp lý phù hợp." + DATA_SNAPSHOT_DISCLAIMER
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Không tìm thấy căn cứ pháp lý phù hợp."
+
+
+def test_window_cleans_sources_footer_only_without_disclaimer() -> None:
+    """Tương thích ngược: câu trả lời cũ (trước khi có disclaimer) vẫn được cắt đúng."""
+    answered = "Đáp án [1]" + SOURCES_FOOTER_MARKER + "[1] Điều 5"
+    window = build_window([_user("trước"), _assistant(answered), _user("cuối")])
+    assert window.history[-1].content == "Đáp án"
+
+
 # ------------------------------------------------------------------- condenser
 HISTORY = [_user("Khoản 1 Điều 113 BLLĐ nói gì?"), _assistant("Nói về nghỉ hằng năm.")]
 
