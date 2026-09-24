@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import threading
 from types import SimpleNamespace
 from typing import Any
 
@@ -396,6 +397,100 @@ def test_local_reranker_model_load_loi_fallback_khong_raise(
     )
     instance = LocalReranker(model_name="missing")
     assert asyncio.run(instance.rerank("q", ["p"])) is None
+
+
+class _PairAwareTokenizer(_FakeTokenizer):
+    """Giữ cặp query-passage để fake model quan sát thứ tự batch."""
+
+    def __call__(self, pairs: list[list[str]], **kwargs: object) -> _Inputs:
+        inputs = super().__call__(pairs, **kwargs)
+        inputs["pairs"] = pairs
+        return inputs
+
+
+class _BlockingFakeModel(_FakeModel):
+    """Mô phỏng forward pass đầu bị chặn để kiểm tra serialization request."""
+
+    def __init__(self) -> None:
+        super().__init__(reranker.torch.tensor([[1.0], [1.0]]))
+        self.first_batch_started = threading.Event()
+        self.release_first_batch = threading.Event()
+        self.call_order: list[str] = []
+        self.max_active_calls = 0
+        self._active_calls = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, **kwargs: object) -> SimpleNamespace:
+        pairs = kwargs["pairs"]
+        assert isinstance(pairs, list)
+        query = pairs[0][0]
+        assert isinstance(query, str)
+
+        with self._lock:
+            self._active_calls += 1
+            self.max_active_calls = max(self.max_active_calls, self._active_calls)
+            self.call_order.append(query)
+            is_first_batch = len(self.call_order) == 1
+
+        if is_first_batch:
+            self.first_batch_started.set()
+            assert self.release_first_batch.wait(timeout=5)
+
+        with self._lock:
+            self._active_calls -= 1
+        return SimpleNamespace(logits=reranker.torch.ones((len(pairs), 1)))
+
+
+def _serialized_local_reranker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[LocalReranker, _BlockingFakeModel]:
+    tokenizer = _PairAwareTokenizer()
+    model = _BlockingFakeModel()
+    monkeypatch.setattr(reranker.torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(reranker.AutoTokenizer, "from_pretrained", lambda _: tokenizer)
+    monkeypatch.setattr(
+        reranker.AutoModelForSequenceClassification,
+        "from_pretrained",
+        lambda _: model,
+    )
+    return LocalReranker(model_name="test-model", batch_size=2), model
+
+
+def test_local_reranker_serialize_tron_request_qua_moi_batch(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, model = _serialized_local_reranker(monkeypatch)
+
+    async def rerank_dong_thoi() -> list[list[float] | None]:
+        first = asyncio.create_task(
+            instance.rerank("request-one", ["a", "b", "c", "d"])
+        )
+        assert await asyncio.to_thread(model.first_batch_started.wait, 5)
+        second = asyncio.create_task(instance.rerank("request-two", ["x", "y"]))
+        await asyncio.sleep(0)
+        model.release_first_batch.set()
+        return await asyncio.gather(first, second)
+
+    assert asyncio.run(rerank_dong_thoi()) == [[1.0, 1.0, 1.0, 1.0], [1.0, 1.0]]
+    assert model.max_active_calls == 1
+    assert model.call_order == ["request-one", "request-one", "request-two"]
+
+
+def test_local_reranker_tao_lai_semaphore_sau_asyncio_run_khac(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, model = _serialized_local_reranker(monkeypatch)
+
+    async def rerank_dong_thoi() -> list[list[float] | None]:
+        first = asyncio.create_task(instance.rerank("request-one", ["a", "b"]))
+        assert await asyncio.to_thread(model.first_batch_started.wait, 5)
+        second = asyncio.create_task(instance.rerank("request-two", ["x", "y"]))
+        await asyncio.sleep(0)
+        model.release_first_batch.set()
+        return await asyncio.gather(first, second)
+
+    assert asyncio.run(rerank_dong_thoi()) == [[1.0, 1.0], [1.0, 1.0]]
+    assert asyncio.run(instance.rerank("request-three", ["z"])) == [1.0]
 
 
 # ---------------------------------------------------------------- hyde
