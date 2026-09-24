@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 from typing import NamedTuple
@@ -189,6 +190,21 @@ class RetrievalPipeline:
 
 
 _default_pipeline: RetrievalPipeline | None = None
+_default_pipeline_lock = threading.Lock()
+
+
+def _get_or_create_default_pipeline() -> RetrievalPipeline:
+    """Trả pipeline mặc định, chỉ khởi tạo một lần trên worker thread.
+
+    LocalReranker có thể tải model từ Hugging Face trong lúc khởi tạo. Lock giữ
+    singleton khi nhiều request đầu đến đồng thời; hàm này luôn được gọi qua
+    ``asyncio.to_thread`` để tải model không chặn event loop.
+    """
+    global _default_pipeline
+    with _default_pipeline_lock:
+        if _default_pipeline is None:
+            _default_pipeline = RetrievalPipeline()
+        return _default_pipeline
 
 
 async def retrieve(query: str, *, use_mmr: bool | None = None) -> list[RetrievedChunk]:
@@ -204,10 +220,8 @@ async def retrieve(query: str, *, use_mmr: bool | None = None) -> list[Retrieved
     Raises:
         RetrievalError: Khi HF embed hoặc Pinecone lỗi.
     """
-    global _default_pipeline
-    if _default_pipeline is None:
-        _default_pipeline = RetrievalPipeline()
-    return await _default_pipeline.retrieve(query, use_mmr=use_mmr)
+    pipeline = await asyncio.to_thread(_get_or_create_default_pipeline)
+    return await pipeline.retrieve(query, use_mmr=use_mmr)
 
 
 def _dedupe_by_chunk_id(branches: list[list[Candidate]]) -> list[Candidate]:

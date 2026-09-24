@@ -188,7 +188,10 @@ class RerankerSettings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_prefix="RERANKER_", extra="ignore"
+        env_file=".env",
+        env_prefix="RERANKER_",
+        extra="ignore",
+        env_ignore_empty=True,
     )
 
     model_name: str = Field(default="AITeamVN/Vietnamese_Reranker", min_length=1)
