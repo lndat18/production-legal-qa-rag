@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -483,11 +484,9 @@ def test_local_reranker_serialize_process_wide_qua_hai_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ):
     instance, model = _serialized_local_reranker(monkeypatch)
-    outcomes: dict[str, list[float] | None] = {}
-    errors: list[Exception] = []
     second_rerank_queued = threading.Event()
 
-    def run_in_own_loop(query: str, passages: list[str]) -> None:
+    def run_in_own_loop(query: str, passages: list[str]) -> list[float] | None:
         async def execute() -> list[float] | None:
             if query != "request-two":
                 return await instance.rerank(query, passages)
@@ -498,36 +497,39 @@ def test_local_reranker_serialize_process_wide_qua_hai_event_loop(
             second_rerank_queued.set()
             return await rerank_task
 
-        try:
-            outcomes[query] = asyncio.run(execute())
-        except Exception as error:
-            errors.append(error)
+        return asyncio.run(execute())
 
-    first_thread = threading.Thread(
-        target=run_in_own_loop,
-        args=("request-one", ["a", "b", "c", "d"]),
-    )
-    first_thread.start()
-    assert model.first_batch_started.wait(timeout=5)
+    with ThreadPoolExecutor(max_workers=2) as event_loop_threads:
+        first_future = event_loop_threads.submit(
+            run_in_own_loop,
+            "request-one",
+            ["a", "b", "c", "d"],
+        )
+        assert model.first_batch_started.wait(timeout=5)
 
-    second_thread = threading.Thread(
-        target=run_in_own_loop,
-        args=("request-two", ["x", "y"]),
-    )
-    second_thread.start()
-    assert second_rerank_queued.wait(timeout=5)
+        second_future = event_loop_threads.submit(
+            run_in_own_loop,
+            "request-two",
+            ["x", "y"],
+        )
+        assert second_rerank_queued.wait(timeout=5)
 
-    # Semaphore tạo theo loop cũ cho phép request-two forward ở đây. Executor
-    # module-scoped phải giữ nó trong hàng đợi đến khi request-one xong mọi batch.
-    assert not model.second_request_started.wait(timeout=0.2)
-    model.release_first_batch.set()
+        # Semaphore tạo theo loop cũ cho phép request-two forward ở đây. Executor
+        # module-scoped phải giữ nó trong hàng đợi đến khi request-one xong mọi batch.
+        assert not model.second_request_started.wait(timeout=0.2)
+        model.release_first_batch.set()
 
-    first_thread.join(timeout=5)
-    second_thread.join(timeout=5)
+        failures = [
+            failure
+            for future in (first_future, second_future)
+            if (failure := future.exception()) is not None
+        ]
+        assert not failures
+        outcomes = {
+            "request-one": first_future.result(),
+            "request-two": second_future.result(),
+        }
 
-    assert not first_thread.is_alive()
-    assert not second_thread.is_alive()
-    assert not errors
     assert outcomes == {
         "request-one": [1.0, 1.0, 1.0, 1.0],
         "request-two": [1.0, 1.0],
