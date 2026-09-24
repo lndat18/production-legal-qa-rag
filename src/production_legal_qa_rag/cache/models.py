@@ -1,8 +1,4 @@
-"""Model dữ liệu công khai của `cache/` (cache_spec.md mục 2).
-
-Chỉ có phần model mà `conversation/` cần; `store`, `singleflight`, `replay`
-chưa được triển khai.
-"""
+"""Model dữ liệu công khai của `cache/` (cache_spec.md mục 2)."""
 
 from __future__ import annotations
 

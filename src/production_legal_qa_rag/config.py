@@ -118,6 +118,26 @@ class AdmissionSettings(BaseSettings):
     max_waiting: int = 6
 
 
+class RedisSettings(BaseSettings):
+    """Kết nối Redis dùng chung cho cache và các giới hạn phân tán sau này."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    redis_url: str = "redis://localhost:6379/0"
+
+
+class CacheSettings(BaseSettings):
+    """Cấu hình versioning cho cache không phụ thuộc vào lớp API."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True
+    )
+
+    corpus_version: str | None = Field(
+        default=None, validation_alias="CACHE_CORPUS_VERSION"
+    )
+
+
 class GenerationSettings(BaseSettings):
     """Cấu hình Groq cho bước sinh câu trả lời có stream.
 
