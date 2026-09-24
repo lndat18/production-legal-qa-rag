@@ -10,9 +10,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from typing import Any
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+from production_legal_qa_rag.config import RerankerSettings
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +45,30 @@ class LocalReranker:
 
     def __init__(
         self,
-        model_name: str = _MODEL_NAME,
-        max_length: int = MAX_LENGTH,
-        batch_size: int = RERANK_BATCH_SIZE,
+        model_name: str | None = None,
+        max_length: int | None = None,
+        batch_size: int | None = None,
+        *,
+        settings: RerankerSettings | None = None,
     ) -> None:
-        self._model_name = model_name
-        self._max_length = max_length
-        self._batch_size = batch_size
+        """Load model/tokenizer hoặc lưu lỗi để `rerank()` fallback an toàn.
+
+        Args:
+            model_name: Ghi đè tên model, chủ yếu cho test/local experiment.
+            max_length: Ghi đè tổng giới hạn token của cặp query-passage.
+            batch_size: Ghi đè số passage mỗi forward pass.
+            settings: Cấu hình tập trung; mặc định đọc môi trường.
+        """
+        configured = settings or RerankerSettings()
+        self._model_name = configured.model_name if model_name is None else model_name
+        self._max_length = configured.max_length if max_length is None else max_length
+        self._batch_size = configured.batch_size if batch_size is None else batch_size
+        if not self._model_name or self._max_length <= 0 or self._batch_size <= 0:
+            raise ValueError(
+                "model_name phải không rỗng; max_length và batch_size phải dương."
+            )
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
 
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
         self._device = torch.device(device_str)
@@ -59,13 +79,22 @@ class LocalReranker:
             device_str,
         )
 
-        self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(self._model_name)
-        if device_str == "cuda":
-            # fp16 chỉ có lợi tốc độ trên GPU (mục 6.1).
-            model = model.half()
-        # fp32 trên CPU — không dùng half() vì không có lợi tốc độ trên CPU.
-        self._model = model.to(self._device).eval()
+        try:
+            self._tokenizer = AutoTokenizer.from_pretrained(self._model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(self._model_name)
+            if device_str == "cuda":
+                # fp16 chỉ có lợi tốc độ trên GPU (mục 6.1).
+                model = model.half()
+            # fp32 trên CPU — không dùng half() vì không có lợi tốc độ trên CPU.
+            self._model = model.to(self._device).eval()
+        except Exception:
+            # Không được làm hỏng retrieval khi cache model hỏng, không tải được
+            # model hoặc driver CUDA lỗi: rerank() sẽ trả fallback đúng contract.
+            logger.warning(
+                "LocalReranker không load được model '%s', sẽ fallback khi retrieve.",
+                self._model_name,
+                exc_info=True,
+            )
 
     async def rerank(self, query: str, passages: list[str]) -> list[float] | None:
         """Chấm điểm từng passage theo câu hỏi gốc (async, không bao giờ raise).
@@ -84,6 +113,13 @@ class LocalReranker:
         """
         if not passages:
             return []
+        if self._model is None or self._tokenizer is None:
+            logger.warning(
+                "LocalReranker chưa sẵn sàng, fallback (batch_size=%d, n_passages=%d).",
+                self._batch_size,
+                len(passages),
+            )
+            return None
         try:
             return await asyncio.to_thread(self._sync_rerank, query, passages)
         except Exception:
@@ -97,6 +133,8 @@ class LocalReranker:
 
     def _sync_rerank(self, query: str, passages: list[str]) -> list[float]:
         """Blocking forward pass; được gọi trong thread pool qua `asyncio.to_thread`."""
+        if self._model is None or self._tokenizer is None:
+            raise RuntimeError("LocalReranker chưa load model/tokenizer.")
         all_scores: list[float] = []
 
         for batch_start in range(0, len(passages), self._batch_size):
@@ -122,13 +160,20 @@ class LocalReranker:
                 logits = logits[:, 1]
 
             scores_raw = logits.cpu().to(torch.float32).tolist()
-            if isinstance(scores_raw, float):
+            if not isinstance(scores_raw, list):
                 scores_raw = [scores_raw]
-
-            for score in scores_raw:
+            scores = [float(score) for score in scores_raw]
+            if len(scores) != len(batch):
+                raise ValueError(
+                    "LocalReranker: số score không khớp passage "
+                    f"({len(scores)} != {len(batch)})."
+                )
+            for score in scores:
                 if not math.isfinite(score):
                     raise ValueError(f"LocalReranker: score không hữu hạn ({score!r}).")
 
-            all_scores.extend(scores_raw)
+            all_scores.extend(scores)
 
+        if len(all_scores) != len(passages):
+            raise ValueError("LocalReranker: tổng số score không khớp passage.")
         return all_scores

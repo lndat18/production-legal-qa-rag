@@ -47,11 +47,6 @@ dev = [
     "types-pyyaml>=6.0.12.20260906",
 ]
 
-[tool.ruff]
-# reranker_server/ là project độc lập (tự host trên LightningAI, pyproject/uv.lock riêng),
-# không thuộc CI của repo này.
-extend-exclude = ["reranker_server"]
-
 [tool.ruff.lint.flake8-bugbear]
 # typer.Option()/typer.Argument() làm default value là idiom chuẩn của Typer,
 # không phải bug thật như B008 giả định (mutable default argument).

@@ -191,6 +191,6 @@ class RerankerSettings(BaseSettings):
         env_file=".env", env_prefix="RERANKER_", extra="ignore"
     )
 
-    model_name: str = "AITeamVN/Vietnamese_Reranker"
-    max_length: int = 512
-    batch_size: int = 16
+    model_name: str = Field(default="AITeamVN/Vietnamese_Reranker", min_length=1)
+    max_length: int = Field(default=512, gt=0)
+    batch_size: int = Field(default=16, gt=0)
