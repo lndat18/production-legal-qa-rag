@@ -179,18 +179,18 @@ class JudgeSettings(BaseSettings):
 
 
 class RerankerSettings(BaseSettings):
-    """Config reranker tự host trên LightningAI (retrieval_spec.md mục 9, 12).
+    """Config LocalReranker chạy in-process (retrieval_spec.md mục 6.1).
 
-    `connect_timeout_seconds` tách khỏi read timeout để Studio đang sleep không
-    khiến 1 câu hỏi chờ quá lâu ở bước kết nối. `timeout_seconds` là **sàn** của
-    read timeout: read thực tế = `max(timeout_seconds, 2.5 × n_passages)`
-    (`RERANK_SECONDS_PER_PASSAGE` trong `retrieval/reranker_client.py`).
+    Model (`AITeamVN/Vietnamese_Reranker`) chạy trong `RetrievalPipeline`,
+    không qua HTTP/microservice. Device tự phát hiện (`cuda`/`cpu`) khi load.
+    `max_length` và `batch_size` có thể ghi đè qua biến môi trường
+    `RERANKER_MAX_LENGTH` và `RERANKER_BATCH_SIZE`.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="RERANKER_", extra="ignore"
+    )
 
-    endpoint_url: str = Field(validation_alias="RERANKER_ENDPOINT_URL")
-    api_key: str = Field(validation_alias="RERANKER_API_KEY")
-    max_retries: int = 2
-    connect_timeout_seconds: int = 5
-    timeout_seconds: int = 30
+    model_name: str = "AITeamVN/Vietnamese_Reranker"
+    max_length: int = 512
+    batch_size: int = 16

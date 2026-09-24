@@ -1,4 +1,4 @@
-"""Điều phối `retrieve(query)`: HyDE -> hybrid 2 nhánh -> union -> rerank (mục 13B)."""
+"""Điều phối `retrieve(query)`: HyDE → hybrid 2 nhánh → union → rerank (mục 3, 6.1)."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from production_legal_qa_rag.retrieval.models import (
     SearchHit,
 )
 from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
-from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+from production_legal_qa_rag.retrieval.reranker import LocalReranker
 from production_legal_qa_rag.retrieval.sparse_index import SPARSE_TOP_N, SparseIndex
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class RetrievalPipeline:
         embedder: QueryEmbedder | None = None,
         dense_search: DenseSearch | None = None,
         sparse_index: SparseIndex | None = None,
-        reranker: RerankerClient | None = None,
+        reranker: LocalReranker | None = None,
         bm25_params_path: Path = DEFAULT_BM25_PARAMS_PATH,
     ) -> None:
         self._hyde = hyde or HydeGenerator()
@@ -71,7 +71,8 @@ class RetrievalPipeline:
         self._sparse_index = sparse_index or SparseIndex(
             BM25Encoder.load(bm25_params_path)
         )
-        self._reranker = reranker or RerankerClient()
+        # LocalReranker load model 1 lần tại đây, giữ suốt vòng đời process (mục 6.1).
+        self._reranker = reranker or LocalReranker()
 
     async def retrieve(
         self, query: str, *, use_mmr: bool | None = None

@@ -21,7 +21,9 @@ router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
 - Không CI/CD tự deploy (CI hiện có chỉ chạy test/lint); deploy là thao tác tay.
 - Không monitoring/alert (Prometheus, Grafana, Langfuse) — thuộc phase cuối sau RAGAS
   (tracing, tracking & CI); tạm thời theo dõi qua bảng `chatlog` và `docker compose logs`.
-- Không tự host LLM/reranker/Pinecone: vẫn dùng dịch vụ ngoài như hiện nay.
+- Không tự host LLM/Pinecone: vẫn dùng dịch vụ ngoài như hiện nay. Reranker **không**
+  còn trong nhóm này — chạy in-process trong `api`, không host tách rời qua
+  LightningAI/ngrok nữa (`retrieval_spec.md` mục 6.1, xem mục 4.1 dưới đây).
 
 **Tiêu chí quan trọng nhất:** clone repo + điền `deploy/.env` + `docker compose up -d` →
 người dùng bên ngoài mở URL, đăng ký, hỏi đáp nhiều lượt được; ngoài Cloudflare Tunnel
@@ -37,9 +39,10 @@ Internet ─HTTPS─► Cloudflare ◄─(kết nối ra do cloudflared tự m�
                                                                        │
                                                                        ▼  Bearer CHATBOT_API_KEY
                                                                       api ─────► postgres (DB chatbot)
-                                                                       │  └────► redis
+                                                                       │  ├────► redis
+                                                                       │  └────► reranker (in-process, GPU khuyến nghị/CPU fallback)
                                                                        ▼
-                                                    Groq · HF · Pinecone · Reranker (ngrok/LightningAI)
+                                                              Groq · HF · Pinecone
 ```
 
 `cloudflared` chỉ **kết nối ra** Cloudflare (outbound), nên không cần mở cổng vào trên
@@ -76,7 +79,7 @@ trên máy tác giả: mở thử UI, gọi API bằng `curl`/Swagger `/docs` �
 | ------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
 | `cloudflared` | `cloudflare/cloudflared:<tag ghim>`          | Phụ thuộc `open-webui` healthy; xem mục 3                               |
 | `open-webui`  | `ghcr.io/open-webui/open-webui:<tag ghim>`   | Cấu hình `api_spec.md` mục 9 + mục 5 dưới đây; volume `openwebui_data` (cache/ảnh; dữ liệu chính ở Postgres) |
-| `api`         | build từ `deploy/Dockerfile`                 | Mount `data/bm25/` (read-only); `env_file: .env`; xem mục 6             |
+| `api`         | build từ `deploy/Dockerfile`                 | Mount `data/bm25/` (read-only) + volume `hf_cache` (cache model reranker); `env_file: .env`; xem mục 4.1, 6 |
 | `redis`       | `redis:7-alpine`                             | `--requirepass`, `--appendonly yes`, `--maxmemory 256mb --maxmemory-policy allkeys-lru`; volume `redis_data` |
 | `postgres`    | `postgres:17-alpine`                         | Mount `deploy/initdb/` (chạy 1 lần lúc tạo volume); volume `postgres_data` |
 
@@ -91,6 +94,47 @@ Quy tắc chung:
 - Giới hạn tài nguyên: `mem_limit` cho từng service (gợi ý: `api` 1.5g, `open-webui` 1g,
   `postgres` 512m, `redis` 320m) để không nuốt hết RAM của WSL2; điều chỉnh sau khi đo.
 - Log: driver `json-file` với `max-size: 10m`, `max-file: 3`.
+
+### 4.1 GPU passthrough cho reranker (khuyến nghị, không bắt buộc)
+
+`api` chạy reranker in-process (`retrieval_spec.md` mục 6.1), tự phát hiện
+`cuda`/`cpu`. Compose gốc **không** yêu cầu GPU — chạy CPU-only ngay không cần
+cấu hình thêm, ai không có GPU vẫn dùng được đầy đủ, chỉ rerank chậm hơn.
+
+Khuyến nghị bật GPU nếu máy có card NVIDIA (kể cả VRAM nhỏ, vd 2GB). Hai việc
+tách biệt, cả hai đều cần cho GPU thật hoạt động trong container:
+
+1. **Build image đúng biến thể torch**: `deploy/Dockerfile` nhận build arg
+   `TORCH_VARIANT` (mặc định `cpu`, dùng
+   `--index-url https://download.pytorch.org/whl/cpu`; giá trị `cu121` dùng
+   `--index-url https://download.pytorch.org/whl/cu121` để cài wheel CUDA).
+   Build bản GPU: `docker compose build --build-arg TORCH_VARIANT=cu121 api`.
+2. **Cấp GPU cho container lúc chạy**: cài **NVIDIA Container Toolkit** trên
+   Windows (Docker Desktop dùng WSL2 backend đã hỗ trợ sẵn CUDA passthrough,
+   chỉ cần bật GPU support trong Docker Desktop settings). Bật qua file
+   override riêng, không sửa `docker-compose.yml` gốc — ví dụ
+   `deploy/docker-compose.gpu.yml` khai báo cho service `api`:
+   ```yaml
+   services:
+     api:
+       deploy:
+         resources:
+           reservations:
+             devices:
+               - driver: nvidia
+                 count: 1
+                 capabilities: [gpu]
+   ```
+   Chạy: `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
+
+Thiếu 1 trong 2 bước trên: build CPU + override GPU → container có device
+nhưng torch không dùng được, coi như CPU; build CUDA + không override → thiếu
+device, torch CUDA khởi tạo sẽ tự fallback CPU (`retrieval_spec.md` mục 6.1).
+Không làm gì cả (mặc định) → container CPU-only, không cần cấu hình, không lỗi.
+
+VRAM nhỏ (2GB) vẫn có thể CUDA OOM ở batch lớn; hành vi khi đó là fallback
+`rerank_score=None` (`retrieval_spec.md` mục 8), retrieval vẫn trả kết quả,
+không crash service.
 
 ## 5. Chính sách truy cập public
 
@@ -113,6 +157,13 @@ Quy tắc chung:
 - Base `python:3.14-slim`; cài `uv` (copy từ `ghcr.io/astral-sh/uv`); tầng dependency riêng:
   copy `pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev --no-install-project`,
   rồi copy `src/`, `alembic/`, `alembic.ini` → cài project (tận dụng cache tầng Docker).
+- `torch`: cài theo build arg `TORCH_VARIANT` (mặc định `cpu`) — xem mục 4.1 để build
+  bản GPU (`cu121`). Mặc định `cpu` để image build được trên mọi máy không cần driver
+  GPU và nhẹ hơn cho người không dùng GPU.
+- Model checkpoint (`AITeamVN/Vietnamese_Reranker`) tải từ HF Hub ở lần chạy đầu, không
+  bake vào image (tránh build image nặng hơn và cứng phiên bản model). Mount volume
+  `hf_cache` vào thư mục cache Hugging Face của user chạy container để không tải lại
+  (~1GB) mỗi lần recreate container.
 - Chạy bằng user không phải root.
 - `data/bm25/` **không** đóng gói vào image (file sinh ra, đã `.gitignore`); mount từ host
   read-only. Thiếu file → `api` lỗi rõ ràng lúc khởi động, không chạy nửa vời.
@@ -120,8 +171,8 @@ Quy tắc chung:
   `uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`.
   Chạy migration ở đây an toàn vì chỉ có 1 worker/1 container.
 - **1 worker**: semaphore của admission là in-process (`conversation_spec.md` mục 8).
-- `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, `deploy/.env`,
-  `reranker_server/`, cache của mypy/ruff/pytest.
+- `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, `deploy/.env`, cache của
+  mypy/ruff/pytest.
 
 ## 7. Biến môi trường & bí mật (`deploy/.env`, không commit)
 
@@ -129,7 +180,7 @@ Quy tắc chung:
 
 | Nhóm        | Biến                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------- |
-| LLM/dịch vụ | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `RERANKER_ENDPOINT_URL`, `RERANKER_API_KEY` |
+| LLM/dịch vụ | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME` |
 | Backend     | `CHATBOT_API_KEY` (sinh ngẫu nhiên ≥ 32 ký tự), `REDIS_PASSWORD`, `REDIS_URL` (`redis://:${REDIS_PASSWORD}@redis:6379/0`), `CHATLOG_DATABASE_URL` (`postgresql+asyncpg://…@postgres/chatbot`) |
 | Postgres    | `POSTGRES_USER`, `POSTGRES_PASSWORD`                                                              |
 | OpenWebUI   | `WEBUI_SECRET_KEY` (cố định, để phiên đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn) |
@@ -137,8 +188,6 @@ Quy tắc chung:
 
 - `.env` đã nằm trong `.gitignore` (khớp mọi thư mục); nếu thêm file khác chứa bí mật, thêm
   vào `.gitignore` trước.
-- Reranker (`RERANKER_ENDPOINT_URL`) đổi mỗi khi Studio LightningAI/ngrok khởi động lại: sửa
-  `deploy/.env` rồi `docker compose up -d api` (recreate container để nạp biến mới).
 - Không truyền bí mật bằng `build args` hay bake vào image.
 
 ## 8. Vận hành cơ bản
@@ -172,6 +221,10 @@ Quy tắc chung:
 6. Tắt Redis rồi Postgres (từng cái) → chat vẫn trả lời, `/readyz` báo 503 (khớp
    `api_spec.md` mục 13).
 7. Kiểm tra image: `docker history` / `grep` không thấy bí mật; chạy bằng user không root.
+8. (Nếu build/bật GPU theo mục 4.1) `docker compose exec api python -c "import torch;
+   print(torch.cuda.is_available())"` trả `True`; hỏi thử nhiều lượt liên tiếp không thấy
+   log cảnh báo CUDA OOM. Nếu không bật GPU, bỏ qua bước này (mặc định CPU-only vẫn phải
+   nghiệm thu qua các bước 1-7).
 
 ## 10. Rủi ro / điểm mở
 
@@ -184,9 +237,13 @@ Quy tắc chung:
 3. Máy cá nhân chứa dữ liệu hội thoại của người dùng khác: mã hoá đĩa (BitLocker) và cập
    nhật hệ điều hành là trách nhiệm của tác giả; banner thông báo lưu 90 ngày
    (`chatlog_spec.md` mục 5).
-4. Reranker qua ngrok/LightningAI có thể ngừng bất kỳ lúc nào: retrieval degrade, chatbot
-   vẫn chạy (`api_spec.md` mục 14).
+4. Reranker giờ chạy in-process trong `api` (mục 4.1): image mặc định chỉ cài `torch` CPU,
+   nên nếu không bật GPU overlay, rerank chậm hơn GPU nhưng không phụ thuộc dịch vụ ngoài
+   nào còn ngừng bất kỳ lúc nào như bản LightningAI/ngrok cũ. Bật GPU overlay sai cấu hình
+   (thiếu NVIDIA Container Toolkit, chưa bật GPU support trong Docker Desktop) khiến `api`
+   không khởi động được — kiểm tra kỹ trước khi thêm `docker-compose.gpu.yml`.
 5. Điều khoản dịch vụ Cloudflare cho quick tunnel (không cam kết uptime, dành cho thử
    nghiệm); tác giả tự đối chiếu trước khi chia sẻ rộng.
-6. Image nặng do `transformers`/`pyvi`; RAM WSL2 mặc định có thể không đủ cho 5 service —
-   chỉnh `.wslconfig` nếu cần (gợi ý ≥ 6 GB cho WSL2).
+6. Image nặng hơn do `transformers`/`pyvi`/`torch` + tải checkpoint reranker (~1GB) lần
+   chạy đầu; RAM/disk WSL2 mặc định có thể không đủ cho 5 service — chỉnh `.wslconfig` nếu
+   cần (gợi ý ≥ 6 GB cho WSL2, cân nhắc thêm cho volume `hf_cache`).
