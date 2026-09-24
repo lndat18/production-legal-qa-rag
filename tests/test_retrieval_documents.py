@@ -1,4 +1,5 @@
 """Test token theo văn bản (`vb_*`), bảng DOCUMENTS và việc gỡ ghim (mục 6.2, 8.1)."""
+
 from __future__ import annotations
 
 import asyncio

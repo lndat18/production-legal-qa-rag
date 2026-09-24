@@ -325,7 +325,11 @@ def _local_reranker(
         "from_pretrained",
         lambda _: model,
     )
-    return LocalReranker(model_name="test-model", batch_size=batch_size), tokenizer, model
+    return (
+        LocalReranker(model_name="test-model", batch_size=batch_size),
+        tokenizer,
+        model,
+    )
 
 
 def test_local_reranker_cpu_load_model_mot_lan_khong_dung_fp16(
@@ -378,9 +382,7 @@ def test_local_reranker_score_khong_huu_han_fallback(
 def test_local_reranker_score_lech_so_passage_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    instance, _, _ = _local_reranker(
-        monkeypatch, logits=reranker.torch.tensor([[1.0]])
-    )
+    instance, _, _ = _local_reranker(monkeypatch, logits=reranker.torch.tensor([[1.0]]))
     assert asyncio.run(instance.rerank("q", ["p1", "p2"])) is None
 
 
