@@ -7,6 +7,8 @@ Dùng `monkeypatch.setenv`/`delenv` để không phụ thuộc nội dung thật
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -294,6 +296,35 @@ def test_reranker_settings_gia_tri_mac_dinh(monkeypatch: pytest.MonkeyPatch):
     assert settings.model_name == "AITeamVN/Vietnamese_Reranker"
     assert settings.max_length == 512
     assert settings.batch_size == 16
+
+
+def test_reranker_settings_bo_qua_bien_rong_trong_dotenv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "RERANKER_MODEL_NAME=\nRERANKER_MAX_LENGTH=\nRERANKER_BATCH_SIZE=\n",
+        encoding="utf-8",
+    )
+    for name in (
+        "RERANKER_MODEL_NAME",
+        "RERANKER_MAX_LENGTH",
+        "RERANKER_BATCH_SIZE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(
+        RerankerSettings,
+        "model_config",
+        {**RerankerSettings.model_config, "env_file": dotenv},
+    )
+
+    settings = RerankerSettings()  # type: ignore[call-arg]
+
+    assert (settings.model_name, settings.max_length, settings.batch_size) == (
+        "AITeamVN/Vietnamese_Reranker",
+        512,
+        16,
+    )
 
 
 def test_reranker_settings_doc_env_va_validate_gia_tri_duong(
