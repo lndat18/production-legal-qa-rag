@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
