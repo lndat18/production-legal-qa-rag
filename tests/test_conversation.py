@@ -35,7 +35,10 @@ from production_legal_qa_rag.conversation.models import (
     RequestContext,
     TurnTrace,
 )
-from production_legal_qa_rag.conversation.orchestrator import ChatOrchestrator
+from production_legal_qa_rag.conversation.orchestrator import (
+    ChatOrchestrator,
+    _has_cacheable_citation,
+)
 from production_legal_qa_rag.generation.models import (
     Citation,
     CitationsEvent,
@@ -485,6 +488,13 @@ async def _replay(hit: CachedAnswer) -> AsyncIterator[Any]:
     yield TokenEvent(text=hit.text)
     yield CitationsEvent(citations=hit.citations)
     yield DoneEvent()
+
+
+def test_cacheable_answer_phai_co_citation_xuat_hien_trong_text() -> None:
+    citation = Citation(n=1, chunk_id="c1", source_document="d", breadcrumb="Điều 1")
+
+    assert _has_cacheable_citation("Đáp án [1]", [citation])
+    assert not _has_cacheable_citation("Đáp án không số nguồn", [citation])
 
 
 def _orchestrator(
