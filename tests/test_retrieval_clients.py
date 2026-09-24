@@ -415,6 +415,7 @@ class _BlockingFakeModel(_FakeModel):
         super().__init__(reranker.torch.tensor([[1.0], [1.0]]))
         self.first_batch_started = threading.Event()
         self.release_first_batch = threading.Event()
+        self.second_request_started = threading.Event()
         self.call_order: list[str] = []
         self.max_active_calls = 0
         self._active_calls = 0
@@ -432,6 +433,8 @@ class _BlockingFakeModel(_FakeModel):
             self.call_order.append(query)
             is_first_batch = len(self.call_order) == 1
 
+        if query == "request-two":
+            self.second_request_started.set()
         if is_first_batch:
             self.first_batch_started.set()
             assert self.release_first_batch.wait(timeout=5)
@@ -476,21 +479,61 @@ def test_local_reranker_serialize_tron_request_qua_moi_batch(
     assert model.call_order == ["request-one", "request-one", "request-two"]
 
 
-def test_local_reranker_tao_lai_semaphore_sau_asyncio_run_khac(
+def test_local_reranker_serialize_process_wide_qua_hai_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ):
     instance, model = _serialized_local_reranker(monkeypatch)
+    outcomes: dict[str, list[float] | None] = {}
+    errors: list[Exception] = []
+    second_rerank_queued = threading.Event()
 
-    async def rerank_dong_thoi() -> list[list[float] | None]:
-        first = asyncio.create_task(instance.rerank("request-one", ["a", "b"]))
-        assert await asyncio.to_thread(model.first_batch_started.wait, 5)
-        second = asyncio.create_task(instance.rerank("request-two", ["x", "y"]))
-        await asyncio.sleep(0)
-        model.release_first_batch.set()
-        return await asyncio.gather(first, second)
+    def run_in_own_loop(query: str, passages: list[str]) -> None:
+        async def execute() -> list[float] | None:
+            if query != "request-two":
+                return await instance.rerank(query, passages)
 
-    assert asyncio.run(rerank_dong_thoi()) == [[1.0, 1.0], [1.0, 1.0]]
-    assert asyncio.run(instance.rerank("request-three", ["z"])) == [1.0]
+            rerank_task = asyncio.create_task(instance.rerank(query, passages))
+            # Nhường một tick để task submit công việc vào executor của reranker.
+            await asyncio.sleep(0)
+            second_rerank_queued.set()
+            return await rerank_task
+
+        try:
+            outcomes[query] = asyncio.run(execute())
+        except Exception as error:
+            errors.append(error)
+
+    first_thread = threading.Thread(
+        target=run_in_own_loop,
+        args=("request-one", ["a", "b", "c", "d"]),
+    )
+    first_thread.start()
+    assert model.first_batch_started.wait(timeout=5)
+
+    second_thread = threading.Thread(
+        target=run_in_own_loop,
+        args=("request-two", ["x", "y"]),
+    )
+    second_thread.start()
+    assert second_rerank_queued.wait(timeout=5)
+
+    # Semaphore tạo theo loop cũ cho phép request-two forward ở đây. Executor
+    # module-scoped phải giữ nó trong hàng đợi đến khi request-one xong mọi batch.
+    assert not model.second_request_started.wait(timeout=0.2)
+    model.release_first_batch.set()
+
+    first_thread.join(timeout=5)
+    second_thread.join(timeout=5)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert not errors
+    assert outcomes == {
+        "request-one": [1.0, 1.0, 1.0, 1.0],
+        "request-two": [1.0, 1.0],
+    }
+    assert model.max_active_calls == 1
+    assert model.call_order == ["request-one", "request-one", "request-two"]
 
 
 # ---------------------------------------------------------------- hyde
