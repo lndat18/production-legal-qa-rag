@@ -16,6 +16,7 @@ import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from production_legal_qa_rag.config import RerankerSettings
+from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ class LocalReranker:
 
     Model được load **một lần** khi khởi tạo và giữ suốt vòng đời process.
     Forward pass là blocking call (CPU/GPU-bound) nên `rerank()` dùng
-    `asyncio.to_thread` để không chặn event loop.
+    `asyncio.to_thread` để không chặn event loop. Một semaphore giới hạn toàn
+    bộ request rerank xuống một inference tại một thời điểm.
     """
 
     def __init__(
@@ -69,6 +71,7 @@ class LocalReranker:
             )
         self._tokenizer: Any | None = None
         self._model: Any | None = None
+        self._inference_limiter = LoopBoundClient(lambda: asyncio.Semaphore(1))
 
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
         self._device = torch.device(device_str)
@@ -121,7 +124,8 @@ class LocalReranker:
             )
             return None
         try:
-            return await asyncio.to_thread(self._sync_rerank, query, passages)
+            async with self._inference_limiter.get():
+                return await asyncio.to_thread(self._sync_rerank, query, passages)
         except Exception:
             logger.warning(
                 "LocalReranker lỗi runtime, fallback (batch_size=%d, n_passages=%d).",

@@ -202,6 +202,32 @@ kiến trúc host tách rời trên LightningAI Studio/ngrok của bản cũ.
 - **Không chặn event loop**: forward pass là blocking call (CPU/GPU-bound),
   phải chạy trong `asyncio.to_thread` (hoặc executor tương đương) vì phần còn
   lại của pipeline là async.
+- **Concurrency inference process-wide = 1**: `asyncio.to_thread` mỗi request
+  chạy trên thread riêng, nhưng dùng chung một `self._model`. Nhiều request
+  đồng thời → nhiều forward pass cùng lúc trên cùng model → VRAM cộng dồn
+  theo số request đồng thời, rất dễ CUDA OOM trên card 2GB dùng chung 1 model.
+  Bọc toàn bộ một lần gọi `rerank()` (gồm mọi batch của request đó) trong
+  `asyncio.Semaphore(1)` process-wide: request khác phải đợi (coroutine tạm
+  dừng, không chặn event loop, không tốn thread chờ) tới khi request đang
+  chạy xong. Nhờ vậy đỉnh VRAM của riêng reranker bị chặn ở đúng 1 batch
+  (`RERANK_BATCH_SIZE`) tại một thời điểm, bất kể có bao nhiêu request đồng
+  thời.
+  - **Cứng `1`, không đưa vào `RerankerSettings`**: đúng với ràng buộc phần
+    cứng hiện có (GPU 2GB, 1 model dùng chung); không thêm biến cấu hình chưa
+    ai cần. Đổi GPU lớn hơn sau này thì sửa hằng số, không phải việc thường
+    xuyên.
+  - **Áp dụng đồng nhất cho cả CUDA lẫn CPU**, không phân biệt theo device —
+    giữ đơn giản, không thêm nhánh logic chỉ để tối ưu throughput CPU. Đổi lại
+    rerank trên CPU cũng bị serialize khi nhiều request tới cùng lúc; chấp
+    nhận được vì quy mô ứng dụng tự giới hạn (`deploy_spec.md` mục 5) và đã có
+    admission/quota ở tầng trên (`conversation_spec.md` mục 8).
+  - **Loop-bound**: `asyncio.Semaphore` (Python ≥3.10) bám vào event loop đang
+    chạy lúc `await` đầu tiên, dùng lại ở loop khác sẽ `RuntimeError` — cùng
+    vấn đề `httpx.AsyncClient`/`AsyncGroq` đã gặp và được giải bằng
+    `LoopBoundClient` (`retrieval/loop_bound.py`). `LocalReranker` là singleton
+    sống qua nhiều `asyncio.run()` (`_default_pipeline`, test suite), nên dùng
+    lại `LoopBoundClient` bọc factory `lambda: asyncio.Semaphore(1)` thay vì
+    tạo semaphore thô — không viết abstraction mới.
 
 ## 7. Consistency và state offline
 
@@ -249,7 +275,7 @@ cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ đ�
 | `citation.py` | Parse citation, mapping document, structural terms, extras. |
 | `dense_search.py`, `sparse_index.py` | Client từng index và lifecycle offline của sparse. |
 | `fusion.py`, `mmr.py` | Thuật toán thuần, không I/O. |
-| `reranker.py` | Load model in-process 1 lần, batch inference (CUDA/CPU), validate, fallback khi lỗi. |
+| `reranker.py` | Load model in-process 1 lần, batch inference (CUDA/CPU) giới hạn 1 request cùng lúc process-wide, validate, fallback khi lỗi. |
 | `pipeline.py` | Điều phối `retrieve()` và sở hữu client. |
 | `relevance.py` | Chỉ cung cấp relevance signal cho tầng policy, không lọc retrieval. |
 | `tools/retrieval.py` | Typer entrypoint mỏng, chỉ gọi `RetrievalPipeline.retrieve()`. |
@@ -289,6 +315,9 @@ với `tools/conversation.py`), chọn qua option; `--query` nhập câu tùy ý
 - `MAX_LENGTH = 512` (mục 6.1) là số ước lượng có margin, không phải số đo;
   nếu sau này log cảnh báo truncation hoặc chất lượng rerank giảm bất thường,
   đo lại thực tế bằng tokenizer `bge-reranker-v2-m3` trên corpus rồi cập nhật.
+- Reranker chỉ chạy đúng 1 inference cùng lúc process-wide
+  (`asyncio.Semaphore(1)` qua `LoopBoundClient`, mục 6.1); N request đồng thời
+  không làm VRAM cộng dồn theo N.
 - Tầng conversation có thể áp policy score mà không làm đổi hoặc làm mơ hồ
   contract của `retrieve()`.
 
