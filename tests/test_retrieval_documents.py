@@ -1,5 +1,4 @@
 """Test token theo văn bản (`vb_*`), bảng DOCUMENTS và việc gỡ ghim (mục 6.2, 8.1)."""
-
 from __future__ import annotations
 
 import asyncio
@@ -349,15 +348,3 @@ def test_detect_document_chuoi_dai_khong_bung_no():
         start = time.perf_counter()
         detect_document(query)
         assert time.perf_counter() - start < 3.0
-
-
-def test_timeout_reranker_44_passage_la_110s(monkeypatch: pytest.MonkeyPatch):
-    import httpx
-
-    from production_legal_qa_rag.config import RerankerSettings
-    from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
-
-    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "http://x")
-    monkeypatch.setenv("RERANKER_API_KEY", "k")
-    client = RerankerClient(RerankerSettings(), httpx.AsyncClient())
-    assert client._read_timeout_seconds(44) == 110.0

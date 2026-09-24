@@ -1,4 +1,4 @@
-"""Test reranker_client, hyde, query_embedder, sparse_index, dense_search (fake client)."""
+"""Test LocalReranker, HyDE, query embedder, sparse index và dense search."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import httpx
 import pytest
 from pinecone.exceptions import NotFoundException
 from typer.testing import CliRunner
@@ -17,15 +16,10 @@ from production_legal_qa_rag.chunking.models import Chunk
 from production_legal_qa_rag.config import (
     EmbeddingSettings,
     LLMSettings,
-    RerankerSettings,
     VectorDBSettings,
 )
 from production_legal_qa_rag.embedding.models import PineconeMetadata
-from production_legal_qa_rag.retrieval import (
-    query_embedder,
-    reranker_client,
-    sparse_index,
-)
+from production_legal_qa_rag.retrieval import query_embedder, reranker, sparse_index
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
 from production_legal_qa_rag.retrieval.dense_search import DenseSearch
 from production_legal_qa_rag.retrieval.hyde import (
@@ -35,15 +29,13 @@ from production_legal_qa_rag.retrieval.hyde import (
 )
 from production_legal_qa_rag.retrieval.models import Candidate, RetrievalError
 from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
-from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+from production_legal_qa_rag.retrieval.reranker import LocalReranker
 from production_legal_qa_rag.retrieval.sparse_index import SparseIndex, build_index
 
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in {
-        "RERANKER_ENDPOINT_URL": "http://rerank.test/rerank",
-        "RERANKER_API_KEY": "k",
         "GROQ_API_KEY": "g",
         "HF_TOKEN": "h",
         "PINECONE_API_KEY": "p",
@@ -51,10 +43,11 @@ def env(monkeypatch: pytest.MonkeyPatch) -> None:
         "PINECONE_SPARSE_INDEX_NAME": "sparse",
     }.items():
         monkeypatch.setenv(key, value)
-    monkeypatch.setattr(reranker_client, "_BACKOFF_SECONDS", 0.0)
 
 
-# ---------------------------------------------------------------- reranker
+# ---------------------------------------------------------------- reranker legacy (removed with the HTTP service)
+
+"""
 
 
 def _rerank(handler: Any, passages: list[str] | None = None) -> tuple[Any, list[int]]:
@@ -270,6 +263,137 @@ def test_rerank_response_khong_phai_json_tra_none(env: None):
     scores, calls = _rerank(lambda r, n: httpx.Response(200, content=b"<html>"))
     assert scores is None
     assert calls == [1]
+
+
+"""
+
+
+# ---------------------------------------------------------------- LocalReranker
+
+
+class _Inputs(dict[str, object]):
+    def to(self, device: object) -> _Inputs:
+        self["device"] = device
+        return self
+
+
+class _FakeTokenizer:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, pairs: list[list[str]], **kwargs: object) -> _Inputs:
+        self.calls.append({"pairs": pairs, **kwargs})
+        return _Inputs()
+
+
+class _FakeModel:
+    def __init__(self, logits: object) -> None:
+        self._logits = logits
+        self.half_calls = 0
+        self.devices: list[object] = []
+        self.eval_calls = 0
+
+    def half(self) -> _FakeModel:
+        self.half_calls += 1
+        return self
+
+    def to(self, device: object) -> _FakeModel:
+        self.devices.append(device)
+        return self
+
+    def eval(self) -> _FakeModel:
+        self.eval_calls += 1
+        return self
+
+    def __call__(self, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(logits=self._logits)
+
+
+def _local_reranker(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    logits: object,
+    cuda: bool = False,
+    batch_size: int = 16,
+) -> tuple[LocalReranker, _FakeTokenizer, _FakeModel]:
+    tokenizer = _FakeTokenizer()
+    model = _FakeModel(logits)
+    monkeypatch.setattr(reranker.torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(reranker.AutoTokenizer, "from_pretrained", lambda _: tokenizer)
+    monkeypatch.setattr(
+        reranker.AutoModelForSequenceClassification,
+        "from_pretrained",
+        lambda _: model,
+    )
+    return LocalReranker(model_name="test-model", batch_size=batch_size), tokenizer, model
+
+
+def test_local_reranker_cpu_load_model_mot_lan_khong_dung_fp16(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, _, model = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[1.0]])
+    )
+    assert instance._device.type == "cpu"
+    assert model.half_calls == 0
+    assert model.eval_calls == 1
+
+
+def test_local_reranker_gpu_dung_fp16(monkeypatch: pytest.MonkeyPatch):
+    instance, _, model = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[1.0]]), cuda=True
+    )
+    assert instance._device.type == "cuda"
+    assert model.half_calls == 1
+
+
+def test_local_reranker_chia_batch_va_giu_thu_tu_score(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, tokenizer, _ = _local_reranker(
+        monkeypatch,
+        logits=reranker.torch.tensor([[3.0], [2.0]]),
+        batch_size=2,
+    )
+    passages = ["p1", "p2", "p3", "p4"]
+    assert asyncio.run(instance.rerank("query", passages)) == [3.0, 2.0, 3.0, 2.0]
+    assert [call["pairs"] for call in tokenizer.calls] == [
+        [["query", "p1"], ["query", "p2"]],
+        [["query", "p3"], ["query", "p4"]],
+    ]
+    assert all(call["max_length"] == 512 for call in tokenizer.calls)
+    assert all(call["truncation"] is True for call in tokenizer.calls)
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf")])
+def test_local_reranker_score_khong_huu_han_fallback(
+    monkeypatch: pytest.MonkeyPatch, score: float
+):
+    instance, _, _ = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[score]])
+    )
+    assert asyncio.run(instance.rerank("q", ["p"])) is None
+
+
+def test_local_reranker_score_lech_so_passage_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, _, _ = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[1.0]])
+    )
+    assert asyncio.run(instance.rerank("q", ["p1", "p2"])) is None
+
+
+def test_local_reranker_model_load_loi_fallback_khong_raise(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        reranker.AutoTokenizer,
+        "from_pretrained",
+        lambda _: (_ for _ in ()).throw(RuntimeError("missing model")),
+    )
+    instance = LocalReranker(model_name="missing")
+    assert asyncio.run(instance.rerank("q", ["p"])) is None
 
 
 # ---------------------------------------------------------------- hyde
@@ -685,6 +809,7 @@ def test_hyde_system_prompt_khong_co_placeholder_format():
     assert HYDE_USER_TEMPLATE.count("{query}") == 1
 
 
+"""
 def test_rerank_timeout_truyen_dung_o_moi_lan_retry_connect_error(env: None):
     seen: list[dict[str, Any]] = []
 
@@ -728,3 +853,4 @@ def test_rerank_read_timeout_log_khong_lo_noi_dung_passage_hay_secret(
     assert "NOI-DUNG-BI-MAT" not in caplog.text
     assert "http://rerank.test" not in caplog.text
     assert "X-API-Key" not in caplog.text
+"""

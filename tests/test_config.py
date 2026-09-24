@@ -287,21 +287,33 @@ def test_vector_db_settings_doc_sparse_index_name(monkeypatch: pytest.MonkeyPatc
 
 
 def test_reranker_settings_gia_tri_mac_dinh(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "https://example.test/predict")
-    monkeypatch.setenv("RERANKER_API_KEY", "secret")
+    monkeypatch.delenv("RERANKER_MODEL_NAME", raising=False)
+    monkeypatch.delenv("RERANKER_MAX_LENGTH", raising=False)
+    monkeypatch.delenv("RERANKER_BATCH_SIZE", raising=False)
     settings = RerankerSettings()  # type: ignore[call-arg]
-    assert settings.max_retries == 2
-    assert settings.connect_timeout_seconds == 5
-    assert settings.timeout_seconds == 30
+    assert settings.model_name == "AITeamVN/Vietnamese_Reranker"
+    assert settings.max_length == 512
+    assert settings.batch_size == 16
 
 
-def test_reranker_settings_bao_loi_khi_thieu_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("RERANKER_ENDPOINT_URL", "https://example.test/predict")
-    monkeypatch.delenv("RERANKER_API_KEY", raising=False)
-    monkeypatch.setattr(
-        RerankerSettings,
-        "model_config",
-        {**RerankerSettings.model_config, "env_file": None},
+def test_reranker_settings_doc_env_va_validate_gia_tri_duong(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("RERANKER_MODEL_NAME", "custom-reranker")
+    monkeypatch.setenv("RERANKER_MAX_LENGTH", "256")
+    monkeypatch.setenv("RERANKER_BATCH_SIZE", "8")
+    settings = RerankerSettings()  # type: ignore[call-arg]
+    assert (settings.model_name, settings.max_length, settings.batch_size) == (
+        "custom-reranker",
+        256,
+        8,
     )
+
+    monkeypatch.setenv("RERANKER_MAX_LENGTH", "0")
+    with pytest.raises(ValidationError):
+        RerankerSettings()  # type: ignore[call-arg]
+
+    monkeypatch.setenv("RERANKER_MAX_LENGTH", "512")
+    monkeypatch.setenv("RERANKER_BATCH_SIZE", "-1")
     with pytest.raises(ValidationError):
         RerankerSettings()  # type: ignore[call-arg]
