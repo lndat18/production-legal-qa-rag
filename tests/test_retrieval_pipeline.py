@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from typing import Any
 
 import pytest
@@ -147,6 +148,41 @@ def _build(
 
 
 MANY = [f"c{i}" for i in range(1, 21)]
+
+
+def test_default_pipeline_khoi_tao_o_worker_va_chi_mot_lan_khi_dong_thoi(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    constructor_started = threading.Event()
+    allow_constructor_to_finish = threading.Event()
+    construction_threads: list[int] = []
+
+    class FakeDefaultPipeline:
+        def __init__(self) -> None:
+            construction_threads.append(threading.get_ident())
+            constructor_started.set()
+            assert allow_constructor_to_finish.wait(timeout=1)
+
+        async def retrieve(
+            self, query: str, *, use_mmr: bool | None = None
+        ) -> list[object]:
+            return []
+
+    monkeypatch.setattr(pipeline_module, "RetrievalPipeline", FakeDefaultPipeline)
+    monkeypatch.setattr(pipeline_module, "_default_pipeline", None)
+
+    async def retrieve_concurrently() -> list[list[object]]:
+        requests = [
+            asyncio.create_task(pipeline_module.retrieve(f"câu hỏi {index}"))
+            for index in range(2)
+        ]
+        assert await asyncio.to_thread(constructor_started.wait, 1)
+        allow_constructor_to_finish.set()
+        return await asyncio.gather(*requests)
+
+    assert asyncio.run(retrieve_concurrently()) == [[], []]
+    assert len(construction_threads) == 1
+    assert construction_threads[0] != threading.get_ident()
 
 
 @pytest.mark.parametrize("use_mmr", [True, False])

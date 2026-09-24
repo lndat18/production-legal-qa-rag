@@ -10,7 +10,6 @@ import pytest
 
 from production_legal_qa_rag.retrieval.hyde import HydeGenerator
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
-from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
 
 
 def test_get_ngoai_coroutine_raise_runtime_error():
@@ -57,6 +56,8 @@ def test_client_inject_duoc_dung_nguyen_qua_nhieu_loop():
     assert made == []
 
 
+"""HTTP RerankerClient tests removed: reranker now executes in-process."""
+"""
 def _reranker(post: Any) -> RerankerClient:
     settings = SimpleNamespace(
         endpoint_url="u",
@@ -93,6 +94,7 @@ def test_reranker_khong_nuot_cancelled_error():
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(run())
+"""
 
 
 def test_hyde_khong_nuot_cancelled_error(monkeypatch: pytest.MonkeyPatch):

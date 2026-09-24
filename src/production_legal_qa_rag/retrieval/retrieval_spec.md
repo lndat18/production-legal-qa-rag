@@ -159,10 +159,76 @@ Reranker là quyết định cuối:
 - Query là câu hỏi gốc, không phải HyDE.
 - Passage là `breadcrumb + "\n" + content`; reranker cần thấy citation, nhưng
   `content` công khai và text embedding không bị thay đổi.
-- Gửi cả candidate pool trong một request, validate số score hữu hạn và đúng thứ
-  tự passage, sort giảm dần rồi cắt top K.
+- Gửi cả candidate pool trong một lượt gọi (có thể chia batch nội bộ, xem 6.1),
+  validate số score hữu hạn và đúng thứ tự passage, sort giảm dần rồi cắt top K.
 - Không ghim kết quả bằng rule sau rerank; nếu muốn bắt buộc citation recall,
   làm ở candidate stage qua extras, không bóp méo thứ tự cuối.
+
+### 6.1 Inference tại chỗ (local, không host API riêng)
+
+Model (`AITeamVN/Vietnamese_Reranker`, fine-tune từ `bge-reranker-v2-m3`) chạy
+in-process trong `RetrievalPipeline`, không qua HTTP/microservice — bỏ hẳn
+kiến trúc host tách rời trên LightningAI Studio/ngrok của bản cũ.
+
+- **Device**: tự phát hiện `cuda` nếu có, fallback `cpu`. Trên GPU dùng fp16
+  (`model.half()`); trên CPU giữ fp32 (fp16 không có lợi tốc độ trên CPU).
+  Không giả định máy chạy luôn có GPU — CPU phải là đường chạy hợp lệ, không
+  phải lỗi. Log `INFO` device đã chọn đúng một lần lúc load model, để vận
+  hành/CLI test (mục `tools/retrieval.py`) thấy ngay đang chạy `cuda` hay
+  fallback `cpu` mà không cần API riêng.
+- **Vòng đời**: load tokenizer + model một lần lúc `RetrievalPipeline` khởi
+  tạo, giữ suốt vòng đời process; không load lại mỗi request.
+- **`MAX_LENGTH = 512`** (giảm mạnh so với 2304 = 256 query + 2048 passage của
+  bản cũ). `MAX_LENGTH` là giới hạn cho **tổng** `token(query) + token(breadcrumb
+  + "\n" + content) + 4 token đặc biệt` sau khi tokenizer nối cặp
+  `[query, passage]` thành một chuỗi — không phải giới hạn riêng cho passage.
+  512 là số ước lượng có margin, KHÔNG đo thực tế trên corpus (user chủ động
+  chọn bỏ qua bước đo), tính từ:
+  - `content` ≤ `MAX_TOKENS` = 236 (đếm bằng tokenizer PhoBERT sau `pyvi`
+    segment — xem `chunking_spec.md`), nhân hệ số an toàn ×1.5 ≈ 400, vì
+    tokenizer của `bge-reranker-v2-m3` là SentencePiece đa ngôn ngữ (không
+    word-segment tiếng Việt sẵn như PhoBERT) nên cùng đoạn văn thường ra
+    nhiều token hơn — KHÔNG được suy thẳng 236 sang model này.
+  - `breadcrumb` ước lượng ~40 token, `query` chừa 64 token, cộng 4 token đặc
+    biệt (`<s> query </s></s> passage </s>`) → tổng ~508, làm tròn lên bội 64.
+  - Vì là ước lượng chứ không phải số đo, cần đo lại thực tế nếu về sau log
+    cảnh báo truncation hoặc chất lượng rerank giảm bất thường — không phải
+    một bước bắt buộc trước khi implement.
+- **Batch**: candidate pool trước dedupe có thể lên tới
+  `2 × (DENSE_TOP_N + SPARSE_TOP_N)` = 80 passage (2 nhánh, mỗi nhánh dense +
+  sparse top 20). Chia batch cố định (`RERANK_BATCH_SIZE`, đề xuất 16) khi gọi
+  model để chặn đỉnh VRAM không phụ thuộc số lượng candidate thực tế, thay vì
+  luôn forward nguyên pool trong một lần.
+- **Không chặn event loop**: forward pass là blocking call (CPU/GPU-bound),
+  phải chạy trong executor vì phần còn lại của pipeline là async.
+- **Concurrency inference process-wide = 1**: `asyncio.to_thread` mỗi request
+  chạy trên thread riêng, nhưng dùng chung một `self._model`. Nhiều request
+  đồng thời → nhiều forward pass cùng lúc trên cùng model → VRAM cộng dồn
+  theo số request đồng thời, rất dễ CUDA OOM trên card 2GB dùng chung 1 model.
+  Bọc toàn bộ một lần gọi `rerank()` (gồm mọi batch của request đó) trong
+  một `ThreadPoolExecutor(max_workers=1)` private, module-scoped và dùng
+  chung process. Mỗi job executor bao trọn một lần `rerank()` gồm mọi batch;
+  request khác await future của job đang xếp hàng nên coroutine tạm dừng,
+  không chặn event loop hoặc chiếm một thread chờ. Nhờ vậy đỉnh VRAM của riêng
+  reranker bị chặn ở đúng 1 batch (`RERANK_BATCH_SIZE`) tại một thời điểm, bất
+  kể có bao nhiêu request đồng thời.
+  - **Cứng `1`, không đưa vào `RerankerSettings`**: đúng với ràng buộc phần
+    cứng hiện có (GPU 2GB, 1 model dùng chung); không thêm biến cấu hình chưa
+    ai cần. Đổi GPU lớn hơn sau này thì sửa hằng số, không phải việc thường
+    xuyên.
+  - **Áp dụng đồng nhất cho cả CUDA lẫn CPU**, không phân biệt theo device —
+    giữ đơn giản, không thêm nhánh logic chỉ để tối ưu throughput CPU. Đổi lại
+    rerank trên CPU cũng bị serialize khi nhiều request tới cùng lúc; chấp
+    nhận được vì quy mô ứng dụng tự giới hạn (`deploy_spec.md` mục 5) và đã có
+    admission/quota ở tầng trên (`conversation_spec.md` mục 8).
+  - **Cross-event-loop**: không dùng `asyncio.Semaphore` hay
+    `LoopBoundClient` cho limiter này. Semaphore là loop-bound; còn
+    `LoopBoundClient` chủ đích tạo một semaphore riêng khi loop đổi, nên hai
+    loop sống song song sẽ có hai permit và có thể cùng forward một
+    `self._model`. `ThreadPoolExecutor` là primitive thread-safe của process:
+    mọi event loop submit vào cùng hàng đợi một worker, và future trả về được
+    await bởi loop đã submit. Cơ chế này giữ singleton dùng được qua nhiều
+    `asyncio.run()` lẫn nhiều loop chạy đồng thời mà vẫn đúng concurrency = 1.
 
 ## 7. Consistency và state offline
 
@@ -190,13 +256,14 @@ Phân biệt lỗi có thể degrade và lỗi phá tính đúng đắn:
 | Sự cố | Hành vi |
 | --- | --- |
 | HyDE lỗi/rỗng | Bỏ nhánh A, chạy nhánh B. |
-| Reranker lỗi | Fallback deterministic từ các nhánh, `rerank_score=None`. |
+| Reranker lỗi (runtime/model, ví dụ CUDA OOM) | Fallback deterministic từ các nhánh, `rerank_score=None`. |
 | Query embed, dense/sparse search hoặc metadata fetch lỗi | Raise `RetrievalError`; không giả vờ có evidence đáng tin. |
 | Corpus version mismatch | Từ chối khởi tạo/query và nêu lệnh hay thao tác rebuild. |
 
-Retry chỉ dành cho lỗi tạm thời, timeout hữu hạn. Không retry request reranker
-khi server có thể vẫn đang xử lý, vì gửi lại toàn bộ candidate pool làm hàng đợi
-phình và không tăng tính đúng đắn.
+Retry chỉ dành cho lỗi tạm thời của dịch vụ ngoài (HF embedding, Pinecone),
+timeout hữu hạn. Reranker chạy in-process (mục 6.1): lỗi runtime/model với
+cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ để debug
+(kích thước batch, độ dài passage lúc lỗi).
 
 ## 9. Module boundaries
 
@@ -209,13 +276,31 @@ phình và không tăng tính đúng đắn.
 | `citation.py` | Parse citation, mapping document, structural terms, extras. |
 | `dense_search.py`, `sparse_index.py` | Client từng index và lifecycle offline của sparse. |
 | `fusion.py`, `mmr.py` | Thuật toán thuần, không I/O. |
-| `reranker_client.py` | HTTP rerank, timeout/retry/validate/fallback. |
+| `reranker.py` | Load model in-process 1 lần, batch inference (CUDA/CPU) giới hạn 1 request cùng lúc process-wide, validate, fallback khi lỗi. |
 | `pipeline.py` | Điều phối `retrieve()` và sở hữu client. |
 | `relevance.py` | Chỉ cung cấp relevance signal cho tầng policy, không lọc retrieval. |
+| `tools/retrieval.py` | Typer entrypoint mỏng, chỉ gọi `RetrievalPipeline.retrieve()`. |
 
 Mọi contract trao đổi giữa module là Pydantic. Config dùng `pydantic-settings`
 tập trung; constants chỉ thuộc một cơ chế để trong module đó. CLI offline đặt ở
 `tools/` dùng Typer và không chứa business logic.
+
+CLI thủ công `tools/retrieval.py` dùng để chạy thử `retrieve(query)` trên
+corpus/index thật (cần `PINECONE_API_KEY`, `HF_TOKEN`, index Pinecone đã nạp
+dữ liệu), chủ yếu để kiểm chứng thay đổi reranker (mục 6.1) — device đang
+dùng thật là `cuda` hay fallback `cpu`, không silent lỗi. `reranker.py` log
+`INFO` device (`cuda`/`cpu`) một lần lúc load model, nên chạy CLI ở log level
+mặc định là thấy ngay không cần API riêng chỉ để phục vụ test. CLI in ra:
+
+- Tổng thời gian `retrieve()` (wall-clock).
+- Từng `RetrievedChunk`: `breadcrumb`, `content` (rút gọn), `rerank_score`,
+  `has_table`.
+- Cảnh báo rõ ràng nếu `rerank_score=None` (fallback đã kích hoạt — mục 8)
+  thay vì lặng lẽ in kết quả như đang chạy bình thường.
+
+Có bộ câu hỏi mẫu preset (câu viện dẫn cụ thể + câu paraphrase, cùng quy ước
+với `tools/conversation.py`), chọn qua option; `--query` nhập câu tùy ý,
+`--use-mmr/--no-use-mmr` ghi đè `USE_MMR` mặc định.
 
 ## 10. Tiêu chí hoàn thành
 
@@ -228,6 +313,12 @@ tập trung; constants chỉ thuộc một cơ chế để trong module đó. CL
   snapshot lệch.
 - Rerank lỗi vẫn trả fallback có thứ tự xác định; lỗi nền tảng search không bị
   che giấu.
+- `MAX_LENGTH = 512` (mục 6.1) là số ước lượng có margin, không phải số đo;
+  nếu sau này log cảnh báo truncation hoặc chất lượng rerank giảm bất thường,
+  đo lại thực tế bằng tokenizer `bge-reranker-v2-m3` trên corpus rồi cập nhật.
+- Reranker chỉ chạy đúng 1 inference cùng lúc process-wide (executor một worker
+  dùng chung, mục 6.1), kể cả khi request đến từ event loop song song; N request
+  đồng thời không làm VRAM cộng dồn theo N.
 - Tầng conversation có thể áp policy score mà không làm đổi hoặc làm mơ hồ
   contract của `retrieve()`.
 

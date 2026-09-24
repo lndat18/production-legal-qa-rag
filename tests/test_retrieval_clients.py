@@ -1,14 +1,15 @@
-"""Test reranker_client, hyde, query_embedder, sparse_index, dense_search (fake client)."""
+"""Test LocalReranker, HyDE, query embedder, sparse index và dense search."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import httpx
 import pytest
 from pinecone.exceptions import NotFoundException
 from typer.testing import CliRunner
@@ -17,15 +18,10 @@ from production_legal_qa_rag.chunking.models import Chunk
 from production_legal_qa_rag.config import (
     EmbeddingSettings,
     LLMSettings,
-    RerankerSettings,
     VectorDBSettings,
 )
 from production_legal_qa_rag.embedding.models import PineconeMetadata
-from production_legal_qa_rag.retrieval import (
-    query_embedder,
-    reranker_client,
-    sparse_index,
-)
+from production_legal_qa_rag.retrieval import query_embedder, reranker, sparse_index
 from production_legal_qa_rag.retrieval.bm25 import BM25Encoder
 from production_legal_qa_rag.retrieval.dense_search import DenseSearch
 from production_legal_qa_rag.retrieval.hyde import (
@@ -35,15 +31,13 @@ from production_legal_qa_rag.retrieval.hyde import (
 )
 from production_legal_qa_rag.retrieval.models import Candidate, RetrievalError
 from production_legal_qa_rag.retrieval.query_embedder import QueryEmbedder
-from production_legal_qa_rag.retrieval.reranker_client import RerankerClient
+from production_legal_qa_rag.retrieval.reranker import LocalReranker
 from production_legal_qa_rag.retrieval.sparse_index import SparseIndex, build_index
 
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in {
-        "RERANKER_ENDPOINT_URL": "http://rerank.test/rerank",
-        "RERANKER_API_KEY": "k",
         "GROQ_API_KEY": "g",
         "HF_TOKEN": "h",
         "PINECONE_API_KEY": "p",
@@ -51,10 +45,11 @@ def env(monkeypatch: pytest.MonkeyPatch) -> None:
         "PINECONE_SPARSE_INDEX_NAME": "sparse",
     }.items():
         monkeypatch.setenv(key, value)
-    monkeypatch.setattr(reranker_client, "_BACKOFF_SECONDS", 0.0)
 
 
-# ---------------------------------------------------------------- reranker
+# ---------------------------------------------------------------- reranker legacy (removed with the HTTP service)
+
+"""
 
 
 def _rerank(handler: Any, passages: list[str] | None = None) -> tuple[Any, list[int]]:
@@ -270,6 +265,277 @@ def test_rerank_response_khong_phai_json_tra_none(env: None):
     scores, calls = _rerank(lambda r, n: httpx.Response(200, content=b"<html>"))
     assert scores is None
     assert calls == [1]
+
+
+"""
+
+
+# ---------------------------------------------------------------- LocalReranker
+
+
+class _Inputs(dict[str, object]):
+    def to(self, device: object) -> _Inputs:
+        self["device"] = device
+        return self
+
+
+class _FakeTokenizer:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(self, pairs: list[list[str]], **kwargs: object) -> _Inputs:
+        self.calls.append({"pairs": pairs, **kwargs})
+        return _Inputs()
+
+
+class _FakeModel:
+    def __init__(self, logits: object) -> None:
+        self._logits = logits
+        self.half_calls = 0
+        self.devices: list[object] = []
+        self.eval_calls = 0
+
+    def half(self) -> _FakeModel:
+        self.half_calls += 1
+        return self
+
+    def to(self, device: object) -> _FakeModel:
+        self.devices.append(device)
+        return self
+
+    def eval(self) -> _FakeModel:
+        self.eval_calls += 1
+        return self
+
+    def __call__(self, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(logits=self._logits)
+
+
+def _local_reranker(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    logits: object,
+    cuda: bool = False,
+    batch_size: int = 16,
+) -> tuple[LocalReranker, _FakeTokenizer, _FakeModel]:
+    tokenizer = _FakeTokenizer()
+    model = _FakeModel(logits)
+    monkeypatch.setattr(reranker.torch.cuda, "is_available", lambda: cuda)
+    monkeypatch.setattr(reranker.AutoTokenizer, "from_pretrained", lambda _: tokenizer)
+    monkeypatch.setattr(
+        reranker.AutoModelForSequenceClassification,
+        "from_pretrained",
+        lambda _: model,
+    )
+    return (
+        LocalReranker(model_name="test-model", batch_size=batch_size),
+        tokenizer,
+        model,
+    )
+
+
+def test_local_reranker_cpu_load_model_mot_lan_khong_dung_fp16(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, _, model = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[1.0]])
+    )
+    assert instance._device.type == "cpu"
+    assert model.half_calls == 0
+    assert model.eval_calls == 1
+
+
+def test_local_reranker_gpu_dung_fp16(monkeypatch: pytest.MonkeyPatch):
+    instance, _, model = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[1.0]]), cuda=True
+    )
+    assert instance._device.type == "cuda"
+    assert model.half_calls == 1
+
+
+def test_local_reranker_chia_batch_va_giu_thu_tu_score(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, tokenizer, _ = _local_reranker(
+        monkeypatch,
+        logits=reranker.torch.tensor([[3.0], [2.0]]),
+        batch_size=2,
+    )
+    passages = ["p1", "p2", "p3", "p4"]
+    assert asyncio.run(instance.rerank("query", passages)) == [3.0, 2.0, 3.0, 2.0]
+    assert [call["pairs"] for call in tokenizer.calls] == [
+        [["query", "p1"], ["query", "p2"]],
+        [["query", "p3"], ["query", "p4"]],
+    ]
+    assert all(call["max_length"] == 512 for call in tokenizer.calls)
+    assert all(call["truncation"] is True for call in tokenizer.calls)
+
+
+@pytest.mark.parametrize("score", [float("nan"), float("inf")])
+def test_local_reranker_score_khong_huu_han_fallback(
+    monkeypatch: pytest.MonkeyPatch, score: float
+):
+    instance, _, _ = _local_reranker(
+        monkeypatch, logits=reranker.torch.tensor([[score]])
+    )
+    assert asyncio.run(instance.rerank("q", ["p"])) is None
+
+
+def test_local_reranker_score_lech_so_passage_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, _, _ = _local_reranker(monkeypatch, logits=reranker.torch.tensor([[1.0]]))
+    assert asyncio.run(instance.rerank("q", ["p1", "p2"])) is None
+
+
+def test_local_reranker_model_load_loi_fallback_khong_raise(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        reranker.AutoTokenizer,
+        "from_pretrained",
+        lambda _: (_ for _ in ()).throw(RuntimeError("missing model")),
+    )
+    instance = LocalReranker(model_name="missing")
+    assert asyncio.run(instance.rerank("q", ["p"])) is None
+
+
+class _PairAwareTokenizer(_FakeTokenizer):
+    """Giữ cặp query-passage để fake model quan sát thứ tự batch."""
+
+    def __call__(self, pairs: list[list[str]], **kwargs: object) -> _Inputs:
+        inputs = super().__call__(pairs, **kwargs)
+        inputs["pairs"] = pairs
+        return inputs
+
+
+class _BlockingFakeModel(_FakeModel):
+    """Mô phỏng forward pass đầu bị chặn để kiểm tra serialization request."""
+
+    def __init__(self) -> None:
+        super().__init__(reranker.torch.tensor([[1.0], [1.0]]))
+        self.first_batch_started = threading.Event()
+        self.release_first_batch = threading.Event()
+        self.second_request_started = threading.Event()
+        self.call_order: list[str] = []
+        self.max_active_calls = 0
+        self._active_calls = 0
+        self._lock = threading.Lock()
+
+    def __call__(self, **kwargs: object) -> SimpleNamespace:
+        pairs = kwargs["pairs"]
+        assert isinstance(pairs, list)
+        query = pairs[0][0]
+        assert isinstance(query, str)
+
+        with self._lock:
+            self._active_calls += 1
+            self.max_active_calls = max(self.max_active_calls, self._active_calls)
+            self.call_order.append(query)
+            is_first_batch = len(self.call_order) == 1
+
+        if query == "request-two":
+            self.second_request_started.set()
+        if is_first_batch:
+            self.first_batch_started.set()
+            assert self.release_first_batch.wait(timeout=5)
+
+        with self._lock:
+            self._active_calls -= 1
+        return SimpleNamespace(logits=reranker.torch.ones((len(pairs), 1)))
+
+
+def _serialized_local_reranker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[LocalReranker, _BlockingFakeModel]:
+    tokenizer = _PairAwareTokenizer()
+    model = _BlockingFakeModel()
+    monkeypatch.setattr(reranker.torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(reranker.AutoTokenizer, "from_pretrained", lambda _: tokenizer)
+    monkeypatch.setattr(
+        reranker.AutoModelForSequenceClassification,
+        "from_pretrained",
+        lambda _: model,
+    )
+    return LocalReranker(model_name="test-model", batch_size=2), model
+
+
+def test_local_reranker_serialize_tron_request_qua_moi_batch(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, model = _serialized_local_reranker(monkeypatch)
+
+    async def rerank_dong_thoi() -> list[list[float] | None]:
+        first = asyncio.create_task(
+            instance.rerank("request-one", ["a", "b", "c", "d"])
+        )
+        assert await asyncio.to_thread(model.first_batch_started.wait, 5)
+        second = asyncio.create_task(instance.rerank("request-two", ["x", "y"]))
+        await asyncio.sleep(0)
+        model.release_first_batch.set()
+        return await asyncio.gather(first, second)
+
+    assert asyncio.run(rerank_dong_thoi()) == [[1.0, 1.0, 1.0, 1.0], [1.0, 1.0]]
+    assert model.max_active_calls == 1
+    assert model.call_order == ["request-one", "request-one", "request-two"]
+
+
+def test_local_reranker_serialize_process_wide_qua_hai_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    instance, model = _serialized_local_reranker(monkeypatch)
+    second_rerank_queued = threading.Event()
+
+    def run_in_own_loop(query: str, passages: list[str]) -> list[float] | None:
+        async def execute() -> list[float] | None:
+            if query != "request-two":
+                return await instance.rerank(query, passages)
+
+            rerank_task = asyncio.create_task(instance.rerank(query, passages))
+            # Nhường một tick để task submit công việc vào executor của reranker.
+            await asyncio.sleep(0)
+            second_rerank_queued.set()
+            return await rerank_task
+
+        return asyncio.run(execute())
+
+    with ThreadPoolExecutor(max_workers=2) as event_loop_threads:
+        first_future = event_loop_threads.submit(
+            run_in_own_loop,
+            "request-one",
+            ["a", "b", "c", "d"],
+        )
+        assert model.first_batch_started.wait(timeout=5)
+
+        second_future = event_loop_threads.submit(
+            run_in_own_loop,
+            "request-two",
+            ["x", "y"],
+        )
+        assert second_rerank_queued.wait(timeout=5)
+
+        # Semaphore tạo theo loop cũ cho phép request-two forward ở đây. Executor
+        # module-scoped phải giữ nó trong hàng đợi đến khi request-one xong mọi batch.
+        assert not model.second_request_started.wait(timeout=0.2)
+        model.release_first_batch.set()
+
+        failures = [
+            failure
+            for future in (first_future, second_future)
+            if (failure := future.exception()) is not None
+        ]
+        assert not failures
+        outcomes = {
+            "request-one": first_future.result(),
+            "request-two": second_future.result(),
+        }
+
+    assert outcomes == {
+        "request-one": [1.0, 1.0, 1.0, 1.0],
+        "request-two": [1.0, 1.0],
+    }
+    assert model.max_active_calls == 1
+    assert model.call_order == ["request-one", "request-one", "request-two"]
 
 
 # ---------------------------------------------------------------- hyde
@@ -685,6 +951,7 @@ def test_hyde_system_prompt_khong_co_placeholder_format():
     assert HYDE_USER_TEMPLATE.count("{query}") == 1
 
 
+"""
 def test_rerank_timeout_truyen_dung_o_moi_lan_retry_connect_error(env: None):
     seen: list[dict[str, Any]] = []
 
@@ -728,3 +995,4 @@ def test_rerank_read_timeout_log_khong_lo_noi_dung_passage_hay_secret(
     assert "NOI-DUNG-BI-MAT" not in caplog.text
     assert "http://rerank.test" not in caplog.text
     assert "X-API-Key" not in caplog.text
+"""

@@ -1,7 +1,7 @@
 #:schema https://developers.openai.com/codex/config-schema.json
 
-# Migrated from .claude/settings.json. Codex applies permissions by approval and
-# sandbox policy rather than by individual shell-command allow/deny patterns.
+# Migrated from .claude/settings.json. Approval and sandbox policy provide the
+# baseline; command-specific allow/deny patterns live in rules/claude-settings.rules.
 approval_policy = "never"
 sandbox_mode = "workspace-write"
 
