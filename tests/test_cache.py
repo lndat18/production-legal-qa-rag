@@ -152,9 +152,9 @@ def test_keys_doi_theo_query_va_versions() -> None:
         model_name="model-b",
     )
     assert lock_key(first) == f"{first}:lock"
-    assert retrieval_key("Khoản 1 Điều 113", corpus_version="corpus-a") != retrieval_key(
-        "Khoản 1 Điều 113", corpus_version="corpus-b"
-    )
+    assert retrieval_key(
+        "Khoản 1 Điều 113", corpus_version="corpus-a"
+    ) != retrieval_key("Khoản 1 Điều 113", corpus_version="corpus-b")
 
 
 def test_compute_corpus_version_dung_override_va_file(
@@ -167,7 +167,9 @@ def test_compute_corpus_version_dung_override_va_file(
     assert compute_corpus_version(params, override="manual") == "manual"
 
     with caplog.at_level(logging.WARNING):
-        assert compute_corpus_version(tmp_path / "missing.json") == UNKNOWN_CORPUS_VERSION
+        assert (
+            compute_corpus_version(tmp_path / "missing.json") == UNKNOWN_CORPUS_VERSION
+        )
     assert "CACHE_CORPUS_VERSION" in caplog.text
 
 
@@ -222,23 +224,21 @@ def test_replay_giu_nguyen_text_va_chi_phat_event_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def scenario() -> tuple[list[Any], list[float]]:
-        replay_module = importlib.import_module(
-            "production_legal_qa_rag.cache.replay"
-        )
+        replay_module = importlib.import_module("production_legal_qa_rag.cache.replay")
         pauses: list[float] = []
 
         async def fake_sleep(seconds: float) -> None:
             pauses.append(seconds)
 
         monkeypatch.setattr(replay_module.asyncio, "sleep", fake_sleep)
-        answer = _answer().model_copy(
-            update={"text": "  Một hai\nba bốn  năm sáu  "}
-        )
+        answer = _answer().model_copy(update={"text": "  Một hai\nba bốn  năm sáu  "})
         events = [event async for event in replay_module.replay(answer)]
         return events, pauses
 
     events, pauses = asyncio.run(scenario())
-    token_text = "".join(event.text for event in events if isinstance(event, TokenEvent))
+    token_text = "".join(
+        event.text for event in events if isinstance(event, TokenEvent)
+    )
     assert token_text == "  Một hai\nba bốn  năm sáu  "
     assert isinstance(events[-2], CitationsEvent)
     assert isinstance(events[-1], DoneEvent) and events[-1].usage is None
