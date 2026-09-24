@@ -53,6 +53,7 @@ Giao diện: `ChatLogRepository.record(turn: TurnRecord) -> None` (không ném n
 | ORM/driver | `sqlalchemy[asyncio]` 2.x + `asyncpg`              |
 | Migration  | `alembic` (thư mục `alembic/` ở root repo)         |
 | CLI dọn dữ liệu | `typer` (`tools/purge_chatlog.py`)            |
+| CLI test thủ công | `typer` (`tools/chatlog.py`)                   |
 
 Dependency mới: `sqlalchemy[asyncio]`, `asyncpg`, `alembic`. Engine tạo 1 lần ở lifespan của
 API và inject vào repository.
@@ -92,7 +93,8 @@ Module không đọc `.env` trực tiếp. Cập nhật `.env.example`.
 | `repository.py` | `ChatLogRepository.record`, tạo engine/session factory         |
 
 Ngoài package: `alembic/` + `alembic.ini` (revision đầu tạo `chat_turns`),
-`tools/purge_chatlog.py`.
+`tools/purge_chatlog.py`, `tools/chatlog.py` (Typer, ghi `TurnRecord` mẫu và chạy các
+truy vấn thống kê ở mục 8 mà không cần chạy toàn bộ API).
 
 ## 8. Nghiệm thu thủ công
 

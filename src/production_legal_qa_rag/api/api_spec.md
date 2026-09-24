@@ -275,9 +275,11 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
 2. `conversation/` — history, condense, orchestrator (chưa cache/admission — inject
    `None`). Không làm `run_for_evaluation` (phase RAGAS sau). Nghiệm thu multi-turn ngay
    ở bước này qua script.
-3. `cache/` + `AdmissionController` (Redis).
-4. `chatlog/` + Alembic.
-5. `api/` + `deploy/` + cấu hình OpenWebUI, nghiệm thu mục 13.
+3. `cache/` + `AdmissionController` (Redis). CLI test thủ công: `tools/cache.py`.
+4. `chatlog/` + Alembic. CLI test thủ công: `tools/chatlog.py`.
+5. `api/` + `deploy/` + cấu hình OpenWebUI, nghiệm thu mục 13 (không có script `tools/`
+   riêng cho 2 bước này — nghiệm thu qua `docker compose up` + OpenWebUI + `curl`, không
+   phải gọi hàm Python trực tiếp như các bước trên).
 
 **Điểm mở (cần chốt trước/khi bước 5):**
 

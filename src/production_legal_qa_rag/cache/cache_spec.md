@@ -55,6 +55,7 @@ Mọi hàm **không ném ngoại lệ Redis**: lỗi → log warning và hành x
 | Chuẩn hoá       | `unicodedata` + `re` thuần Python                   |
 | Hash            | `hashlib.sha256`                                    |
 | Serialize       | `pydantic` (`model_dump_json` / `model_validate_json`) |
+| CLI test thủ công | `typer` (`tools/cache.py`)                        |
 
 Dependency mới: `redis`. Client `Redis` tạo 1 lần ở lifespan của API và **inject** vào
 các lớp cache (module trong `cache/` không đọc `.env`).
@@ -130,6 +131,9 @@ khoảng trắng/xuống dòng), phát `TokenEvent` mỗi ~15 ms, rồi `Citatio
 | `store.py`      | `AnswerCache`, `RetrievalCache` (get/set, nuốt lỗi Redis)          |
 | `singleflight.py` | `SingleFlight`                                                   |
 | `replay.py`     | `replay`                                                           |
+
+Ngoài package: `tools/cache.py` (Typer, chạy tay các case ở mục 10 trực tiếp trên
+`AnswerCache`/`RetrievalCache`/`SingleFlight` mà không cần dựng toàn bộ API).
 
 ## 10. Nghiệm thu thủ công
 
