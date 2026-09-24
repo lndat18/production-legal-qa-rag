@@ -181,8 +181,23 @@ _GROUP_CONVERSATIONS: dict[ConversationGroup, dict[str, list[ChatMessage]]] = {
 _STAGE_MESSAGES = {
     "guardrail": "Đang kiểm tra an toàn / viết lại câu hỏi...",
     "retrieval": "Đang tìm văn bản liên quan...",
-    "generation": "Đang tạo câu trả lời...",
+    "drafting": "Đang tạo bản nháp câu trả lời...",
+    "verification": "Đang kiểm chứng căn cứ pháp lý...",
+    "repairing": "Đang điều chỉnh câu trả lời...",
 }
+
+
+def _status_message(stage: str) -> str:
+    """Trả message hiển thị tương ứng với stage của luồng generation.
+
+    Args:
+        stage: Giá trị stage do ``StatusEvent`` phát ra.
+
+    Returns:
+        Message tiếng Việt cho terminal, hoặc fallback an toàn khi source bổ sung
+        stage mới trước khi CLI được cập nhật.
+    """
+    return _STAGE_MESSAGES.get(stage, "Đang xử lý câu hỏi...")
 
 
 def _slugify(title: str) -> str:
@@ -247,7 +262,7 @@ async def _run_conversation(
     typer.echo(f"{'─' * 72}")
     async for event in orchestrator.stream(messages, ctx, trace):
         if isinstance(event, StatusEvent):
-            typer.echo(_STAGE_MESSAGES[event.stage])
+            typer.echo(_status_message(event.stage))
         elif isinstance(event, TokenEvent):
             if not is_streaming_answer:
                 typer.echo("\nTRẢ LỜI")

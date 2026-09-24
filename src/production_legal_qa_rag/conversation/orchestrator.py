@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
@@ -37,6 +38,7 @@ from production_legal_qa_rag.generation.guardrail import (
     InputGuardrail,
 )
 from production_legal_qa_rag.generation.models import (
+    Citation,
     CitationsEvent,
     DoneEvent,
     ErrorEvent,
@@ -306,7 +308,10 @@ class ChatOrchestrator:
         """
         if self._answer_cache is None or trace.error_code or trace.warnings:
             return
-        if not trace.citations and _NOT_FOUND_PHRASE not in trace.answer_text.lower():
+        if (
+            not _has_cacheable_citation(trace.answer_text, trace.citations)
+            and _NOT_FOUND_PHRASE not in trace.answer_text.lower()
+        ):
             return
         await self._answer_cache.set(
             standalone,
@@ -341,6 +346,13 @@ def _record_event(event: GenerationEvent, trace: TurnTrace, started: float) -> N
 
 def _elapsed_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
+
+
+def _has_cacheable_citation(text: str, citations: list[Citation]) -> bool:
+    """Kiểm tra answer có ít nhất một citation thật sự xuất hiện trong text."""
+    cited_numbers = {citation.n for citation in citations}
+    referenced_numbers = {int(number) for number in re.findall(r"\[([1-9]\d*)\]", text)}
+    return bool(cited_numbers & referenced_numbers)
 
 
 def _refusal_event(verdict: GuardrailVerdict) -> RefusalEvent:

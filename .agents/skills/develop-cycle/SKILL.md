@@ -11,9 +11,10 @@ Dùng workflow này khi người dùng yêu cầu `/develop-cycle <spec-path> <b
 
 ## Preflight
 
-1. Xác nhận spec tồn tại, branch tồn tại hoặc có thể được tạo an toàn từ `main`, và worktree không có thay đổi ngoài phạm vi task. Không tự đổi branch hoặc cất/loại bỏ thay đổi của người dùng khi worktree bẩn; dừng và báo rõ blocker.
-2. Xác nhận các custom agent `developer`, `tester`, `reviewer` đều có sẵn. Xác nhận GitHub CLI đã đăng nhập trước khi giao phần việc cần remote GitHub cho tester/reviewer.
-3. Lập state ledger ngay trong hội thoại gồm: spec path, branch, PR (ban đầu chưa có), `feedback_count = 0`, SHA mới nhất và feedback tích lũy. Chạy các agent tuần tự; không chạy song song các agent có thể ghi vào cùng branch.
+1. Tách và xác nhận spec path cùng branch name; cho phép bọc spec path trong dấu ngoặc kép nếu đường dẫn có khoảng trắng. Nếu thiếu, dư hoặc không thể tách an toàn hai tham số, dừng và yêu cầu cung cấp lại theo dạng `<spec-path> <branch>`.
+2. Xác nhận spec tồn tại, branch tồn tại hoặc có thể được tạo an toàn từ `main`, và worktree không có thay đổi ngoài phạm vi task. Không tự đổi branch hoặc cất/loại bỏ thay đổi của người dùng khi worktree bẩn; dừng và báo rõ blocker.
+3. Xác nhận các skill agent `developer`, `tester`, `reviewer` đều có sẵn. Xác nhận GitHub CLI đã đăng nhập trước khi giao phần việc cần remote GitHub cho tester/reviewer.
+4. Lập state ledger ngay trong hội thoại gồm: spec path, branch, PR (ban đầu chưa có), `feedback_count = 0`, SHA mới nhất và feedback tích lũy. Gọi các agent tuần tự (foreground); không chạy song song các agent có thể ghi vào cùng branch.
 
 ## Quy tắc điều phối
 
@@ -22,7 +23,7 @@ Dùng workflow này khi người dùng yêu cầu `/develop-cycle <spec-path> <b
 - Mỗi feedback do CI fail hoặc reviewer `REVISE` làm tăng `feedback_count` thêm 1. Ngay khi biến đếm đạt 3, dừng toàn bộ quy trình, không gọi thêm agent và báo người dùng cần can thiệp thủ công kèm mọi feedback/SHA/PR hiện có.
 - Nếu một agent báo blocker, thiếu quyền, không thể xác minh trạng thái, hoặc developer báo **hard local gate** lỗi, dừng ngay. Không phỏng đoán, không bỏ qua gate và không gọi agent kế tiếp. `test_migration_required` được developer khai báo đầy đủ theo role không phải hard-gate failure: tester phải cập nhật test theo spec rồi để GitHub Actions quyết định.
 - Mỗi lần gọi agent phải yêu cầu một handoff có cấu trúc: trạng thái, SHA/commit liên quan, PR nếu có, feedback theo định dạng đã quy định và hành động kế tiếp.
-- Cấu hình `.codex/config.toml` cho phép các lệnh local và network cần thiết trong workflow không phải xin xác nhận từng lệnh. Không coi đó là quyền để phá vỡ giới hạn role hoặc thực hiện thao tác ngoài workflow.
+- Toàn bộ lệnh git/gh cần cho quy trình này không phải xin xác nhận từng lệnh. Không coi đó là quyền để phá vỡ giới hạn role hoặc thực hiện thao tác ngoài workflow.
 
 ## Vòng lặp
 
