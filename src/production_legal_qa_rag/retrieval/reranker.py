@@ -10,13 +10,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from production_legal_qa_rag.config import RerankerSettings
-from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,16 @@ RERANK_BATCH_SIZE = 16
 """Batch cố định để chặn đỉnh VRAM bất kể số candidate thực tế."""
 
 _MODEL_NAME = "AITeamVN/Vietnamese_Reranker"
+_INFERENCE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="local-reranker-inference",
+)
+"""Một hàng đợi inference dùng chung process, an toàn giữa các event loop.
+
+Mỗi job là trọn một lần ``rerank()`` và mọi batch của nó. Vì executor chỉ có
+một worker, các job không thể forward cùng lúc; job chờ nằm trong queue của
+executor, không chiếm thread hay chặn event loop đang await kết quả.
+"""
 
 
 class LocalReranker:
@@ -41,8 +51,9 @@ class LocalReranker:
 
     Model được load **một lần** khi khởi tạo và giữ suốt vòng đời process.
     Forward pass là blocking call (CPU/GPU-bound) nên `rerank()` dùng
-    `asyncio.to_thread` để không chặn event loop. Một semaphore giới hạn toàn
-    bộ request rerank xuống một inference tại một thời điểm.
+    executor một worker dùng chung process để không chặn event loop. Executor
+    này giới hạn toàn bộ request rerank xuống một inference tại một thời điểm,
+    kể cả khi các request đến từ event loop khác nhau.
     """
 
     def __init__(
@@ -71,8 +82,6 @@ class LocalReranker:
             )
         self._tokenizer: Any | None = None
         self._model: Any | None = None
-        self._inference_limiter = LoopBoundClient(lambda: asyncio.Semaphore(1))
-
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
         self._device = torch.device(device_str)
         # Log đúng một lần lúc load model (mục 6.1).
@@ -102,9 +111,9 @@ class LocalReranker:
     async def rerank(self, query: str, passages: list[str]) -> list[float] | None:
         """Chấm điểm từng passage theo câu hỏi gốc (async, không bao giờ raise).
 
-        Forward pass blocking chạy trong `asyncio.to_thread` để không chặn
-        event loop. Nếu runtime error (CUDA OOM, ...) fallback: trả `None`,
-        log đủ context để debug (batch size, số passage lúc lỗi).
+        Forward pass blocking chạy trong executor riêng để không chặn event
+        loop. Nếu runtime error (CUDA OOM, ...) fallback: trả `None`, log đủ
+        context để debug (batch size, số passage lúc lỗi).
 
         Args:
             query: Câu hỏi gốc, không phải hypothetical document.
@@ -124,8 +133,13 @@ class LocalReranker:
             )
             return None
         try:
-            async with self._inference_limiter.get():
-                return await asyncio.to_thread(self._sync_rerank, query, passages)
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                _INFERENCE_EXECUTOR,
+                self._sync_rerank,
+                query,
+                passages,
+            )
         except Exception:
             logger.warning(
                 "LocalReranker lỗi runtime, fallback (batch_size=%d, n_passages=%d).",
@@ -136,7 +150,7 @@ class LocalReranker:
             return None
 
     def _sync_rerank(self, query: str, passages: list[str]) -> list[float]:
-        """Blocking forward pass; được gọi trong thread pool qua `asyncio.to_thread`."""
+        """Blocking forward pass; được gọi qua executor một worker dùng chung."""
         if self._model is None or self._tokenizer is None:
             raise RuntimeError("LocalReranker chưa load model/tokenizer.")
         all_scores: list[float] = []

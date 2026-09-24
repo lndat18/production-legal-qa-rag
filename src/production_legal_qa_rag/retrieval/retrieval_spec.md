@@ -200,18 +200,18 @@ kiến trúc host tách rời trên LightningAI Studio/ngrok của bản cũ.
   model để chặn đỉnh VRAM không phụ thuộc số lượng candidate thực tế, thay vì
   luôn forward nguyên pool trong một lần.
 - **Không chặn event loop**: forward pass là blocking call (CPU/GPU-bound),
-  phải chạy trong `asyncio.to_thread` (hoặc executor tương đương) vì phần còn
-  lại của pipeline là async.
+  phải chạy trong executor vì phần còn lại của pipeline là async.
 - **Concurrency inference process-wide = 1**: `asyncio.to_thread` mỗi request
   chạy trên thread riêng, nhưng dùng chung một `self._model`. Nhiều request
   đồng thời → nhiều forward pass cùng lúc trên cùng model → VRAM cộng dồn
   theo số request đồng thời, rất dễ CUDA OOM trên card 2GB dùng chung 1 model.
   Bọc toàn bộ một lần gọi `rerank()` (gồm mọi batch của request đó) trong
-  `asyncio.Semaphore(1)` process-wide: request khác phải đợi (coroutine tạm
-  dừng, không chặn event loop, không tốn thread chờ) tới khi request đang
-  chạy xong. Nhờ vậy đỉnh VRAM của riêng reranker bị chặn ở đúng 1 batch
-  (`RERANK_BATCH_SIZE`) tại một thời điểm, bất kể có bao nhiêu request đồng
-  thời.
+  một `ThreadPoolExecutor(max_workers=1)` private, module-scoped và dùng
+  chung process. Mỗi job executor bao trọn một lần `rerank()` gồm mọi batch;
+  request khác await future của job đang xếp hàng nên coroutine tạm dừng,
+  không chặn event loop hoặc chiếm một thread chờ. Nhờ vậy đỉnh VRAM của riêng
+  reranker bị chặn ở đúng 1 batch (`RERANK_BATCH_SIZE`) tại một thời điểm, bất
+  kể có bao nhiêu request đồng thời.
   - **Cứng `1`, không đưa vào `RerankerSettings`**: đúng với ràng buộc phần
     cứng hiện có (GPU 2GB, 1 model dùng chung); không thêm biến cấu hình chưa
     ai cần. Đổi GPU lớn hơn sau này thì sửa hằng số, không phải việc thường
@@ -221,13 +221,14 @@ kiến trúc host tách rời trên LightningAI Studio/ngrok của bản cũ.
     rerank trên CPU cũng bị serialize khi nhiều request tới cùng lúc; chấp
     nhận được vì quy mô ứng dụng tự giới hạn (`deploy_spec.md` mục 5) và đã có
     admission/quota ở tầng trên (`conversation_spec.md` mục 8).
-  - **Loop-bound**: `asyncio.Semaphore` (Python ≥3.10) bám vào event loop đang
-    chạy lúc `await` đầu tiên, dùng lại ở loop khác sẽ `RuntimeError` — cùng
-    vấn đề `httpx.AsyncClient`/`AsyncGroq` đã gặp và được giải bằng
-    `LoopBoundClient` (`retrieval/loop_bound.py`). `LocalReranker` là singleton
-    sống qua nhiều `asyncio.run()` (`_default_pipeline`, test suite), nên dùng
-    lại `LoopBoundClient` bọc factory `lambda: asyncio.Semaphore(1)` thay vì
-    tạo semaphore thô — không viết abstraction mới.
+  - **Cross-event-loop**: không dùng `asyncio.Semaphore` hay
+    `LoopBoundClient` cho limiter này. Semaphore là loop-bound; còn
+    `LoopBoundClient` chủ đích tạo một semaphore riêng khi loop đổi, nên hai
+    loop sống song song sẽ có hai permit và có thể cùng forward một
+    `self._model`. `ThreadPoolExecutor` là primitive thread-safe của process:
+    mọi event loop submit vào cùng hàng đợi một worker, và future trả về được
+    await bởi loop đã submit. Cơ chế này giữ singleton dùng được qua nhiều
+    `asyncio.run()` lẫn nhiều loop chạy đồng thời mà vẫn đúng concurrency = 1.
 
 ## 7. Consistency và state offline
 
@@ -315,9 +316,9 @@ với `tools/conversation.py`), chọn qua option; `--query` nhập câu tùy ý
 - `MAX_LENGTH = 512` (mục 6.1) là số ước lượng có margin, không phải số đo;
   nếu sau này log cảnh báo truncation hoặc chất lượng rerank giảm bất thường,
   đo lại thực tế bằng tokenizer `bge-reranker-v2-m3` trên corpus rồi cập nhật.
-- Reranker chỉ chạy đúng 1 inference cùng lúc process-wide
-  (`asyncio.Semaphore(1)` qua `LoopBoundClient`, mục 6.1); N request đồng thời
-  không làm VRAM cộng dồn theo N.
+- Reranker chỉ chạy đúng 1 inference cùng lúc process-wide (executor một worker
+  dùng chung, mục 6.1), kể cả khi request đến từ event loop song song; N request
+  đồng thời không làm VRAM cộng dồn theo N.
 - Tầng conversation có thể áp policy score mà không làm đổi hoặc làm mơ hồ
   contract của `retrieve()`.
 
