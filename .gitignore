@@ -3,10 +3,10 @@ __pycache__/
 *.py[cod]
 *.db
 .env
-.claude/settings.local.json
-
-
 
 
 # Sinh ra bởi tools/sparse_index_documents.py, phải khớp với sparse index đang có trên Pinecone
 data/bm25/
+
+# Model artifacts tải cục bộ để chạy offline; không đưa weights lớn vào Git.
+models/

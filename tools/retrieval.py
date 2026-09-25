@@ -38,6 +38,7 @@ _PRESETS: dict[str, str] = {
 class Preset(str, Enum):
     """Câu hỏi mẫu preset."""
 
+    all = "all"
     dieu113_literal = "dieu113_literal"
     dieu113_para = "dieu113_para"
     dieu168_literal = "dieu168_literal"
@@ -79,26 +80,41 @@ def main(
     LocalReranker log device (cuda/cpu) một lần lúc load model — chạy ở log level
     mặc định là thấy ngay mà không cần API riêng.
     """
-    selected_query: str
+    selected_queries: list[str]
     if query:
-        selected_query = query
+        selected_queries = [query]
+    elif preset is Preset.all:
+        selected_queries = list(_PRESETS.values())
     elif preset is not None:
-        selected_query = _PRESETS[preset.value]
+        selected_queries = [_PRESETS[preset.value]]
     else:
         _list_presets()
         raise typer.Abort()
 
-    asyncio.run(_run(selected_query, use_mmr=use_mmr, top_k=top_k))
+    asyncio.run(_run_queries(selected_queries, use_mmr=use_mmr, top_k=top_k))
 
 
 def _list_presets() -> None:
     typer.echo("Không có --query hoặc --preset. Danh sách preset khả dụng:")
+    typer.echo("  --preset 'all'                            Chạy toàn bộ preset.")
     for key, text in _PRESETS.items():
         typer.echo(f"  --preset {key!r:30s}  {text}")
 
 
-async def _run(query: str, *, use_mmr: bool | None, top_k: int) -> None:
+async def _run_queries(queries: list[str], *, use_mmr: bool | None, top_k: int) -> None:
     pipeline = RetrievalPipeline()
+    for query in queries:
+        await _run(pipeline, query, use_mmr=use_mmr, top_k=top_k)
+
+
+async def _run(
+    pipeline: RetrievalPipeline,
+    query: str,
+    *,
+    use_mmr: bool | None,
+    top_k: int,
+) -> None:
+    typer.echo("-" * 100)
     typer.echo(f"\nQuery: {query!r}\n")
 
     t0 = time.perf_counter()
