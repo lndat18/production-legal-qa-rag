@@ -10,7 +10,7 @@ import asyncio
 from logging.config import fileConfig
 
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from alembic import context
 
@@ -42,7 +42,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection):  # type: ignore[no-untyped-def]
+def do_run_migrations(connection: AsyncConnection) -> None:
     """Chạy migration với connection đã cấp.
 
     Args:

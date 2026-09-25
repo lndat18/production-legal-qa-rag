@@ -7,6 +7,7 @@ Module này không phụ thuộc vào SQLAlchemy để có thể dùng độc l�
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -49,10 +50,10 @@ class TurnRecord(BaseModel):
     chat_id: str | None = None
     raw_query: str
     standalone_query: str | None = None
-    outcome: str  # answered | refused | error | client_disconnected
-    verdict: str  # allow | out_of_scope | injection
+    outcome: Literal["answered", "refused", "error", "client_disconnected"]
+    verdict: Literal["allow", "out_of_scope", "injection"]
     error_code: str | None = None
-    cache_status: str  # answer_hit | retrieval_hit | miss | bypass
+    cache_status: Literal["answer_hit", "retrieval_hit", "miss", "bypass"]
     chunk_ids: list[str] = Field(default_factory=list)
     answer_text: str = ""
     citations: list[dict] = Field(default_factory=list)

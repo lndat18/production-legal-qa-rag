@@ -28,7 +28,7 @@ import os
 import sys
 
 import typer
-from sqlalchemy import delete, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Đảm bảo import được package khi chạy trực tiếp.
@@ -93,10 +93,10 @@ async def _run_purge(
 
     async with engine.begin() as conn:
         if dry_run:
-            # Đếm dòng sẽ bị xóa.
+            # Đếm dòng sẽ bị xóa bằng select(func.count()).select_from() đúng SQLAlchemy 2.x.
             count_stmt = (
-                chat_turns.select()
-                .with_only_columns(text("count(*)"))
+                select(func.count())
+                .select_from(chat_turns)
                 .where(chat_turns.c.created_at < cutoff_expr)
             )
             if user_id is not None:
