@@ -7,10 +7,15 @@ Public API:
 - :func:`~production_legal_qa_rag.chatlog.repository.create_engine`
 """
 
-from production_legal_qa_rag.chatlog.models import TurnRecord, from_trace
+from production_legal_qa_rag.chatlog.models import (
+    ChatLogMetadata,
+    TurnRecord,
+    from_trace,
+)
 from production_legal_qa_rag.chatlog.repository import ChatLogRepository, create_engine
 
 __all__ = [
+    "ChatLogMetadata",
     "ChatLogRepository",
     "TurnRecord",
     "create_engine",

@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("id", UUID(as_uuid=False), primary_key=True),
         sa.Column(
             "created_at",
-            sa.Text,
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("now()"),
         ),

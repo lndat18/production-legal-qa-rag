@@ -100,6 +100,7 @@ class ChatLogRepository:
             await session.execute(
                 chat_turns.insert().values(
                     id=turn.id,
+                    created_at=turn.created_at,
                     request_id=turn.request_id,
                     user_id=turn.user_id,
                     chat_id=turn.chat_id,

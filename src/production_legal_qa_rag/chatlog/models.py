@@ -7,6 +7,7 @@ Module này không phụ thuộc vào SQLAlchemy để có thể dùng độc l�
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -45,6 +46,7 @@ class TurnRecord(BaseModel):
     """
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     request_id: str
     user_id: str
     chat_id: str | None = None
@@ -61,27 +63,36 @@ class TurnRecord(BaseModel):
     usage: dict | None = None
     time_to_first_token_ms: int | None = None
     latency_ms: int = 0
-    prompt_version: str = ""
-    corpus_version: str = ""
-    model_name: str = ""
+    prompt_version: str = Field(min_length=1)
+    corpus_version: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+
+
+class ChatLogMetadata(BaseModel):
+    """Metadata runtime dùng để so sánh các lượt chat qua từng lần cấu hình.
+
+    Metadata được tạo một lần trong API lifespan, cùng thời điểm engine và các
+    dependency xử lý câu hỏi được khởi tạo. Không cho phép giá trị rỗng để một
+    dòng chatlog luôn gắn được với prompt, corpus và model đã thực sự phục vụ nó.
+    """
+
+    prompt_version: str = Field(min_length=1)
+    corpus_version: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
 
 
 def from_trace(
     trace: TurnTrace,
     ctx: RequestContext,
     *,
-    prompt_version: str = "",
-    corpus_version: str = "",
-    model_name: str = "",
+    metadata: ChatLogMetadata,
 ) -> TurnRecord:
     """Dựng ``TurnRecord`` từ ``TurnTrace`` và ``RequestContext``.
 
     Args:
         trace: Vết lượt hỏi–đáp do orchestrator điền.
         ctx: Danh tính request do lớp API cung cấp.
-        prompt_version: Phiên bản prompt đang dùng.
-        corpus_version: Phiên bản corpus đang dùng.
-        model_name: Tên model LLM.
+        metadata: Phiên bản prompt, corpus và model của API runtime.
 
     Returns:
         TurnRecord sẵn sàng ghi vào bảng ``chat_turns``.
@@ -104,7 +115,7 @@ def from_trace(
         usage=trace.usage.model_dump() if trace.usage is not None else None,
         time_to_first_token_ms=trace.time_to_first_token_ms,
         latency_ms=trace.latency_ms,
-        prompt_version=prompt_version,
-        corpus_version=corpus_version,
-        model_name=model_name,
+        prompt_version=metadata.prompt_version,
+        corpus_version=metadata.corpus_version,
+        model_name=metadata.model_name,
     )

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     Column,
+    DateTime,
     Index,
     Integer,
     MetaData,
@@ -26,9 +27,9 @@ chat_turns = Table(
     Column("id", UUID(as_uuid=False), primary_key=True),
     # Dùng server_default để DB tự sinh nếu app không truyền;
     # app luôn truyền giá trị để đảm bảo nhất quán với TurnRecord.id.
-    Column(  # type: ignore[call-arg]
+    Column(
         "created_at",
-        Text,
+        DateTime(timezone=True),
         nullable=False,
         server_default="now()",
     ),
