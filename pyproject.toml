@@ -8,6 +8,8 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.31.0",
     "groq>=1.7.0",
     "huggingface-hub>=1.31.0",
     "langchain-openai>=1.6.4",
@@ -21,6 +23,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "redis>=8.1.0",
     "sentencepiece>=0.2.2",
+    "sqlalchemy[asyncio]>=2.1.0",
     "torch>=2.0.0",
     "transformers>=4.47.0",
     "typer>=0.27.1",
