@@ -10,7 +10,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from production_legal_qa_rag.conversation.models import RequestContext, TurnTrace
 
@@ -66,6 +66,21 @@ class TurnRecord(BaseModel):
     prompt_version: str = Field(min_length=1)
     corpus_version: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
+
+    @field_validator("created_at")
+    @classmethod
+    def _require_timezone(cls, value: datetime) -> datetime:
+        """Reject timestamps whose local offset is ambiguous.
+
+        Returns:
+            The timezone-aware timestamp unchanged.
+
+        Raises:
+            ValueError: If the timestamp has no timezone or UTC offset.
+        """
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("created_at phải có timezone")
+        return value
 
 
 class ChatLogMetadata(BaseModel):

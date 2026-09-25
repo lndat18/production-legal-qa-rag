@@ -82,12 +82,11 @@ class ChatLogRepository:
                 _WRITE_TIMEOUT_SECONDS,
                 turn.request_id,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - database errors must not escape to the user.
             # Không log nội dung turn để bảo vệ quyền riêng tư (spec mục 5).
             _logger.warning(
                 "chatlog: ghi thất bại (request_id=%s)",
                 turn.request_id,
-                exc_info=True,
             )
 
     async def _insert(self, turn: TurnRecord) -> None:

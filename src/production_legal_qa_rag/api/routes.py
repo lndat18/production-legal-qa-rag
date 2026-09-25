@@ -74,11 +74,10 @@ class ChatLogTaskManager:
         try:
             turn = from_trace(trace, context, metadata=self._metadata)
             task = asyncio.create_task(self._repository.record(turn))
-        except Exception:
+        except Exception:  # noqa: BLE001 - logging must not affect the response path.
             _logger.warning(
                 "Không thể lên lịch ghi chatlog (request_id=%s)",
                 context.request_id,
-                exc_info=True,
             )
             return
         self._tasks.add(task)
@@ -111,11 +110,10 @@ class ChatLogTaskManager:
             task.result()
         except asyncio.CancelledError:
             _logger.warning("Task ghi chatlog bị huỷ (request_id=%s)", request_id)
-        except Exception:
+        except Exception:  # noqa: BLE001 - task failures cannot affect the response path.
             _logger.warning(
                 "Task ghi chatlog thất bại (request_id=%s)",
                 request_id,
-                exc_info=True,
             )
 
 
