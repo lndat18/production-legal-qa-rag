@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from typing import Literal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,8 +21,10 @@ from production_legal_qa_rag.cache.models import CacheStatus
 from production_legal_qa_rag.chatlog import (
     ChatLogRepository,
     TurnRecord,
-    create_engine as create_chatlog_engine,
     from_trace,
+)
+from production_legal_qa_rag.chatlog import (
+    create_engine as create_chatlog_engine,
 )
 from production_legal_qa_rag.chatlog.tables import chat_turns, metadata
 from production_legal_qa_rag.conversation.models import RequestContext, TurnTrace
@@ -30,9 +32,7 @@ from production_legal_qa_rag.generation.models import (
     Citation,
     GuardrailVerdict,
     Usage,
-    WarningEvent,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
