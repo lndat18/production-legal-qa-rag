@@ -378,11 +378,21 @@ class TestApiLifecycle:
         assert elapsed < 0.5
         assert cancelled.is_set()
 
-    def test_lifespan_injects_engine_repository_and_runtime_metadata_once(self) -> None:
-        """The shared API lifecycle creates runtime metadata only once."""
+    def test_lifespan_injects_engine_repository_and_runtime_metadata_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shared API lifecycle creates runtime metadata only once.
+
+        api_spec.md mục 7: lifespan giờ còn dựng ``ApiSettings``/``RedisSettings``,
+        một Redis client và toàn bộ registry cache/admission/orchestrator, lưu vào
+        ``app.state``. ``ApiSettings`` không có default cho ``CHATBOT_API_KEY`` nên
+        test set env thật thay vì patch, để bảo vệ đúng contract "bắt buộc từ env".
+        """
         from fastapi import FastAPI
 
         import production_legal_qa_rag.api.app as app_module
+
+        monkeypatch.setenv("CHATBOT_API_KEY", "test-chatbot-api-key")
 
         engine = MagicMock()
         engine.dispose = AsyncMock()
@@ -390,6 +400,10 @@ class TestApiLifecycle:
         database = SimpleNamespace(database_url="postgresql+asyncpg://chatlog")
         cache = SimpleNamespace(corpus_version="configured-corpus")
         generation = SimpleNamespace(model_name="configured-model")
+        redis_settings = SimpleNamespace(redis_url="redis://fake-redis")
+        fake_redis = MagicMock()
+        fake_redis.aclose = AsyncMock()
+        fake_orchestrator = MagicMock()
         app = FastAPI()
 
         async def run_lifespan() -> None:
@@ -397,6 +411,15 @@ class TestApiLifecycle:
                 patch.object(app_module, "DatabaseSettings", return_value=database),
                 patch.object(app_module, "CacheSettings", return_value=cache),
                 patch.object(app_module, "GenerationSettings", return_value=generation),
+                patch.object(app_module, "RedisSettings", return_value=redis_settings),
+                patch.object(app_module, "Redis") as redis_cls,
+                patch.object(app_module, "AnswerCache") as answer_cache_cls,
+                patch.object(app_module, "RetrievalCache") as retrieval_cache_cls,
+                patch.object(app_module, "SingleFlight") as single_flight_cls,
+                patch.object(app_module, "AdmissionController") as admission_cls,
+                patch.object(
+                    app_module, "ChatOrchestrator", return_value=fake_orchestrator
+                ) as orchestrator_cls,
                 patch.object(
                     app_module, "create_engine", return_value=engine
                 ) as create_engine,
@@ -406,6 +429,7 @@ class TestApiLifecycle:
                 ) as compute,
                 patch.object(app_module, "PROMPT_VERSION", "runtime-prompt"),
             ):
+                redis_cls.from_url.return_value = fake_redis
                 async with app_module.lifespan(app):
                     manager = app.state.chatlog_tasks
                     assert app.state.chatlog_repository is repository
@@ -418,5 +442,21 @@ class TestApiLifecycle:
                     create_engine.assert_called_once_with(database.database_url)
                     compute.assert_called_once_with(override="configured-corpus")
 
+                    # api_spec.md mục 7: lifespan phải dựng và lưu thêm registry mới.
+                    assert (
+                        app.state.api_settings.chatbot_api_key.get_secret_value()
+                        == "test-chatbot-api-key"
+                    )
+                    assert app.state.redis is fake_redis
+                    assert app.state.database_engine is engine
+                    assert app.state.orchestrator is fake_orchestrator
+                    redis_cls.from_url.assert_called_once_with(redis_settings.redis_url)
+                    answer_cache_cls.assert_called_once()
+                    retrieval_cache_cls.assert_called_once()
+                    single_flight_cls.assert_called_once()
+                    admission_cls.assert_called_once()
+                    orchestrator_cls.assert_called_once()
+
         asyncio.run(run_lifespan())
         engine.dispose.assert_awaited_once()
+        fake_redis.aclose.assert_awaited_once()
