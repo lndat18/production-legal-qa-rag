@@ -1,0 +1,21 @@
+# Scrape config tối thiểu — chỉ tự giám sát Prometheus lúc này.
+#
+# `api` (FastAPI) chưa expose endpoint /metrics nên chưa có gì để thêm vào đây. Muốn có
+# metrics thật của app (request rate, latency, cache hit...) cần thêm instrumentation vào
+# code trước (ví dụ prometheus-fastapi-instrumentator) — việc đó chưa nằm trong spec nào,
+# bàn với architect khi tới phase CI/CD/observability (xem bộ nhớ "roadmap-post-chatlog").
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Mẫu để bật sau khi api có /metrics — cùng network `legal-qa-observability` không thấy
+  # được service `api` của docker-compose.dev.yml/docker-compose.yml (network khác), nên
+  # lúc đó cần join chung network hoặc dùng host.docker.internal.
+  # - job_name: legal-qa-api
+  #   static_configs:
+  #     - targets: ["api:8000"]
