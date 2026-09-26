@@ -1,7 +1,7 @@
-# Native Codex execpolicy migration of .claude/settings.json.
-# A matching `forbidden` rule always overrides a matching `allow` rule.
+# Native Codex execpolicy mapping of .claude/settings.json.
+# The most restrictive matching decision wins.
 
-# Git commands allowed by the Claude configuration.
+# Git commands explicitly pre-approved by the source policy.
 prefix_rule(pattern = ["git", "push"], decision = "allow")
 prefix_rule(pattern = ["git", "commit"], decision = "allow")
 prefix_rule(pattern = ["git", "add"], decision = "allow")
@@ -20,8 +20,7 @@ prefix_rule(pattern = ["git", "rev-parse"], decision = "allow")
 prefix_rule(pattern = ["git", "stash", "list"], decision = "allow")
 prefix_rule(pattern = ["git", "config", "--get"], decision = "allow")
 
-# GitHub CLI commands allowed by the Claude configuration.
-prefix_rule(pattern = ["gh", "pr", "merge"], decision = "allow")
+# GitHub and local validation commands approved by the source policy.
 prefix_rule(pattern = ["gh", "pr", "create"], decision = "allow")
 prefix_rule(pattern = ["gh", "pr", "comment"], decision = "allow")
 prefix_rule(pattern = ["gh", "pr", "view"], decision = "allow")
@@ -35,13 +34,11 @@ prefix_rule(pattern = ["gh", "workflow", "view"], decision = "allow")
 prefix_rule(pattern = ["gh", "workflow", "list"], decision = "allow")
 prefix_rule(pattern = ["gh", "repo", "view"], decision = "allow")
 prefix_rule(pattern = ["gh", "auth", "status"], decision = "allow")
-
-# Python validation commands allowed by the Claude configuration.
 prefix_rule(pattern = ["uv", "run", "pytest"], decision = "allow")
 prefix_rule(pattern = ["uv", "run", "ruff"], decision = "allow")
 prefix_rule(pattern = ["uv", "run", "mypy"], decision = "allow")
 
-# Read-only shell commands allowed by the Claude configuration.
+# Read-only inspection commands approved by the source policy.
 prefix_rule(pattern = ["grep"], decision = "allow")
 prefix_rule(pattern = ["rg"], decision = "allow")
 prefix_rule(pattern = ["find"], decision = "allow")
@@ -55,40 +52,18 @@ prefix_rule(pattern = ["sort"], decision = "allow")
 prefix_rule(pattern = ["cut"], decision = "allow")
 prefix_rule(pattern = ["jq"], decision = "allow")
 prefix_rule(pattern = ["tree"], decision = "allow")
+prefix_rule(pattern = ["awk"], decision = "allow")
 
-# Commands explicitly denied by the Claude configuration.
-prefix_rule(
-    pattern = ["git", "push", "--force"],
-    decision = "forbidden",
-    justification = "Force-push is forbidden by this repository's command policy.",
-)
-prefix_rule(
-    pattern = ["git", "push", "-f"],
-    decision = "forbidden",
-    justification = "Force-push is forbidden by this repository's command policy.",
-)
-prefix_rule(
-    pattern = ["git", "push", "origin", "--force"],
-    decision = "forbidden",
-    justification = "Force-push is forbidden by this repository's command policy.",
-)
-prefix_rule(
-    pattern = ["git", "reset", "--hard"],
-    decision = "forbidden",
-    justification = "Use a targeted, recoverable Git operation instead of git reset --hard.",
-)
-prefix_rule(
-    pattern = ["git", "branch", "-D"],
-    decision = "forbidden",
-    justification = "Force-deleting a branch is forbidden by this repository's command policy.",
-)
-prefix_rule(
-    pattern = ["git", "branch", "--delete", "--force"],
-    decision = "forbidden",
-    justification = "Force-deleting a branch is forbidden by this repository's command policy.",
-)
-prefix_rule(
-    pattern = ["gh", "pr", "merge", "--admin"],
-    decision = "forbidden",
-    justification = "Admin-merging a pull request is forbidden by this repository's command policy.",
-)
+# Destructive operations denied by the source policy and the local workflow.
+prefix_rule(pattern = ["git", "push", "--force"], decision = "forbidden", justification = "Force-push is forbidden by this repository policy.")
+prefix_rule(pattern = ["git", "push", "-f"], decision = "forbidden", justification = "Force-push is forbidden by this repository policy.")
+prefix_rule(pattern = ["git", "push", "origin", "--force"], decision = "forbidden", justification = "Force-push is forbidden by this repository policy.")
+prefix_rule(pattern = ["git", "reset", "--hard"], decision = "forbidden", justification = "Use a targeted, recoverable Git operation instead.")
+prefix_rule(pattern = ["git", "branch", "-D"], decision = "forbidden", justification = "Force-deleting a branch is forbidden by this repository policy.")
+prefix_rule(pattern = ["git", "branch", "--delete", "--force"], decision = "forbidden", justification = "Force-deleting a branch is forbidden by this repository policy.")
+prefix_rule(pattern = ["git", "checkout", "--"], decision = "forbidden", justification = "Do not discard user changes with git checkout --.")
+prefix_rule(pattern = ["git", "checkout", "."], decision = "forbidden", justification = "Do not discard user changes with git checkout .")
+prefix_rule(pattern = ["git", "restore"], decision = "forbidden", justification = "Do not discard user changes with git restore.")
+prefix_rule(pattern = ["git", "clean"], decision = "forbidden", justification = "Do not delete untracked files with git clean.")
+prefix_rule(pattern = ["rm"], decision = "forbidden", justification = "Do not delete files with rm; use a recoverable alternative.")
+prefix_rule(pattern = ["gh", "pr", "merge"], decision = "forbidden", justification = "Merge is a manual user action after reviewer PASS.")
