@@ -92,7 +92,7 @@ class TestTurnRecord:
     def test_naive_timestamp_is_rejected(self) -> None:
         """A timestamptz field must not accept an ambiguous local time."""
         with pytest.raises(ValidationError):
-            _record(created_at=datetime(2026, 9, 25, 12, 0, 0))
+            _record(created_at=datetime(2026, 9, 25, 12, 0, 0))  # noqa: DTZ001
 
     def test_utc_timestamp_is_accepted(self) -> None:
         """An explicit UTC value remains valid."""
@@ -160,11 +160,27 @@ class TestRepositoryAndSchema:
         """Core table exactly supports retention and operational analysis."""
         columns = {column.name: column for column in chat_turns.columns}
         assert {
-            "id", "created_at", "request_id", "user_id", "chat_id", "raw_query",
-            "standalone_query", "outcome", "verdict", "error_code", "cache_status",
-            "chunk_ids", "answer_text", "citations", "warnings", "usage",
-            "time_to_first_token_ms", "latency_ms", "prompt_version",
-            "corpus_version", "model_name",
+            "id",
+            "created_at",
+            "request_id",
+            "user_id",
+            "chat_id",
+            "raw_query",
+            "standalone_query",
+            "outcome",
+            "verdict",
+            "error_code",
+            "cache_status",
+            "chunk_ids",
+            "answer_text",
+            "citations",
+            "warnings",
+            "usage",
+            "time_to_first_token_ms",
+            "latency_ms",
+            "prompt_version",
+            "corpus_version",
+            "model_name",
         } <= set(columns)
         assert columns["id"].primary_key
         assert columns["chat_id"].nullable
@@ -224,6 +240,7 @@ class _Orchestrator:
         trace: TurnTrace,
     ):
         """Return a one-event async generator."""
+
         async def events():
             trace.raw_query = messages[-1].content
             trace.standalone_query = trace.raw_query

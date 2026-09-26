@@ -86,7 +86,9 @@ async def _run_purge(
     settings = DatabaseSettings()
     engine = create_async_engine(settings.database_url, echo=False)
 
-    cutoff_expr = text(f"now() - interval '{days} days'")
+    cutoff_expr = text("now() - :interval::interval").bindparams(
+        interval=f"{days} days"
+    )
     stmt = delete(chat_turns).where(chat_turns.c.created_at < cutoff_expr)
     if user_id is not None:
         stmt = stmt.where(chat_turns.c.user_id == user_id)
