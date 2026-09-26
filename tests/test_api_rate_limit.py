@@ -49,7 +49,7 @@ def test_requests_within_limit_do_not_raise() -> None:
             await enforce_rate_limit(redis, "user-1", limit_per_minute=5)
 
     asyncio.run(scenario())
-    assert redis.counts[list(redis.counts)[0]] == 5
+    assert redis.counts[next(iter(redis.counts))] == 5
 
 
 def test_request_over_limit_raises_429_with_retry_after() -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Self
 
 import pytest
 from fastapi import FastAPI
@@ -87,7 +88,7 @@ class _FakeConnection:
         if self._fails:
             raise ConnectionError("postgres down")
 
-    async def __aenter__(self) -> "_FakeConnection":
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *_exc: object) -> bool:
