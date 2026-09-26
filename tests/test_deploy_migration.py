@@ -32,6 +32,7 @@ def test_alembic_env_ghi_de_sqlalchemy_url_bang_chatlog_database_url() -> None:
         capture_output=True,
         text=True,
         timeout=60,
+        check=False,
     )
 
     assert result.returncode != 0, (

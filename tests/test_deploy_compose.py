@@ -36,6 +36,7 @@ def _docker_compose_available() -> bool:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -83,7 +84,7 @@ def _resolve_compose_config(
     cmd += ["config", "--format", "json"]
 
     result = subprocess.run(
-        cmd, cwd=tmp_path, capture_output=True, text=True, timeout=30
+        cmd, cwd=tmp_path, capture_output=True, text=True, timeout=30, check=False
     )
     assert result.returncode == 0, (
         f"`docker compose config` thất bại (spec mục 4):\n"
@@ -338,7 +339,7 @@ def test_dockerignore_loai_tru_bi_mat_va_du_lieu_khong_can() -> None:
         if line.strip() and not line.startswith("#")
     }
 
-    for required in {".env", "deploy/.env", "data/", "tests/", ".venv/", ".git/"}:
+    for required in (".env", "deploy/.env", "data/", "tests/", ".venv/", ".git/"):
         assert required in entries, f".dockerignore thiếu mục '{required}'"
 
 
@@ -355,6 +356,7 @@ def test_backup_script_cu_phap_shell_hop_le() -> None:
         capture_output=True,
         text=True,
         timeout=10,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
@@ -371,7 +373,11 @@ def test_initdb_script_cu_phap_shell_hop_le() -> None:
     """`deploy/initdb/001_create_databases.sh` phải là POSIX shell hợp lệ."""
     script = DEPLOY_DIR / "initdb" / "001_create_databases.sh"
     result = subprocess.run(
-        ["sh", "-n", str(script)], capture_output=True, text=True, timeout=10
+        ["sh", "-n", str(script)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
