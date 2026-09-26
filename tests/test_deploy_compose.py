@@ -38,7 +38,7 @@ def _docker_compose_available() -> bool:
             timeout=10,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return False
     return result.returncode == 0
 
