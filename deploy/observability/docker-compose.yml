@@ -1,0 +1,233 @@
+# Stack Langfuse self-host + Prometheus + Grafana — CHỈ để chạy thử/học cục bộ.
+#
+# KHÔNG thuộc phạm vi deploy_spec.md (mục "Không làm" nói rõ: monitoring/tracing thuộc
+# phase cuối sau RAGAS). File này tách riêng khỏi docker-compose.dev.yml/docker-compose.yml
+# chính thức, không đụng service nào của chúng — chưa wire app (`api`) gửi trace sang
+# Langfuse, việc đó cần spec riêng sau khi có SDK tracing trong code.
+#
+# Dùng:  docker compose -f deploy/observability/docker-compose.yml --env-file deploy/observability/.env up -d
+# Dừng:  docker compose -f deploy/observability/docker-compose.yml down        (giữ volume)
+# Xoá sạch: thêm -v vào lệnh trên (mất hết trace/dashboard đã lưu)
+#
+# Nặng nhất là ClickHouse + MinIO (kho lưu trace của Langfuse) — xem deploy_spec.md
+# mục 10 và bộ nhớ "roadmap-post-chatlog" về giới hạn RAM máy tác giả (16GB, ~5.8GB
+# trống lúc idle). Tổng mem_limit dưới đây ước lượng ~3.4GB — đừng bật cùng lúc với
+# việc load model embedding/rerank nếu máy yếu.
+name: legal-qa-observability
+
+services:
+  # --- Langfuse self-host (nguồn: docker-compose.yml chính thức của langfuse/langfuse) ---
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-langfuse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD bắt buộc, xem .env.example}
+      POSTGRES_DB: ${POSTGRES_DB:-langfuse}
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-langfuse}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_AUTH:?REDIS_AUTH bắt buộc, xem .env.example}",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_AUTH:?}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 128m
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.12
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD bắt buộc, xem .env.example}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    # Chỉ mở trên loopback — dùng để tự kiểm tra bằng curl/DBeaver khi cần, không bắt buộc.
+    ports:
+      - "127.0.0.1:8123:8123"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # ClickHouse cần nhiều RAM hơn các service khác trong stack này; tăng nếu thấy
+      # container bị OOMKilled (docker compose ps sẽ báo "Exited (137)").
+    mem_limit: 1200m
+    restart: unless-stopped
+
+  minio:
+    image: cgr.dev/chainguard/minio
+    entrypoint: ["/bin/minio"]
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD bắt buộc, xem .env.example}
+    volumes:
+      - langfuse_minio_data:/data
+    ports:
+      - "127.0.0.1:9090:9000" # S3 API — langfuse-web dùng URL này để browser tải media
+      - "127.0.0.1:9091:9001" # Console web (đăng nhập bằng MINIO_ROOT_USER/PASSWORD)
+    mem_limit: 256m
+    restart: unless-stopped
+    # Image chainguard tối giản, không chắc có wget/curl để healthcheck — nếu langfuse-web/
+    # worker khởi động lỗi vì minio chưa sẵn sàng, thêm `retries`/`start_period` ở service
+    # phụ thuộc thay vì ép healthcheck ở đây.
+
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-langfuse}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-langfuse}
+      SALT: ${SALT:?SALT bắt buộc, xem .env.example}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY bắt buộc (hex 64 ký tự), xem .env.example}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_AUTH:?}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    # Không publish port ra host — chỉ langfuse-web cần mở cho trình duyệt.
+    mem_limit: 512m
+    restart: unless-stopped
+
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET bắt buộc, xem .env.example}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-langfuse}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-langfuse}
+      SALT: ${SALT:?}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
+      TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_AUTH:?}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      # Media: worker/server đọc qua tên service nội bộ, nhưng trình duyệt (nhận URL
+      # trực tiếp) phải dùng cổng host đã publish — hai endpoint khác nhau có chủ đích.
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+    ports:
+      - "127.0.0.1:3001:3000" # 3000 để dành cho open-webui (deploy_spec.md mục 4)
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    mem_limit: 768m
+    restart: unless-stopped
+
+  # --- Prometheus + Grafana (chưa có gì để scrape ngoài chính Prometheus; api chưa
+  # expose /metrics — cần thêm instrumentation trước, xem prometheus.yml) ---
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - langfuse_prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9092:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:9090/-/healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD bắt buộc, xem .env.example}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - langfuse_grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3002:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:
+  langfuse_prometheus_data:
+  langfuse_grafana_data:

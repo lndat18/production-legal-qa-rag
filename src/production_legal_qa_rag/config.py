@@ -10,7 +10,7 @@ cho tính năng chưa được thiết kế (tránh over-engineering).
 
 from __future__ import annotations
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -213,3 +213,17 @@ class DatabaseSettings(BaseSettings):
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot",
         validation_alias="CHATLOG_DATABASE_URL",
     )
+
+
+class ApiSettings(BaseSettings):
+    """Cấu hình lớp HTTP OpenAI-compatible (api_spec.md mục 10).
+
+    ``chatbot_api_key`` là bí mật riêng giữa OpenWebUI và backend (mục 4), so
+    sánh bằng ``secrets.compare_digest`` ở ``api/auth.py`` — không log giá trị.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    chatbot_api_key: SecretStr = Field(validation_alias="CHATBOT_API_KEY")
+    rate_limit_per_minute: int = 5
+    keepalive_seconds: float = 15.0
