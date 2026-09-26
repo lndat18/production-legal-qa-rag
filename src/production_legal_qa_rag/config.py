@@ -197,3 +197,19 @@ class RerankerSettings(BaseSettings):
     model_name: str = Field(default="AITeamVN/Vietnamese_Reranker", min_length=1)
     max_length: int = Field(default=512, gt=0)
     batch_size: int = Field(default=16, gt=0)
+
+
+class DatabaseSettings(BaseSettings):
+    """Kết nối Postgres dùng cho chatlog (chatlog_spec.md mục 6).
+
+    ``database_url`` phải có dạng ``postgresql+asyncpg://…`` vì repository
+    dùng asyncpg driver. ``CHATLOG_RETENTION_DAYS`` là tham số mặc định cho
+    ``tools/purge_chatlog.py``; không được đọc trực tiếp ở đây.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    database_url: str = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot",
+        validation_alias="CHATLOG_DATABASE_URL",
+    )

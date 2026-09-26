@@ -41,7 +41,7 @@ class TurnTrace(BaseModel):
     verdict: GuardrailVerdict | None = None
     cache_status: CacheStatus = "miss"
     # Mặc định "error": luồng bị huỷ giữa chừng không được ghi nhầm là đã trả lời.
-    outcome: Literal["answered", "refused", "error"] = "error"
+    outcome: Literal["answered", "refused", "error", "client_disconnected"] = "error"
     error_code: str | None = None
     chunk_ids: list[str] = Field(default_factory=list)
     answer_text: str = ""
