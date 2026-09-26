@@ -18,11 +18,18 @@ from alembic import context
 from production_legal_qa_rag.chatlog.tables import (
     metadata as target_metadata,
 )
+from production_legal_qa_rag.config import DatabaseSettings
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Ghi đè `sqlalchemy.url` tĩnh trong alembic.ini bằng CHATLOG_DATABASE_URL (cùng biến
+# ApiSettings/tools/chatlog.py dùng — chatlog_spec.md mục 6). Bắt buộc trong container
+# `api` (deploy_spec.md mục 6): alembic.ini chỉ đúng cho Postgres dev cục bộ (`localhost`,
+# docker-compose.dev.yml), production trỏ tới host `postgres` trong mạng compose.
+config.set_main_option("sqlalchemy.url", DatabaseSettings().database_url)
 
 
 def run_migrations_offline() -> None:
