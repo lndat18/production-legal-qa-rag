@@ -140,13 +140,23 @@ Hard fail khi:
 
 - finish_reason == length (truncated);
 - citation [n] nằm ngoài 1..len(chunks);
-- số nhạy cảm không tìm thấy sau chuẩn hoá trong breadcrumb, content hoặc raw_table
-  của context. Số nhạy cảm là mức tiền, tỷ lệ, thời hạn, tuổi và ngưỡng định lượng
-  pháp lý; nhận diện qua đơn vị như đồng, %, ngày, tháng, năm, giờ, tuổi.
+- số nhạy cảm không tìm thấy sau chuẩn hoá trong breadcrumb, content, raw_table của
+  context, **hoặc trong câu hỏi gốc** (thêm 2026-09-27, xem dưới). Số nhạy cảm là mức
+  tiền, tỷ lệ, thời hạn, tuổi và ngưỡng định lượng pháp lý; nhận diện qua đơn vị như
+  đồng, %, ngày, tháng, năm, giờ, tuổi.
 
 Chuẩn hoá chỉ so khớp biểu diễn như 4.960.000 và 4 960 000; không chứng minh số
 được dùng đúng điều kiện. Số không nhạy cảm chưa đủ rule để block là
 warning(unverified_number) và vẫn qua Judge.
+
+`check_output()` nhận thêm `query` (câu hỏi gốc) làm nguồn "có evidence" ngang hàng
+context — quan sát thật 2026-09-27: câu hỏi "Lương tháng 10 triệu, làm thêm giờ 4 tiếng
+thì được trả thêm bao nhiêu tiền?" bị chặn oan `unverified_sensitive_number` với "10, 4"
+dù model **không bịa số** — chỉ nhắc lại đúng số người dùng tự cung cấp trong câu hỏi để
+giải thích tại sao không đủ dữ liệu tính ra kết quả cuối (đúng quy tắc 10), dẫn tới
+refusal oan `unable_to_verify` sau khi hết ngân sách repair. Số người dùng tự cung cấp
+trong câu hỏi không phải claim pháp lý cần verify — chỉ số **không xuất hiện ở cả context
+lẫn câu hỏi** (tức model tự bịa) mới bị chặn.
 
 Citation hợp lệ về chỉ số chưa chứng minh nó hỗ trợ claim. Hard gate chỉ lấy
 Citation theo thứ tự xuất hiện; Judge kiểm tra entailment.

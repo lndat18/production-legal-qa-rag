@@ -135,7 +135,7 @@ class GenerationPipeline:
         repair_used = False
         while True:
             hard_gate = check_output(
-                draft.text, chunks, finish_reason=draft.finish_reason
+                draft.text, chunks, query, finish_reason=draft.finish_reason
             )
             if hard_gate.hard_issues:
                 if repair_used:

@@ -1257,7 +1257,9 @@ def test_guardrail_wrong_verdict_type_from_structured_output_fails_open() -> Non
 
 
 def test_output_check_keeps_only_valid_citations_and_reports_invalid_ones() -> None:
-    result = check_output("Theo quy định [2], [9] và [2].", [_chunk(), _chunk(2)])
+    result = check_output(
+        "Theo quy định [2], [9] và [2].", [_chunk(), _chunk(2)], "Câu hỏi"
+    )
 
     assert [citation.n for citation in result.citations] == [2]
     assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
@@ -1272,7 +1274,7 @@ def test_output_check_accepts_fullwidth_brackets_as_citation() -> None:
     100%. _CITATION_PATTERN phải nhận diện được cả 2 dạng, nếu không citation coi như
     không tồn tại (rỗng) VÀ số bên trong ngoặc bị hiểu nhầm thành "số lạ chưa xác minh".
     """
-    result = check_output("Theo quy định 【1】.", [_chunk()])
+    result = check_output("Theo quy định 【1】.", [_chunk()], "Câu hỏi")
 
     assert [citation.n for citation in result.citations] == [1]
     assert result.hard_issues == []
@@ -1290,6 +1292,7 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
                 raw_table="| Mức |\n| 4.960.000 |",
             )
         ],
+        "Câu hỏi",
     )
 
     assert result.hard_issues == []
@@ -1299,7 +1302,9 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
 def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_ones() -> (
     None
 ):
-    result = check_output("1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()])
+    result = check_output(
+        "1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()], "Câu hỏi"
+    )
 
     assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
         (
@@ -1312,9 +1317,32 @@ def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_
     ]
 
 
+def test_output_check_accepts_numbers_echoed_from_the_question() -> None:
+    """Quan sát thật (2026-09-27): câu hỏi "Lương tháng 10 triệu, làm thêm giờ 4 tiếng
+    thì được trả thêm bao nhiêu tiền?" bị chặn oan bằng unverified_sensitive_number
+    "10, 4" — model KHÔNG bịa số, chỉ nhắc lại đúng số người dùng tự cung cấp trong câu
+    hỏi để giải thích tại sao không tính được kết quả cuối (đúng quy tắc 10). Hard gate
+    trước đây chỉ so số trong câu trả lời với số trong context (chunks), quên mất câu
+    hỏi gốc cũng là nguồn hợp lệ — gây refusal oan (unable_to_verify) sau khi hết ngân
+    sách repair, dù nội dung model trả lời hoàn toàn đúng và an toàn.
+    """
+    result = check_output(
+        "Do lương tháng là 10 triệu đồng, cần biết thêm dữ liệu để tính ra số tiền cho"
+        " 4 giờ làm thêm.",
+        [_chunk()],
+        "Lương tháng 10 triệu, làm thêm giờ vào ngày nghỉ 4 tiếng thì được trả thêm bao"
+        " nhiêu tiền?",
+    )
+
+    assert result.hard_issues == []
+    assert result.warnings == []
+
+
 def test_output_check_refusal_without_citation_or_number_has_no_warning() -> None:
     result = check_output(
-        "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có.", [_chunk()]
+        "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có.",
+        [_chunk()],
+        "Câu hỏi",
     )
 
     assert result.citations == []
