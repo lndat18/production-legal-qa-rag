@@ -227,11 +227,12 @@ không crash service.
 
 ## 8. Vận hành cơ bản
 
-- **Khởi động / dừng:** `./deploy/up.sh` (tự dò GPU, build đúng biến thể, `up -d` — mục
-  4.1) / `docker compose down` (không có `-v`, để giữ volume; chạy trong `deploy/`). Lần
-  chạy đầu chưa có `deploy/.env`: script tự `cp .env.example .env` rồi dừng, điền giá trị
-  thật vào `deploy/.env` rồi chạy lại `./deploy/up.sh`. Xem link quick tunnel: `docker
-  compose logs cloudflared-quick` (đổi thành `cloudflared-named` nếu dùng named tunnel).
+- **Khởi động / dừng:** `./deploy/up.sh` (tự dò GPU, build đúng biến thể, `up -d`, rồi tự in
+  URL quick tunnel ra terminal — mục 4.1) / `docker compose down` (không có `-v`, để giữ
+  volume; chạy trong `deploy/`). Lần chạy đầu chưa có `deploy/.env`: script tự
+  `cp .env.example .env` rồi dừng, điền giá trị thật vào `deploy/.env` rồi chạy lại
+  `./deploy/up.sh`. Named tunnel: script không dò URL (đã cố định theo `WEBUI_URL`); cần
+  xem log tay dùng `docker compose logs cloudflared-named`.
 - **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
   khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
 - **Backup:** `deploy/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)

@@ -53,3 +53,26 @@ fi
 # auto-detect (có thể khác nhau giữa các phiên bản Compose).
 docker compose --env-file .env "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
 docker compose --env-file .env "${compose_files[@]}" up -d
+
+# Chỉ quick tunnel mới cần in URL (URL ngẫu nhiên, đổi mỗi khi container restart — mục 3);
+# named tunnel dùng domain cố định đã cấu hình sẵn trong WEBUI_URL, không cần dò. Đọc thẳng
+# giá trị (không source/eval, cùng cách né parse .env bằng bash như trên) — không set thì
+# coi như mặc định "quick" (khớp docker-compose.yml).
+compose_profile="$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2- || true)"
+compose_profile="${compose_profile:-quick}"
+
+if [[ "${compose_profile}" == "quick" ]]; then
+    echo "Đang chờ URL từ Cloudflare quick tunnel..."
+    tunnel_url=""
+    for _ in $(seq 1 15); do
+        tunnel_url="$(docker compose --env-file .env "${compose_files[@]}" logs cloudflared-quick 2>/dev/null \
+            | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | tail -1)"
+        [[ -n "${tunnel_url}" ]] && break
+        sleep 2
+    done
+    if [[ -n "${tunnel_url}" ]]; then
+        echo "URL public: ${tunnel_url}"
+    else
+        echo "Chưa thấy URL sau ~30s — kiểm tra tay: docker compose logs cloudflared-quick" >&2
+    fi
+fi
