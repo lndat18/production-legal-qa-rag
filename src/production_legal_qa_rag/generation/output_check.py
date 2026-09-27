@@ -12,7 +12,12 @@ from production_legal_qa_rag.generation.models import (
 )
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
-_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+# Chấp nhận cả dấu ngoặc vuông ASCII "[…]" (chuẩn, prompt yêu cầu — generator.py quy tắc
+# 2) lẫn dấu toàn giác "【…】" — phòng khi model lỡ không tuân thủ (LLM không đảm bảo tuân
+# thủ prompt 100%, đã quan sát thật). Không siết prompt là đủ: phải nhận diện được ở đây
+# thì citation mới không bị coi là "không tồn tại" (rỗng) hay số bên trong ngoặc bị hiểu
+# nhầm thành "số lạ chưa xác minh" (unverified_number).
+_CITATION_PATTERN = re.compile(r"[\[【](\d+)[\]】]")
 _NUMBER_PATTERN = re.compile(
     r"(?<!\w)(?:\d{1,3}(?:[.,\s]\d{3})+|\d+(?:[.,]\d+)?)(?!\w)"
 )

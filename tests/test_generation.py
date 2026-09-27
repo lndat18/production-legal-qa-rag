@@ -1205,6 +1205,19 @@ def test_output_check_keeps_only_valid_citations_and_reports_invalid_ones() -> N
     assert result.warnings == []
 
 
+def test_output_check_accepts_fullwidth_brackets_as_citation() -> None:
+    """Quan sát thật (2026-09-27): dù prompt đã yêu cầu ASCII (quy tắc 2), model vẫn
+    thỉnh thoảng dùng dấu toàn giác "【n】" thay vì "[n]" — LLM không đảm bảo tuân thủ
+    100%. _CITATION_PATTERN phải nhận diện được cả 2 dạng, nếu không citation coi như
+    không tồn tại (rỗng) VÀ số bên trong ngoặc bị hiểu nhầm thành "số lạ chưa xác minh".
+    """
+    result = check_output("Theo quy định 【1】.", [_chunk()])
+
+    assert [citation.n for citation in result.citations] == [1]
+    assert result.hard_issues == []
+    assert result.warnings == []
+
+
 def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
     result = check_output(
         "Điều 123.456 quy định mức 4 960 000 đồng [1].",
