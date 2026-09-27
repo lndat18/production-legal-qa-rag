@@ -40,17 +40,25 @@ trong package tương ứng.
 Toàn bộ 9 package trong pipeline (`formatting/` → `chunking/` → `embedding/` →
 `retrieval/` → `generation/` → `conversation/` → `cache/` → `chatlog/` → `api/`) đã
 implement xong, có spec, có test — chatbot chạy được end-to-end qua API OpenAI-compatible
-(#53), kèm OpenWebUI + Redis + Postgres. `deploy/docker-compose.dev.yml` phục vụ dev cục
-bộ (Redis + Postgres); `docker-compose.yml` production đầy đủ (deploy_spec.md mục 4) chưa
-tạo.
+(#53), kèm OpenWebUI + Redis + Postgres.
+
+**Deploy production đã xong (2026-09-27)** — `deploy/docker-compose.yml` (deploy_spec.md
+mục 4) đã tạo, entrypoint duy nhất `deploy/up.sh` (tự dò GPU NVIDIA, build đúng biến thể
+torch — `cpu` mặc định, `cu126` trở lên cho GPU vì `cu121`/`cu124` không có wheel Python
+3.14 — rồi `up -d`). Đã nghiệm thu thật: public qua Cloudflare quick tunnel, end-user
+hỏi-đáp multi-turn thành công (citation, Evidence Judge chạy đúng). Bài học vận hành đã ghi
+vào deploy_spec.md: `api` cần `mem_limit: 3g` (1.5g cũ bị OOM-killer giết ngay lượt hỏi
+retrieval+rerank đầu); Groq giới hạn rate limit theo tài khoản chứ không theo API key —
+`GROQ_API_KEY_2`/`GROQ_JUDGE_API_KEY` chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq
+khác. `deploy/docker-compose.dev.yml` vẫn phục vụ dev cục bộ (Redis + Postgres) như cũ.
 
 Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
 
 1. **Đánh giá chất lượng bằng RAGAS** — lấy mẫu Q&A thật từ bảng `chat_turns` (chatlog),
    gán nhãn, dựng eval pipeline. Phase này đứng trước vì cần dữ liệu thật tích lũy từ
    chatlog mới có ý nghĩa.
-2. **CI/CD** (GitHub Actions cho CD) + **observability** (Prometheus + Grafana +
-   Langfuse — Langfuse trace từng bước condense → retrieve → rerank → generate,
+2. **CI/CD** (GitHub Actions cho CD) + **tracking/tracing/observability** (Prometheus +
+   Grafana + Langfuse — Langfuse trace từng bước condense → retrieve → rerank → generate,
    Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
    (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
    việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
