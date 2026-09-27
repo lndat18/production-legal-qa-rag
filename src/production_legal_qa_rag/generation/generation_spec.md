@@ -245,7 +245,13 @@ tích hợp thật, không phải workaround; đồng thời tránh đổi versi
   mục 1-7. Pydantic v2 vẫn là nguồn sự thật cho mọi schema.
 
 - GuardrailSettings: input safeguard, fail-open.
-- GenerationSettings: generator, ưu tiên GROQ_API_KEY_2.
+- GenerationSettings: generator, ưu tiên GROQ_API_KEY_2. Thêm 2026-09-27:
+  `round_robin_api_key` (env `GROQ_API_KEY_3`, TÙY CHỌN) — khi có, `AnswerGenerator`
+  giữ 2 `LoopBoundClient` (1 mỗi key) và xoay vòng theo từng lượt gọi draft/repair
+  (`_next_client()`, index tăng dần mod số client). Quan sát thật: TPD của generation
+  (nút thắt nhất, mục 16.2 conversation_spec.md) cạn chỉ sau 1 phiên test nhiều lượt
+  dồn hết vào 1 tài khoản — round-robin giãn TPD ra 2 tài khoản thay vì 1. Không set
+  `GROQ_API_KEY_3` thì hành vi giữ nguyên như trước (1 client duy nhất, không xoay).
 - JudgeSettings: model, timeout, retry, key qua pydantic-settings; model phải
   đổi được bằng config. Judge/generator không share client state qua event loop.
 

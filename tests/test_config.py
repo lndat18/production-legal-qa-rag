@@ -241,6 +241,23 @@ def test_generation_settings_uu_tien_key_2(monkeypatch: pytest.MonkeyPatch):
     assert GenerationSettings().api_key == "org-b-key"  # type: ignore[call-arg]
 
 
+def test_generation_settings_doc_key_3_cho_round_robin(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.delenv("GROQ_API_KEY_3", raising=False)
+    monkeypatch.setattr(
+        GenerationSettings,
+        "model_config",
+        {**GenerationSettings.model_config, "env_file": None},
+    )
+
+    assert GenerationSettings().round_robin_api_key is None  # type: ignore[call-arg]
+
+    monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
+
+    assert GenerationSettings().round_robin_api_key == "org-c-key"  # type: ignore[call-arg]
+
+
 def test_judge_settings_uses_dedicated_key_and_independent_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ):

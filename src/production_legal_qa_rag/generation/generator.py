@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 from collections.abc import AsyncIterator
 from typing import Final
@@ -288,13 +289,44 @@ class AnswerGenerator:
         client: ChatOpenAI | None = None,
     ) -> None:
         self._settings = settings
-        self._client = LoopBoundClient(self._create_client, client)
+        self._fixed_client = client
+        self._clients: list[LoopBoundClient[ChatOpenAI]] | None = None
+        self._next_client_index = 0
 
-    def _create_client(self) -> ChatOpenAI:
+    def _get_clients(self) -> list[LoopBoundClient[ChatOpenAI]]:
+        """Dựng lười 1 hoặc 2 client theo key — 2 client chỉ khi có key round-robin."""
+        if self._clients is None:
+            settings = self._get_settings()
+            keys = [settings.api_key]
+            if settings.round_robin_api_key:
+                keys.append(settings.round_robin_api_key)
+            self._clients = [
+                LoopBoundClient(
+                    functools.partial(self._create_client, key),
+                    self._fixed_client if index == 0 else None,
+                )
+                for index, key in enumerate(keys)
+            ]
+        return self._clients
+
+    def _next_client(self) -> ChatOpenAI:
+        """Xoay vòng client theo lượt gọi — round-robin thật khi có key thứ 2.
+
+        Không round-robin trong 1 turn (repair vẫn dùng cùng key với draft): xoay
+        theo LƯỢT GỌI (mỗi lần draft/repair riêng biệt trên toàn bộ tiến trình), nên
+        TPD được giãn đều ra nhiều tài khoản Groq theo thời gian mà không cần state
+        phức tạp — key thứ 2 chỉ tồn tại khi có ``GROQ_API_KEY_3``.
+        """
+        clients = self._get_clients()
+        client = clients[self._next_client_index % len(clients)].get()
+        self._next_client_index += 1
+        return client
+
+    def _create_client(self, api_key: str) -> ChatOpenAI:
         settings = self._get_settings()
         return ChatOpenAI(
             base_url=_GROQ_OPENAI_BASE_URL,
-            api_key=settings.api_key,
+            api_key=api_key,
             model=settings.model_name,
             max_retries=settings.max_retries,
             timeout=float(settings.timeout_seconds),
@@ -384,7 +416,7 @@ class AnswerGenerator:
         self, messages: list[dict[str, str]]
     ) -> AsyncIterator[GenerationDelta]:
         """Gọi Groq stream với message đã được dựng bởi draft hoặc repair."""
-        async for chunk in self._client.get().astream(messages):
+        async for chunk in self._next_client().astream(messages):
             yield GenerationDelta(
                 text=chunk.content if isinstance(chunk.content, str) else "",
                 finish_reason=chunk.response_metadata.get("finish_reason"),

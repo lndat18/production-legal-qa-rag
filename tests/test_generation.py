@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain_openai import ChatOpenAI
 from pydantic import TypeAdapter, ValidationError
 
 from production_legal_qa_rag.generation.generator import (
@@ -941,12 +942,13 @@ class _FakeStructuredOutputClient:
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
     )
 
-    created_client = AnswerGenerator(settings)._create_client()
+    created_client = AnswerGenerator(settings)._create_client("generation-key")
     assert created_client.model_name == "generation-model"
     assert created_client.max_tokens == 2048
     assert created_client.temperature == 0.1
@@ -994,6 +996,7 @@ def test_answer_generator_buffers_internal_stream_before_pipeline_verification()
 ):
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
@@ -1033,6 +1036,7 @@ def test_answer_generator_normalizes_fullwidth_brackets_to_ascii() -> None:
     """
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
@@ -1062,6 +1066,7 @@ def test_answer_generator_inserts_space_before_citation_stuck_to_previous_word()
     """
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
@@ -1083,6 +1088,53 @@ def test_answer_generator_inserts_space_before_citation_stuck_to_previous_word()
         "Phân biệt đối xử trong lao động",
         " [4]. Cấm nhiều hành vi [1][2]",
     ]
+
+
+async def _collect_next_clients(
+    generator: AnswerGenerator, count: int
+) -> list[ChatOpenAI]:
+    """Gọi ``_next_client()`` liên tiếp trong cùng 1 event loop, giữ nguyên cache."""
+    return [generator._next_client() for _ in range(count)]
+
+
+def test_answer_generator_round_robins_between_two_keys_when_key_3_present() -> None:
+    """Quan sát thật 2026-09-27: dùng hết ~200k TPD Groq chỉ trong 1 phiên test dồn
+    hết vào 1 tài khoản. Khi có ``GROQ_API_KEY_3`` (round_robin_api_key), mỗi lượt
+    draft/repair phải xoay đều sang tài khoản khác — lượt 1 và lượt 3 (xoay hết 1
+    vòng) phải quay lại đúng client cũ (cache theo LoopBoundClient), lượt 2 phải khác
+    lượt 1.
+    """
+    settings = SimpleNamespace(
+        api_key="key-a",
+        round_robin_api_key="key-b",
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    generator = AnswerGenerator(settings)  # type: ignore[arg-type]
+
+    first, second, third = asyncio.run(_collect_next_clients(generator, 3))
+
+    assert first is not second
+    assert first is third
+
+
+def test_answer_generator_uses_single_client_when_no_round_robin_key() -> None:
+    """Không có GROQ_API_KEY_3 thì hành vi giữ nguyên như trước — luôn 1 client duy
+    nhất cho mọi lượt draft/repair, không round-robin.
+    """
+    settings = SimpleNamespace(
+        api_key="key-a",
+        round_robin_api_key=None,
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    generator = AnswerGenerator(settings)  # type: ignore[arg-type]
+
+    first, second = asyncio.run(_collect_next_clients(generator, 2))
+
+    assert first is second
 
 
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
