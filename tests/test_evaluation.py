@@ -6,6 +6,11 @@ này dùng fake đã bị monkeypatch — không gọi dịch vụ ngoài, khôn
 của `TestsetGenerator`/`generate_with_langchain_docs` đã được xác nhận trực
 tiếp trên `ragas==0.4.3` cài thật bằng `inspect.signature` lúc implement
 (mục 10.4), không phải qua test này.
+
+`ragas` chỉ nằm trong dependency-group `eval` (`uv sync` mặc định — venv
+production — không cài, xem [dependency-groups] trong `pyproject.toml`), nên
+toàn bộ module này được skip nếu chạy trên venv không có `eval`
+(`uv run --group eval pytest` để chạy thật).
 """
 
 from __future__ import annotations
@@ -16,6 +21,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
+pytest.importorskip(
+    "ragas",
+    reason="ragas chỉ có trong dependency-group `eval` (`uv sync --group eval`)",
+)
+
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI

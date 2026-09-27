@@ -3,9 +3,14 @@
 Chỉ gọi thẳng `testset_generator.py`, không chứa business logic. Đây là job
 offline không gấp -- chấp nhận chạy lâu (có thể nhiều giờ) do `testset_size=360`.
 
+`ragas` (và `langchain-community`) chỉ nằm trong dependency-group `eval`
+(`pyproject.toml`, không cài khi `uv sync` mặc định) -- luôn chạy script này với
+`--group eval --no-group production` (xem evaluation_spec.md mục 3).
+
 Cách dùng:
-    uv run python tools/generate_testset.py
-    uv run python tools/generate_testset.py --reuse-knowledge-graph
+    uv sync --group eval --no-group production
+    uv run tools/generate_testset.py
+    uv run tools/generate_testset.py --reuse-knowledge-graph
 """
 
 from __future__ import annotations

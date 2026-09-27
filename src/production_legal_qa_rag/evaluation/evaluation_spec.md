@@ -87,7 +87,24 @@ lúc review bằng mắt.
 | Document loader | `langchain_core.documents.Document` (đã có sẵn qua `langchain-openai`, không cần thêm dependency loader) |
 | CLI | `typer` (`tools/generate_testset.py`) |
 
-**Dependency mới (`pyproject.toml`):** `ragas>=0.4.3`.
+**Dependency mới (`pyproject.toml`):** `ragas>=0.4.3` và `langchain-community<0.4`,
+nằm trong `[dependency-groups] eval` (không phải `[project] dependencies` gốc) — `uv sync`
+mặc định (venv production, `deploy/Dockerfile`) KHÔNG cài 2 gói này lẫn
+`scikit-network`/`instructor` mà `ragas` kéo theo. Chạy script/test của package này cần
+group `eval`:
+
+```bash
+uv sync --group eval --no-group production   # cài eval, bỏ nhóm pin `production`
+uv run tools/generate_testset.py ...
+uv run pytest tests/test_evaluation.py
+```
+
+`[dependency-groups] production = ["openai>=3.19.0"]` (không chứa package thật, mặc định
+bật cùng `dev`) chỉ tồn tại để buộc `uv` tách resolve `openai` riêng cho nhóm `eval` —
+`ragas` phụ thuộc `instructor`, ép `jiter<0.15`, nếu không tách sẽ kéo `openai` xuống bản
+cũ mà `langchain-openai` dùng cho Groq thật trong production (`tool.uv.conflicts` giữa
+`production` và `eval` trong `pyproject.toml`). Vì `production` và `eval` xung đột, không
+thể `uv sync` cả hai cùng lúc — luôn dùng `--no-group production` khi cần `eval`.
 
 **Rủi ro kỹ thuật đã biết, không chặn spec:** `HuggingFaceEmbedder` (`embedding/hf_client.py`)
 hiện chỉ có `embed_chunks(chunks: list[Chunk])`, không implement interface
@@ -283,8 +300,9 @@ package này — tránh phải dời code khi mở rộng.
 
 ## 9. Nghiệm thu thủ công
 
-1. Chạy `uv run python tools/generate_testset.py` → tạo được `data/eval/golden_testset.json`
-   và `data/eval/knowledge_graph.json`. Chấp nhận job chạy lâu (có thể nhiều giờ) do
+1. Chạy `uv run --group eval --no-group production tools/generate_testset.py` → tạo được
+   `data/eval/golden_testset.json` và `data/eval/knowledge_graph.json`. Chấp nhận job chạy
+   lâu (có thể nhiều giờ) do
    `testset_size=360`; không cần tối ưu tốc độ ở Phase 1 (mục 1, mục 4).
 2. Mở `golden_testset.json`: có khoảng 360 dòng, mỗi dòng có đủ `user_input`, `reference`,
    `reference_contexts` không rỗng.
