@@ -15,7 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v6"
+PROMPT_VERSION: Final = "v7"
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
 # dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
@@ -100,7 +100,11 @@ Quy tắc:
     markdown (mỗi dòng bắt đầu bằng "> "), không diễn giải hay chỉnh sửa bên trong khối
     này; phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích
     dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời — chỉ dùng khi có một câu
-    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. Ngay
+    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. TUYỆT
+    ĐỐI KHÔNG dùng khối trích dẫn để lặp lại nguyên văn một danh sách nhiều điểm/khoản đã
+    được trình bày bằng gạch đầu dòng ở phần trả lời chính — trường hợp đó chỉ cần đặt
+    citation [n] ngay cuối mỗi gạch đầu dòng theo quy tắc 2, không trích dẫn lại lần thứ
+    hai dưới dạng blockquote. Ngay
     sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm đúng ký hiệu nguồn
     dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc vuông ASCII "[" và "]" — không
     thay bằng bất kỳ ký hiệu ngoặc nào khác (kể cả các dấu ngoặc toàn góc/kiểu chữ khác).

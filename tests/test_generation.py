@@ -657,7 +657,7 @@ def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v6"
+    assert PROMPT_VERSION == "v7"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -846,6 +846,21 @@ def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
         " đúng ký hiệu nguồn\n    dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc"
         ' vuông ASCII "[" và "]" — không\n    thay bằng bất kỳ ký hiệu ngoặc nào khác'
         in GENERATION_SYSTEM_PROMPT
+    )
+
+
+def test_generation_prompt_forbids_blockquote_duplicating_bulleted_list() -> None:
+    """Quy tắc 14 (đợt 2, 2026-09-27): quan sát thật cho thấy model trích lại nguyên
+    văn cả một khoản 5 điểm y hệt bullet đã liệt kê ở trên, làm câu trả lời dư thừa —
+    cấm rõ việc dùng blockquote để lặp lại danh sách nhiều điểm/khoản đã trình bày bằng
+    gạch đầu dòng; trường hợp đó chỉ cần đặt citation [n] cuối mỗi gạch đầu dòng.
+    """
+    assert (
+        "TUYỆT\n    ĐỐI KHÔNG dùng khối trích dẫn để lặp lại nguyên văn một danh sách"
+        " nhiều điểm/khoản đã\n    được trình bày bằng gạch đầu dòng ở phần trả lời"
+        " chính — trường hợp đó chỉ cần đặt\n    citation [n] ngay cuối mỗi gạch đầu"
+        " dòng theo quy tắc 2, không trích dẫn lại lần thứ\n    hai dưới dạng"
+        " blockquote." in GENERATION_SYSTEM_PROMPT
     )
 
 
