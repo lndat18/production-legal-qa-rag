@@ -10,8 +10,13 @@ router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
 **Trong phạm vi:**
 
 - `deploy/` (ngoài `src/`, vì không phải code import được): Dockerfile, compose, mẫu biến
-  môi trường, script khởi tạo DB, script backup.
+  môi trường, script khởi tạo DB, script backup, script khởi động tự dò GPU
+  (`deploy/up.sh`, mục 4.1).
 - 5 service: `cloudflared`, `open-webui`, `api`, `redis`, `postgres`.
+- Hai use case dùng chung một entrypoint (`deploy/up.sh`): (1) tác giả tự chạy trên máy
+  laptop cá nhân (thường có GPU) rồi public URL qua Cloudflare Tunnel cho người khác dùng
+  thử; (2) người khác tự `git clone` rồi tự chạy trên máy của họ (thường CPU-only). Cả hai
+  chạy đúng cùng một lệnh, không cần biết trước máy có GPU hay không.
 - Chính sách truy cập public (đăng ký mở), cô lập mạng, quản lý bí mật, vận hành cơ bản.
 
 **Không làm:**
@@ -95,25 +100,24 @@ Quy tắc chung:
   `postgres` 512m, `redis` 320m) để không nuốt hết RAM của WSL2; điều chỉnh sau khi đo.
 - Log: driver `json-file` với `max-size: 10m`, `max-file: 3`.
 
-### 4.1 GPU passthrough cho reranker (khuyến nghị, không bắt buộc)
+### 4.1 GPU passthrough cho reranker (tự động qua `deploy/up.sh`)
 
 `api` chạy reranker in-process (`retrieval_spec.md` mục 6.1), tự phát hiện
-`cuda`/`cpu`. Compose gốc **không** yêu cầu GPU — chạy CPU-only ngay không cần
-cấu hình thêm, ai không có GPU vẫn dùng được đầy đủ, chỉ rerank chậm hơn.
+`cuda`/`cpu`. Không cần biết trước máy có GPU hay không: `deploy/up.sh` là
+entrypoint duy nhất, dùng chung cho cả 2 use case ở mục 1 — chạy
+`./deploy/up.sh` (từ đâu cũng được, script tự `cd` vào `deploy/`).
 
-Khuyến nghị bật GPU nếu máy có card NVIDIA (kể cả VRAM nhỏ, vd 2GB). Hai việc
-tách biệt, cả hai đều cần cho GPU thật hoạt động trong container:
+Hai việc tách biệt, cả hai đều cần cho GPU thật hoạt động trong container, và
+`deploy/up.sh` tự lo cả hai:
 
 1. **Build image đúng biến thể torch**: `deploy/Dockerfile` nhận build arg
    `TORCH_VARIANT` (mặc định `cpu`, dùng
    `--index-url https://download.pytorch.org/whl/cpu`; giá trị `cu121` dùng
    `--index-url https://download.pytorch.org/whl/cu121` để cài wheel CUDA).
-   Build bản GPU: `docker compose build --build-arg TORCH_VARIANT=cu121 api`.
-2. **Cấp GPU cho container lúc chạy**: cài **NVIDIA Container Toolkit** trên
-   Windows (Docker Desktop dùng WSL2 backend đã hỗ trợ sẵn CUDA passthrough,
-   chỉ cần bật GPU support trong Docker Desktop settings). Bật qua file
-   override riêng, không sửa `docker-compose.yml` gốc — ví dụ
-   `deploy/docker-compose.gpu.yml` khai báo cho service `api`:
+2. **Cấp GPU cho container lúc chạy**: khai báo `deploy.resources.reservations.devices`
+   cho service `api` — override tách riêng file (`deploy/docker-compose.gpu.yml`),
+   không sửa `docker-compose.yml` gốc, để máy không GPU vẫn `docker compose up -d`
+   thẳng được nếu ai gọi tay không qua script:
    ```yaml
    services:
      api:
@@ -125,12 +129,35 @@ tách biệt, cả hai đều cần cho GPU thật hoạt động trong containe
                  count: 1
                  capabilities: [gpu]
    ```
-   Chạy: `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`.
+   Cần **NVIDIA Container Toolkit** cài trên host (Docker Desktop dùng WSL2
+   backend đã hỗ trợ sẵn CUDA passthrough, chỉ cần bật GPU support trong
+   Docker Desktop settings; Linux thuần cài Container Toolkit theo tài liệu
+   NVIDIA).
 
-Thiếu 1 trong 2 bước trên: build CPU + override GPU → container có device
-nhưng torch không dùng được, coi như CPU; build CUDA + không override → thiếu
-device, torch CUDA khởi tạo sẽ tự fallback CPU (`retrieval_spec.md` mục 6.1).
-Không làm gì cả (mặc định) → container CPU-only, không cần cấu hình, không lỗi.
+`deploy/up.sh` tự dò để quyết định dùng biến thể nào, dựa trên 2 điều kiện —
+**cả hai đúng** mới build/chạy bản GPU, thiếu 1 trong 2 thì build/chạy bản CPU
+(không lỗi, không cần người dùng biết trước máy có GPU hay không):
+
+- `nvidia-smi` chạy được (driver GPU có thật, kể cả trong WSL2 của Docker
+  Desktop khi đã bật GPU support).
+- `docker info` báo có runtime `nvidia` (NVIDIA Container Toolkit đã đăng ký
+  với Docker).
+
+Theo kết quả dò, script chạy tương ứng:
+
+```bash
+# Không có GPU (hoặc thiếu 1 trong 2 điều kiện trên) — nhánh mặc định
+docker compose build --build-arg TORCH_VARIANT=cpu api
+docker compose up -d
+
+# Có GPU (cả 2 điều kiện đúng)
+docker compose build --build-arg TORCH_VARIANT=cu121 api
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+Dò sai kiểu build CPU + override GPU không xảy ra được qua script (script tự
+build đúng biến thể khớp với việc có ghép override hay không); chỉ có thể xảy
+ra khi ai đó tự gọi tay hai lệnh lệch nhau — tự chịu rủi ro, xem mục 10.4.
 
 VRAM nhỏ (2GB) vẫn có thể CUDA OOM ở batch lớn; hành vi khi đó là fallback
 `rerank_score=None` (`retrieval_spec.md` mục 8), retrieval vẫn trả kết quả,
@@ -192,14 +219,17 @@ không crash service.
 
 ## 8. Vận hành cơ bản
 
-- **Khởi động / dừng:** `docker compose up -d` / `docker compose down` (không có `-v`, để
-  giữ volume). Xem link quick tunnel: `docker compose logs cloudflared`.
+- **Khởi động / dừng:** `./deploy/up.sh` (tự dò GPU, build đúng biến thể, `up -d` — mục
+  4.1) / `docker compose down` (không có `-v`, để giữ volume; chạy trong `deploy/`). Lần
+  chạy đầu chưa có `deploy/.env`: script tự `cp .env.example .env` rồi dừng, điền giá trị
+  thật vào `deploy/.env` rồi chạy lại `./deploy/up.sh`. Xem link quick tunnel: `docker
+  compose logs cloudflared-quick` (đổi thành `cloudflared-named` nếu dùng named tunnel).
 - **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
   khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
 - **Backup:** `deploy/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)
   ra `deploy/backups/<ngày>/` (thư mục này vào `.gitignore`), giữ 7 bản gần nhất; chạy tay
   hoặc bằng cron/Task Scheduler. Redis không cần backup (dữ liệu tính lại được).
-- **Cập nhật:** `git pull` → `docker compose build api` → `docker compose up -d`. Đổi
+- **Cập nhật:** `git pull` → `./deploy/up.sh` (tự build lại đúng biến thể + `up -d`). Đổi
   phiên bản OpenWebUI: sửa tag, nghiệm thu lại mục 9 trước khi dùng.
 - **Xem nhật ký:** `docker compose logs -f api`; phân tích lượt hỏi qua bảng `chat_turns`.
 - **Dọn dữ liệu quá hạn:** `docker compose exec api python tools/purge_chatlog.py`
@@ -207,9 +237,11 @@ không crash service.
 
 ## 9. Nghiệm thu thủ công
 
-1. Máy sạch (không có volume): `cp deploy/.env.example deploy/.env`, điền giá trị,
-   `docker compose up -d` → mọi service `healthy`, không có cổng nào lắng nghe ngoài
-   `127.0.0.1` (kiểm tra `docker compose ps`, `ss -ltn`).
+1. Máy sạch (không có volume, không có `deploy/.env`): `./deploy/up.sh` → tự tạo
+   `deploy/.env` từ mẫu rồi dừng; điền giá trị thật; chạy lại `./deploy/up.sh` → mọi
+   service `healthy`, không có cổng nào lắng nghe ngoài `127.0.0.1` (kiểm tra `docker
+   compose ps`, `ss -ltn`). Kiểm tra log script in đúng nhánh CPU/GPU khớp với máy đang
+   chạy (mục 4.1).
 2. Lấy URL từ `cloudflared`, mở bằng điện thoại (mạng 4G, ngoài LAN): thấy trang đăng nhập
    HTTPS; đăng ký tài khoản admin đầu tiên, rồi 1 tài khoản thường; hỏi câu hỏi luật.
 3. Từ ngoài mạng, không truy cập được `api`, `redis`, `postgres` (chỉ có URL của
@@ -221,10 +253,10 @@ không crash service.
 6. Tắt Redis rồi Postgres (từng cái) → chat vẫn trả lời, `/readyz` báo 503 (khớp
    `api_spec.md` mục 13).
 7. Kiểm tra image: `docker history` / `grep` không thấy bí mật; chạy bằng user không root.
-8. (Nếu build/bật GPU theo mục 4.1) `docker compose exec api python -c "import torch;
-   print(torch.cuda.is_available())"` trả `True`; hỏi thử nhiều lượt liên tiếp không thấy
-   log cảnh báo CUDA OOM. Nếu không bật GPU, bỏ qua bước này (mặc định CPU-only vẫn phải
-   nghiệm thu qua các bước 1-7).
+8. (Chỉ khi máy chạy thử có GPU NVIDIA, để `deploy/up.sh` tự chọn nhánh GPU theo mục 4.1)
+   `docker compose exec api python -c "import torch; print(torch.cuda.is_available())"`
+   trả `True`; hỏi thử nhiều lượt liên tiếp không thấy log cảnh báo CUDA OOM. Nếu máy
+   không có GPU, bỏ qua bước này (nhánh CPU-only vẫn phải nghiệm thu qua các bước 1-7).
 
 ## 10. Rủi ro / điểm mở
 
@@ -238,10 +270,11 @@ không crash service.
    nhật hệ điều hành là trách nhiệm của tác giả; banner thông báo lưu 90 ngày
    (`chatlog_spec.md` mục 5).
 4. Reranker giờ chạy in-process trong `api` (mục 4.1): image mặc định chỉ cài `torch` CPU,
-   nên nếu không bật GPU overlay, rerank chậm hơn GPU nhưng không phụ thuộc dịch vụ ngoài
-   nào còn ngừng bất kỳ lúc nào như bản LightningAI/ngrok cũ. Bật GPU overlay sai cấu hình
-   (thiếu NVIDIA Container Toolkit, chưa bật GPU support trong Docker Desktop) khiến `api`
-   không khởi động được — kiểm tra kỹ trước khi thêm `docker-compose.gpu.yml`.
+   nên nếu máy không có GPU (hoặc thiếu Container Toolkit), rerank chậm hơn GPU nhưng
+   không phụ thuộc dịch vụ ngoài nào còn ngừng bất kỳ lúc nào như bản LightningAI/ngrok cũ.
+   `deploy/up.sh` tự dò nên không còn rủi ro build/override lệch tay như trước; chỉ còn rủi
+   ro nếu ai đó tự gọi tay `docker compose` lệch với kết quả dò (mục 4.1) — kiểm tra kỹ
+   trước khi làm vậy.
 5. Điều khoản dịch vụ Cloudflare cho quick tunnel (không cam kết uptime, dành cho thử
    nghiệm); tác giả tự đối chiếu trước khi chia sẻ rộng.
 6. Image nặng hơn do `transformers`/`pyvi`/`torch` + tải checkpoint reranker (~1GB) lần
