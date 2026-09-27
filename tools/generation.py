@@ -365,13 +365,25 @@ async def _run_simulation(case: SimulationCase) -> bool:
     return not had_error
 
 
-def _live_cases(case: LiveCase, query: str | None) -> list[tuple[str, str]]:
-    """Chọn live case, ưu tiên query người dùng đưa vào."""
+def _live_cases(cases: list[LiveCase], query: str | None) -> list[tuple[str, str]]:
+    """Chọn (các) live case, ưu tiên query người dùng đưa vào.
+
+    ``cases`` có thể lặp lại nhiều `--case` để chạy đúng 1 tập con cụ thể trong cùng
+    một lượt (vd. chỉ chạy lại 3 case bị `rate_limited` ở lượt `--case all` trước, thay
+    vì tốn quota chạy lại toàn bộ 9 case).
+    """
     if query is not None:
         return [("Query tùy chọn", query)]
-    if case is LiveCase.ALL:
+    if LiveCase.ALL in cases:
         return list(_LIVE_CASES.values())
-    return [_LIVE_CASES[case]]
+    seen: set[LiveCase] = set()
+    selected: list[tuple[str, str]] = []
+    for case in cases:
+        if case in seen:
+            continue
+        seen.add(case)
+        selected.append(_LIVE_CASES[case])
+    return selected
 
 
 def _simulation_cases(case: SimulationCase) -> list[SimulationCase]:
@@ -391,9 +403,16 @@ def main(
         None,
         help="Một query live tùy ý; ghi đè --case và gọi provider thật.",
     ),
-    case: LiveCase = typer.Option(
-        LiveCase.SUPPORTED,
-        help="Live case dùng guardrail, retrieval, generator và Judge thật.",
+    case: list[LiveCase] = typer.Option(
+        [LiveCase.SUPPORTED],
+        "--case",
+        help=(
+            "Live case dùng guardrail, retrieval, generator và Judge thật. Lặp lại"
+            " --case nhiều lần để chạy đúng 1 tập con trong cùng lượt, ví dụ --case"
+            " calculation --case missing-context --case table-content để chạy lại"
+            " đúng các case bị rate_limited ở lượt --case all trước, không cần chạy"
+            " lại toàn bộ 9 case."
+        ),
     ),
     simulation: SimulationCase | None = typer.Option(
         None,
