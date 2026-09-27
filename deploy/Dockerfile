@@ -1,16 +1,18 @@
 # Image cho service `api` (deploy_spec.md mục 6). Build context là root repo:
 #   docker compose -f deploy/docker-compose.yml build api
 #   # bản GPU (retrieval_spec.md mục 6.1, deploy_spec.md mục 4.1):
-#   docker compose -f deploy/docker-compose.yml build --build-arg TORCH_VARIANT=cu121 api
+#   docker compose -f deploy/docker-compose.yml build --build-arg TORCH_VARIANT=cu126 api
 FROM python:3.14-slim
 
 # Cài `uv` bằng cách copy binary tĩnh từ image chính chủ Astral (không pip install).
 COPY --from=ghcr.io/astral-sh/uv:0.12.0 /uv /uvx /usr/local/bin/
 
-# Biến thể torch: "cpu" (mặc định, chạy được trên mọi máy) hoặc "cu121" (cần NVIDIA
-# Container Toolkit + docker-compose.gpu.yml lúc chạy — xem mục 4.1). Không pin phiên bản
-# torch cụ thể ở đây: index CPU/CUDA của PyTorch không cam kết cùng tập phiên bản như PyPI,
-# pin cứng dễ làm build gãy khi torch trên PyPI (dependency khác trong uv.lock) bump trước.
+# Biến thể torch: "cpu" (mặc định, chạy được trên mọi máy) hoặc "cu126" trở lên (cần NVIDIA
+# Container Toolkit + docker-compose.gpu.yml lúc chạy — xem mục 4.1). PHẢI >= cu126: kênh
+# "cu121"/"cu124" đã ngừng cập nhật (dừng ở torch 2.5.1/2.6.0), không có wheel cho Python
+# 3.14 (cp314) — base image này dùng python:3.14-slim. Không pin phiên bản torch cụ thể ở
+# đây: index CPU/CUDA của PyTorch không cam kết cùng tập phiên bản như PyPI, pin cứng dễ
+# làm build gãy khi torch trên PyPI (dependency khác trong uv.lock) bump trước.
 ARG TORCH_VARIANT=cpu
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

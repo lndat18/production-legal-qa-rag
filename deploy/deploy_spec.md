@@ -112,8 +112,12 @@ Hai việc tách biệt, cả hai đều cần cho GPU thật hoạt động tro
 
 1. **Build image đúng biến thể torch**: `deploy/Dockerfile` nhận build arg
    `TORCH_VARIANT` (mặc định `cpu`, dùng
-   `--index-url https://download.pytorch.org/whl/cpu`; giá trị `cu121` dùng
-   `--index-url https://download.pytorch.org/whl/cu121` để cài wheel CUDA).
+   `--index-url https://download.pytorch.org/whl/cpu`; giá trị `cu126` trở
+   lên dùng `--index-url https://download.pytorch.org/whl/cu126` để cài wheel
+   CUDA). PHẢI `cu126` trở lên: kênh `cu121`/`cu124` đã ngừng cập nhật (dừng ở
+   torch 2.5.1/2.6.0), không có wheel cho Python 3.14 (`cp314`) — Dockerfile
+   dùng `python:3.14-slim`, build sẽ lỗi "no wheels with matching Python ABI
+   tag" nếu dùng nhầm `cu121`/`cu124`.
 2. **Cấp GPU cho container lúc chạy**: khai báo `deploy.resources.reservations.devices`
    cho service `api` — override tách riêng file (`deploy/docker-compose.gpu.yml`),
    không sửa `docker-compose.yml` gốc, để máy không GPU vẫn `docker compose up -d`
@@ -151,7 +155,7 @@ docker compose build --build-arg TORCH_VARIANT=cpu api
 docker compose up -d
 
 # Có GPU (cả 2 điều kiện đúng)
-docker compose build --build-arg TORCH_VARIANT=cu121 api
+docker compose build --build-arg TORCH_VARIANT=cu126 api
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
@@ -185,8 +189,9 @@ không crash service.
   copy `pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev --no-install-project`,
   rồi copy `src/`, `alembic/`, `alembic.ini` → cài project (tận dụng cache tầng Docker).
 - `torch`: cài theo build arg `TORCH_VARIANT` (mặc định `cpu`) — xem mục 4.1 để build
-  bản GPU (`cu121`). Mặc định `cpu` để image build được trên mọi máy không cần driver
-  GPU và nhẹ hơn cho người không dùng GPU.
+  bản GPU (`cu126` trở lên — `cu121`/`cu124` không có wheel cho Python 3.14). Mặc định
+  `cpu` để image build được trên mọi máy không cần driver GPU và nhẹ hơn cho người không
+  dùng GPU.
 - Model checkpoint (`AITeamVN/Vietnamese_Reranker`) tải từ HF Hub ở lần chạy đầu, không
   bake vào image (tránh build image nặng hơn và cứng phiên bản model). Mount volume
   `hf_cache` vào thư mục cache Hugging Face của user chạy container để không tải lại

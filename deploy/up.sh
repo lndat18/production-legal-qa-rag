@@ -41,11 +41,15 @@ torch_variant=cpu
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1 \
     && docker info 2>/dev/null | grep -qi nvidia; then
     echo "Phát hiện GPU NVIDIA + Container Toolkit — build/chạy bản GPU (docker-compose.gpu.yml)."
-    torch_variant=cu121
+    # cu121 KHÔNG có wheel cho Python 3.14 (kênh CUDA cũ, đã ngừng cập nhật ở torch 2.5.1,
+    # trước khi cp314 tồn tại) — dùng cu126 trở lên. Xem deploy_spec.md mục 4.1.
+    torch_variant=cu126
     compose_files+=(-f docker-compose.gpu.yml)
 else
     echo "Không phát hiện GPU NVIDIA sẵn dùng cho Docker — build/chạy bản CPU."
 fi
 
-docker compose "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
-docker compose "${compose_files[@]}" up -d
+# Chỉ định rõ --env-file thay vì để Compose tự dò .env theo cwd — tránh phụ thuộc hành vi
+# auto-detect (có thể khác nhau giữa các phiên bản Compose).
+docker compose --env-file .env "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
+docker compose --env-file .env "${compose_files[@]}" up -d

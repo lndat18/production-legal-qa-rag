@@ -4,10 +4,10 @@
 
 Project có 2 cặp file `.env`/`.env.example` tách riêng, không dùng chung:
 
-| Cặp file | Dùng khi | Cách tạo |
-| --- | --- | --- |
-| `.env` / `.env.example` (root) | Chạy code Python trực tiếp trên host (`uv run pytest`, `tools/`, `api` không qua Docker) | `cp .env.example .env` rồi điền |
-| `deploy/.env` / `deploy/.env.example` | Chạy toàn bộ stack qua Docker Compose (`deploy_spec.md`) | `./deploy/up.sh` — tự tạo, tự điền sẵn key trùng với root `.env` |
+| Cặp file                                 | Dùng khi                                                                                           | Cách tạo                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `.env` / `.env.example` (root)        | Chạy code Python trực tiếp trên host (`uv run pytest`, `tools/`, `api` không qua Docker) | `cp .env.example .env` rồi điền                                          |
+| `deploy/.env` / `deploy/.env.example` | Chạy toàn bộ stack qua Docker Compose (`deploy_spec.md`)                                       | `./deploy/up.sh` — tự tạo, tự điền sẵn key trùng với root `.env` |
 
 Mỗi biến trong 2 file `.env.example` có chú thích `[BẮT BUỘC]` (kèm link lấy key),
 `[TỰ SINH]` (kèm lệnh sinh giá trị) hoặc `[TÙY CHỌN]` (để trống dùng mặc định) — đọc
