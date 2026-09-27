@@ -52,7 +52,13 @@ jobs:
 
       - name: Install dependencies
         if: steps.diff.outputs.code_changed == 'true'
-        run: uv sync --all-groups
+        # Không dùng --all-groups: `eval` xung đột cứng với `production` (xem
+        # [tool.uv.conflicts] trong pyproject.toml, tách resolve `openai` giữa 2
+        # nhóm). `uv sync` không cờ dùng đúng `default-groups = ["dev",
+        # "production"]` -- đủ cho pytest/ruff/mypy vì test evaluation tự skip
+        # khi thiếu `ragas` (`pytest.importorskip("ragas", ...)`) và mypy đã có
+        # override bỏ qua import-not-found cho `ragas`.
+        run: uv sync
 
       - name: Run tests (skip slow/model-loading tests)
         if: steps.diff.outputs.code_changed == 'true'
