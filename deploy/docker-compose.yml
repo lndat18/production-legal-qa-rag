@@ -98,6 +98,12 @@ services:
     volumes:
       - ../data/bm25:/app/data/bm25:ro
       - hf_cache:/home/appuser/.cache/huggingface
+      # tools/ không có trong image (Dockerfile chỉ COPY src/, alembic/) — mount để chạy CLI
+      # thao tác thủ công (vd. tools/cache.py flush) ngay trong container, tận dụng luôn
+      # REDIS_URL/CHATLOG_DATABASE_URL đã interpolate đúng ở "environment" bên trên thay vì
+      # phải gõ tay connection string trên host (mục "Lệnh dev" trong CLAUDE.md):
+      #   docker compose exec api python tools/cache.py flush
+      - ../tools:/app/tools:ro
     networks: [internal]
     depends_on:
       postgres:
