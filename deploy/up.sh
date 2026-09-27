@@ -9,7 +9,26 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 if [[ ! -f .env ]]; then
     cp .env.example .env
-    echo "Chưa có deploy/.env — đã tạo từ .env.example. Điền giá trị thật vào deploy/.env rồi chạy lại ./deploy/up.sh" >&2
+
+    # Root `.env` (dev cục bộ, .env.example ở repo root) và `deploy/.env` là 2 file tách
+    # riêng có chủ đích (deploy_spec.md mục 7 — cách ly bí mật production khỏi key dev cá
+    # nhân), nhưng vài key trùng tên/giá trị (LLM + CHATBOT_API_KEY). Tự điền sẵn từ root
+    # .env nếu có, để không phải gõ lại — chỉ copy nguyên dòng chữ (không source/eval), an
+    # toàn với ký tự đặc biệt trong giá trị, cùng cách né rủi ro parse .env bằng bash như
+    # backup.sh đã áp dụng.
+    root_env="../.env"
+    if [[ -f "${root_env}" ]]; then
+        shared_keys=(GROQ_API_KEY GROQ_API_KEY_2 HF_TOKEN PINECONE_API_KEY PINECONE_INDEX_NAME PINECONE_SPARSE_INDEX_NAME CHATBOT_API_KEY)
+        for key in "${shared_keys[@]}"; do
+            line="$(grep -E "^${key}=.+" "${root_env}" || true)"
+            [[ -n "${line}" ]] || continue
+            grep -v -E "^${key}=" .env > .env.tmp && mv .env.tmp .env
+            printf '%s\n' "${line}" >> .env
+        done
+        echo "Đã điền sẵn vào deploy/.env các key trùng root .env (GROQ_API_KEY*, HF_TOKEN, PINECONE_*, CHATBOT_API_KEY nếu có giá trị)." >&2
+    fi
+
+    echo "Chưa có deploy/.env — đã tạo từ .env.example. Điền các giá trị deploy-only còn thiếu (POSTGRES_USER/PASSWORD, REDIS_PASSWORD, WEBUI_SECRET_KEY, ...) vào deploy/.env rồi chạy lại ./deploy/up.sh" >&2
     exit 1
 fi
 
