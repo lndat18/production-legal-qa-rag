@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from typing import Final
 
@@ -161,6 +162,27 @@ Issues cần sửa:
 # cả hard gate/Judge lẫn khi phát TokenEvent — để người dùng luôn thấy đúng "[n]" bất kể
 # model có tuân thủ prompt hay không.
 _FULLWIDTH_BRACKETS: Final = str.maketrans({"【": "[", "】": "]"})
+# Model cũng hay dính citation liền vào chữ trước đó ("lao động[4]") dù prompt không cấm
+# hay yêu cầu khoảng trắng — chèn thêm 1 khoảng trắng trước "[" khi liền ngay sau một ký
+# tự không phải khoảng trắng/"[""]" (không đụng tới nhiều citation liền nhau như "[1][2]",
+# vì đó là "]" đứng trước, bị loại trừ). Không dùng regex trên toàn văn bản đã ghép vì
+# .fragments phải khớp đúng ranh giới token gốc stream từ Groq (test/generation_spec.md
+# giữ nguyên fragments làm mảnh token gốc) — nên phải bù ký tự liền trước sang từ fragment
+# trước đó (biên 2 delta có thể cắt ngay giữa "chữ" và "[n]").
+_MISSING_SPACE_BEFORE_BRACKET: Final = re.compile(r"(?<=[^\s\[\]])\[")
+_NO_SPACE_NEEDED_BEFORE: Final = " \n\t[]"
+
+
+def _normalize_answer_fragment(fragment: str, *, previous_char: str) -> str:
+    """Chuẩn hoá 1 fragment: ASCII hoá ngoặc + thêm khoảng trắng trước "[n]" bị dính chữ."""
+    text = fragment.translate(_FULLWIDTH_BRACKETS)
+    if (
+        text.startswith("[")
+        and previous_char
+        and previous_char not in _NO_SPACE_NEEDED_BEFORE
+    ):
+        text = " " + text
+    return _MISSING_SPACE_BEFORE_BRACKET.sub(" [", text)
 
 
 class GenerationDelta(BaseModel):
@@ -374,9 +396,14 @@ class AnswerGenerator:
         fragments: list[str] = []
         finish_reason: str | None = None
         usage: Usage | None = None
+        previous_char = ""
         async for delta in stream:
             if delta.text:
-                fragments.append(delta.text.translate(_FULLWIDTH_BRACKETS))
+                fragment = _normalize_answer_fragment(
+                    delta.text, previous_char=previous_char
+                )
+                fragments.append(fragment)
+                previous_char = fragment[-1]
             finish_reason = delta.finish_reason or finish_reason
             usage = delta.usage or usage
         return GeneratedAnswer(

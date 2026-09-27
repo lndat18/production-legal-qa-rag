@@ -1047,8 +1047,42 @@ def test_answer_generator_normalizes_fullwidth_brackets_to_ascii() -> None:
     generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
     answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
 
-    assert answer.text == "Nghỉ 12 ngày[1], chưa qua đào tạo[2]."
-    assert answer.fragments == ["Nghỉ 12 ngày[1], ", "chưa qua đào tạo[2]."]
+    assert answer.text == "Nghỉ 12 ngày [1], chưa qua đào tạo [2]."
+    assert answer.fragments == ["Nghỉ 12 ngày [1], ", "chưa qua đào tạo [2]."]
+
+
+def test_answer_generator_inserts_space_before_citation_stuck_to_previous_word() -> (
+    None
+):
+    """Quan sát thật (2026-09-27): model hay dính citation liền chữ, vd "động[4]" —
+    không sai định dạng (vẫn ASCII, vẫn được hard gate chấp nhận) nhưng khó đọc.
+    _buffer() phải chèn khoảng trắng kể cả khi ranh giới nằm giữa 2 delta khác nhau từ
+    Groq (chữ cuối "động" ở delta này, "[4]" ở delta kế) — không được để dính do chỉ xử
+    lý riêng lẻ từng fragment mà không nhớ ký tự cuối của fragment trước.
+    """
+    settings = SimpleNamespace(
+        api_key="generation-key",
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Phân biệt đối xử trong lao động"),
+            _FakeChunk("[4]. Cấm nhiều hành vi[1][2]", finish_reason="stop"),
+        ]
+    )
+
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
+    answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
+
+    assert (
+        answer.text == "Phân biệt đối xử trong lao động [4]. Cấm nhiều hành vi [1][2]"
+    )
+    assert answer.fragments == [
+        "Phân biệt đối xử trong lao động",
+        " [4]. Cấm nhiều hành vi [1][2]",
+    ]
 
 
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
