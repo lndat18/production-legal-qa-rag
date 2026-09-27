@@ -96,8 +96,11 @@ Quy tắc chung:
   (`GET /readyz` bằng `python -c "urllib…"`, không cần curl), `open-webui` (endpoint
   health của nó). `depends_on: condition: service_healthy` theo chuỗi
   `postgres,redis → api → open-webui → cloudflared`.
-- Giới hạn tài nguyên: `mem_limit` cho từng service (gợi ý: `api` 1.5g, `open-webui` 1g,
-  `postgres` 512m, `redis` 320m) để không nuốt hết RAM của WSL2; điều chỉnh sau khi đo.
+- Giới hạn tài nguyên: `mem_limit` cho từng service (`api` 3g — đo thật 2026-09-27: 1.5g bị
+  kernel OOM-killer giết ngay lượt hỏi retrieval+rerank đầu tiên, reranker model + torch
+  CUDA context + tải checkpoint qua hf-xet cộng dồn chạm ~1.53GB; `open-webui` 1g,
+  `postgres` 512m, `redis` 320m) để không nuốt hết RAM của WSL2; điều chỉnh tiếp nếu đo
+  thấy cần.
 - Log: driver `json-file` với `max-size: 10m`, `max-file: 3`.
 
 ### 4.1 GPU passthrough cho reranker (tự động qua `deploy/up.sh`)

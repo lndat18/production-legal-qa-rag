@@ -111,7 +111,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    mem_limit: 1536m
+    # Đo thật (2026-09-27): 1536m bị kernel OOM-killer giết ngay lượt hỏi retrieval+rerank
+    # đầu tiên (reranker model + torch CUDA context + tải checkpoint qua hf-xet cộng dồn
+    # chạm ~1.53GB) — deploy_spec.md mục 4 ghi rõ con số cũ chỉ là gợi ý ban đầu, đã điều
+    # chỉnh theo số đo thật này.
+    mem_limit: 3g
     logging: *default-logging
     # Chỉ mở tạm cho debug cục bộ (loopback): curl/Swagger `/docs`, vẫn không ra Internet.
     # ports:
