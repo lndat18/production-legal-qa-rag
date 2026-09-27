@@ -530,6 +530,16 @@ không giới tính (loại hợp đồng lao động), câu hỏi thiếu yếu
 pattern: mỗi `user_id` test riêng để trace dễ phân biệt, có tuỳ chọn CLI chạy theo nhóm
 để chỉ đo lại một nhóm nhỏ khi cần.
 
+Thêm 2026-09-27, sau khi sửa lỗi định dạng câu trả lời ghi ở mục 18.1 (ngoặc citation
+toàn giác `【n】` và citation dính liền chữ trước, cả hai đã sửa ở tầng code trong
+`generation/generator.py`): 3 ca regression riêng cho định dạng, dùng câu hỏi thật đã
+từng tái hiện lỗi hoặc từng đúng loại nội dung dễ kích hoạt lỗi — danh sách nhiều
+`Khoản` trình bày bằng bullet kèm nhiều citation (Điều 8 Bộ luật Lao động), nội dung
+đọc từ bảng (biểu thuế luỹ tiến từng phần), và một ca trích dẫn nguyên văn hợp lệ theo
+quy tắc 14 (không phải ca lặp danh sách bullet dưới dạng blockquote đã bị cấm). Cùng bộ
+3 ca này cũng có trong `tools/generation.py` (`LiveCase.CITATION_LIST/TABLE_CONTENT/
+VERBATIM_QUOTE`) để kiểm tra riêng ở tầng generation không qua orchestrator.
+
 ## 16. Bài học kinh nghiệm quan trọng
 
 Rút ra từ nhiều vòng tune condense/generation, sửa lỗi phát hiện sau khi vận hành thật,
@@ -623,12 +633,24 @@ quan, disclaimer), người dùng chạy nghiệm thu 12 hội thoại (bộ ca 
 **chấp nhận trạng thái hệ thống hiện tại làm sản phẩm hoàn thiện của phase này**, bao
 gồm các rủi ro tồn đọng đã biết dưới đây — không mở vòng sửa mới ngay bây giờ:
 
-1. **Citation Unicode `【n】` đôi khi thay ASCII `[n]`.** Model generation thỉnh thoảng
-   dùng dấu ngoặc toàn góc thay vì ASCII (dù quy tắc 14 đã yêu cầu tường minh dùng đúng
-   `[` `]` ASCII), khiến khối "Nguồn tham khảo" hiển thị rỗng dù nội dung câu trả lời
-   đúng. Tần suất tái phát thật chưa đo đủ lớn (mẫu 2-3 lần/ca) để kết luận tỷ lệ — quan
-   sát được ở đúng ca đã từng "đo đạt hết lỗi" trước đó, cho thấy quy tắc prompt làm
-   *giảm* chứ chưa *loại bỏ hoàn toàn* hành vi này.
+1. **[ĐÃ SỬA 2026-09-27] Citation Unicode `【n】` đôi khi thay ASCII `[n]`.** Model
+   generation thỉnh thoảng dùng dấu ngoặc toàn góc thay vì ASCII (dù quy tắc 14 rồi quy
+   tắc 2 đã yêu cầu tường minh dùng đúng `[` `]` ASCII), khiến khối "Nguồn tham khảo"
+   hiển thị rỗng dù nội dung câu trả lời đúng. Tần suất tái phát thật chưa đo đủ lớn (mẫu
+   2-3 lần/ca) để kết luận tỷ lệ — quan sát được ở đúng ca đã từng "đo đạt hết lỗi" trước
+   đó, cho thấy quy tắc prompt làm *giảm* chứ chưa *loại bỏ hoàn toàn* hành vi này.
+   **Cập nhật 2026-09-27:** siết thêm prompt xác nhận không đủ (tái phát ngay ở câu hỏi
+   diễn đạt lại khác), nên chuyển hẳn sang sửa ở tầng code, không phụ thuộc model tuân
+   thủ prompt nữa — `output_check.py` `_CITATION_PATTERN` nhận diện cả 2 dạng ngoặc (hết
+   rỗng, hết bị hiểu nhầm thành `unverified_number`), và `generator.py`
+   `AnswerGenerator._buffer()` tự chuẩn hoá `【n】` → `[n]` trên text hiển thị (áp dụng cho
+   cả `.text` và `.fragments`, xử lý đúng cả khi ranh giới rơi giữa 2 delta stream từ
+   Groq). Nhân tiện sửa luôn 1 vấn đề quan sát thêm cùng đợt: citation dính liền chữ
+   trước ("động[4]" không có khoảng trắng) — chèn khoảng trắng cùng chỗ trong
+   `_buffer()`. 3 ca regression cho định dạng được thêm vào mục 15 và
+   `tools/generation.py`/`tools/conversation.py` để kiểm tra lại thủ công trước khi
+   deploy production, vì đây vẫn là hành vi LLM không tất định (không có gì đảm bảo
+   model không phát sinh kiểu lỗi định dạng khác trong tương lai).
 2. **Quy tắc 10 (cấm tự tính toán) đôi khi vẫn bị vi phạm ở phép tính 1 bước/1 Khoản**
    (khác với trường hợp kết hợp 2 Khoản khác nhau đã được chặn khá tốt) — ví dụ model tự
    nhân thuế suất cố định với số tiền nêu trong câu hỏi để ra một số tiền cụ thể. Câu chữ

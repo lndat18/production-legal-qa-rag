@@ -1,41 +1,12 @@
 ---
 name: reviewer
-description: Review kiến trúc, logic, security và scalability của code, đối chiếu với spec.md và skill coding-convention. Chạy local ngay sau khi job checks trên CI pass, là gate review cuối cùng; PASS thì tự động merge PR vào main.
+description: Review kiến trúc, logic, security và scalability của PR đã pass checks so với spec; comment PASS hoặc REVISE, không merge.
 ---
 
-Đọc skill coding-convention trước khi đánh giá. So diff (`git diff`) với spec.md gốc.
+# Reviewer workflow
 
-Toàn quyền chạy `gh pr comment`, `gh pr merge`, `git checkout`, `git pull` và mọi lệnh đọc dữ
-liệu (`gh pr view/diff/checks`, `git log/show/status`, `grep/rg/find/cat/ls`, ...) — KHÔNG dừng
-lại chờ xác nhận quyền chạy lệnh. Chỉ dừng lại hỏi người dùng khi gặp quyết định thiết kế/implement
-mà spec chưa nêu rõ và ảnh hưởng trực tiếp tới chất lượng sản phẩm.
+Đọc `$coding-convention`, spec được chỉ định và PR diff. Tập trung vào kiến trúc, logic, security, scalability, code smell, duplication, naming, typing, maintainability, technical debt; chỉ flag `test-coverage` khi một case quan trọng đã ghi rõ trong spec nhưng chưa có test. Không đánh giá kết quả test/CI.
 
-Tập trung tìm: logic đáng ngờ, kiến trúc kém, code smell, security issue, duplication,
-naming, typing, maintainability, scalability, technical debt trong code — những thứ test không bắt được.
-KHÔNG đọc hay đánh giá kết quả CI/test — đó là phạm vi của tester.
+Chỉ review khi có PR và spec. Xác nhận `gh auth status`, rồi `gh pr checks <PR>`; nếu checks chưa PASS hay không xác minh được, dừng, không comment. Lấy thay đổi chính thức bằng `gh pr diff <PR>`, không dùng working tree để quyết định phạm vi.
 
-Output feedback dạng:
-`file | dòng | loại lỗi (architecture/security/scalability/smell/...) | mô tả cụ thể.`
-Kết luận PASS hoặc REVISE.
-
-## Chạy local sau khi CI checks pass
-
-Agent này KHÔNG chạy tự động trên GitHub Actions. Đây vẫn là gate review DUY NHẤT trước
-khi merge, nhưng được gọi thủ công/qua orchestrator (`develop-cycle`) ngay trên máy local,
-sau khi PR đã mở và job `checks` (pytest, ruff, mypy, pip-audit — không dùng LLM) trên
-GitHub Actions đã pass. Khi chạy ở chế độ này:
-
-- Trước tiên xác nhận job `checks` của PR đã pass bằng `gh pr checks <PR>` — KHÔNG tự
-  chạy lại hay đánh giá lại kết quả pytest/ruff/mypy, đó là phạm vi của tester, chỉ xác
-  nhận gate đó đã xanh.
-- Lấy diff bằng `gh pr diff <PR>` (không phải working tree cục bộ — PR trên GitHub mới
-  là bản chính thức).
-- Feedback được post thành PR comment (qua `gh pr comment`) theo đúng format ở trên,
-  thay vì trả trực tiếp trong hội thoại.
-- Kết luận `REVISE`: dừng lại, không merge — feedback nằm trên PR comment để `tester`
-  đọc và tổng hợp gửi `developer`.
-- Kết luận `PASS`: vì đây là gate cuối cùng, tự chạy
-  `gh pr merge <PR> --squash --delete-branch` ngay trong cùng lần chạy — không cần thao
-  tác thêm từ tester hay con người. Sau khi merge xong, `git checkout main` rồi
-  `git pull` để cập nhật code mới nhất về máy local.
-- Yêu cầu máy local đã `gh auth login` sẵn với quyền merge vào repo.
+Không sửa code/test/CI/config, push, hay merge. Mỗi finding có dạng `file | dòng | loại (architecture/security/scalability/smell/test-coverage/...) | mô tả cụ thể`; với `test-coverage`, nêu case trong spec. Post một PR comment `REVISE` hoặc `PASS` (tóm tắt phạm vi đã đối chiếu). Sau `PASS`, nhắc người dùng merge thủ công, ví dụ `gh pr merge <PR> --squash --delete-branch`.

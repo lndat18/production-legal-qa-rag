@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from langchain_openai import ChatOpenAI
 from pydantic import TypeAdapter, ValidationError
 
 from production_legal_qa_rag.generation.generator import (
@@ -632,6 +633,22 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
+def test_generation_prompt_requires_ascii_brackets_everywhere() -> None:
+    """Quy tắc 2 (đợt 2, 2026-09-27): quan sát thật cho thấy model dùng dấu ngoặc
+    toàn giác "【" "】" cho citation gắn sau gạch đầu dòng (không qua blockquote) —
+    output_check.py chỉ regex ASCII "\\[(\\d+)\\]" nên citation kiểu đó bị coi như
+    không tồn tại, "Nguồn" trả về rỗng. Yêu cầu ASCII trước đó chỉ nằm trong quy tắc
+    14 (ngay sau blockquote); giờ chuyển lên quy tắc 2 để áp dụng cho MỌI vị trí.
+    """
+    assert (
+        'LUÔN dùng đúng dấu ngoặc vuông ASCII "[" và "]" (không phải\n   dấu toàn'
+        ' giác/kiểu chữ khác như "【" "】") cho MỌI ký hiệu [n], dù đứng sau gạch\n'
+        "   đầu dòng, trong văn xuôi hay sau khối trích dẫn — hệ thống chỉ nhận diện"
+        " được\n   đúng dạng ASCII, sai dấu ngoặc coi như KHÔNG có citation."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
 def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
     issue = VerificationIssue(
         code="citation_mismatch",
@@ -657,7 +674,7 @@ def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v6"
+    assert PROMPT_VERSION == "v8"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -849,6 +866,21 @@ def test_generation_prompt_has_blockquote_verbatim_citation_rule() -> None:
     )
 
 
+def test_generation_prompt_forbids_blockquote_duplicating_bulleted_list() -> None:
+    """Quy tắc 14 (đợt 2, 2026-09-27): quan sát thật cho thấy model trích lại nguyên
+    văn cả một khoản 5 điểm y hệt bullet đã liệt kê ở trên, làm câu trả lời dư thừa —
+    cấm rõ việc dùng blockquote để lặp lại danh sách nhiều điểm/khoản đã trình bày bằng
+    gạch đầu dòng; trường hợp đó chỉ cần đặt citation [n] cuối mỗi gạch đầu dòng.
+    """
+    assert (
+        "TUYỆT\n    ĐỐI KHÔNG dùng khối trích dẫn để lặp lại nguyên văn một danh sách"
+        " nhiều điểm/khoản đã\n    được trình bày bằng gạch đầu dòng ở phần trả lời"
+        " chính — trường hợp đó chỉ cần đặt\n    citation [n] ngay cuối mỗi gạch đầu"
+        " dòng theo quy tắc 2, không trích dẫn lại lần thứ\n    hai dưới dạng"
+        " blockquote." in GENERATION_SYSTEM_PROMPT
+    )
+
+
 class _FakeChunk:
     """Fake AIMessageChunk tối giản, chỉ mang trường mà _stream_messages() đọc."""
 
@@ -910,12 +942,13 @@ class _FakeStructuredOutputClient:
 def test_answer_generator_calls_groq_with_stream_contract() -> None:
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
     )
 
-    created_client = AnswerGenerator(settings)._create_client()
+    created_client = AnswerGenerator(settings)._create_client("generation-key")
     assert created_client.model_name == "generation-model"
     assert created_client.max_tokens == 2048
     assert created_client.temperature == 0.1
@@ -963,6 +996,7 @@ def test_answer_generator_buffers_internal_stream_before_pipeline_verification()
 ):
     settings = SimpleNamespace(
         api_key="generation-key",
+        round_robin_api_key=None,
         model_name="generation-model",
         max_retries=2,
         timeout_seconds=60,
@@ -991,6 +1025,116 @@ def test_answer_generator_buffers_internal_stream_before_pipeline_verification()
         finish_reason="stop",
         usage=Usage(prompt_tokens=10, completion_tokens=5),
     )
+
+
+def test_answer_generator_normalizes_fullwidth_brackets_to_ascii() -> None:
+    """Quan sát thật (2026-09-27): dù prompt đã yêu cầu ASCII (quy tắc 2), model vẫn
+    thỉnh thoảng phát "【n】" thay vì "[n]". output_check.py đã nới regex để hệ thống hiểu
+    đúng citation, nhưng người dùng vẫn thấy nguyên "【n】" trên UI nếu không chuẩn hoá
+    text hiển thị — _buffer() phải tự sửa cả .text lẫn .fragments trước khi trả về, để
+    TokenEvent phát ra cho client luôn đúng ASCII bất kể model tuân thủ prompt hay không.
+    """
+    settings = SimpleNamespace(
+        api_key="generation-key",
+        round_robin_api_key=None,
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Nghỉ 12 ngày【1】, "),
+            _FakeChunk("chưa qua đào tạo【2】.", finish_reason="stop"),
+        ]
+    )
+
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
+    answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
+
+    assert answer.text == "Nghỉ 12 ngày [1], chưa qua đào tạo [2]."
+    assert answer.fragments == ["Nghỉ 12 ngày [1], ", "chưa qua đào tạo [2]."]
+
+
+def test_answer_generator_inserts_space_before_citation_stuck_to_previous_word() -> (
+    None
+):
+    """Quan sát thật (2026-09-27): model hay dính citation liền chữ, vd "động[4]" —
+    không sai định dạng (vẫn ASCII, vẫn được hard gate chấp nhận) nhưng khó đọc.
+    _buffer() phải chèn khoảng trắng kể cả khi ranh giới nằm giữa 2 delta khác nhau từ
+    Groq (chữ cuối "động" ở delta này, "[4]" ở delta kế) — không được để dính do chỉ xử
+    lý riêng lẻ từng fragment mà không nhớ ký tự cuối của fragment trước.
+    """
+    settings = SimpleNamespace(
+        api_key="generation-key",
+        round_robin_api_key=None,
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Phân biệt đối xử trong lao động"),
+            _FakeChunk("[4]. Cấm nhiều hành vi[1][2]", finish_reason="stop"),
+        ]
+    )
+
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
+    answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
+
+    assert (
+        answer.text == "Phân biệt đối xử trong lao động [4]. Cấm nhiều hành vi [1][2]"
+    )
+    assert answer.fragments == [
+        "Phân biệt đối xử trong lao động",
+        " [4]. Cấm nhiều hành vi [1][2]",
+    ]
+
+
+async def _collect_next_clients(
+    generator: AnswerGenerator, count: int
+) -> list[ChatOpenAI]:
+    """Gọi ``_next_client()`` liên tiếp trong cùng 1 event loop, giữ nguyên cache."""
+    return [generator._next_client() for _ in range(count)]
+
+
+def test_answer_generator_round_robins_between_two_keys_when_key_3_present() -> None:
+    """Quan sát thật 2026-09-27: dùng hết ~200k TPD Groq chỉ trong 1 phiên test dồn
+    hết vào 1 tài khoản. Khi có ``GROQ_API_KEY_3`` (round_robin_api_key), mỗi lượt
+    draft/repair phải xoay đều sang tài khoản khác — lượt 1 và lượt 3 (xoay hết 1
+    vòng) phải quay lại đúng client cũ (cache theo LoopBoundClient), lượt 2 phải khác
+    lượt 1.
+    """
+    settings = SimpleNamespace(
+        api_key="key-a",
+        round_robin_api_key="key-b",
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    generator = AnswerGenerator(settings)  # type: ignore[arg-type]
+
+    first, second, third = asyncio.run(_collect_next_clients(generator, 3))
+
+    assert first is not second
+    assert first is third
+
+
+def test_answer_generator_uses_single_client_when_no_round_robin_key() -> None:
+    """Không có GROQ_API_KEY_3 thì hành vi giữ nguyên như trước — luôn 1 client duy
+    nhất cho mọi lượt draft/repair, không round-robin.
+    """
+    settings = SimpleNamespace(
+        api_key="key-a",
+        round_robin_api_key=None,
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    generator = AnswerGenerator(settings)  # type: ignore[arg-type]
+
+    first, second = asyncio.run(_collect_next_clients(generator, 2))
+
+    assert first is second
 
 
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
@@ -1165,12 +1309,27 @@ def test_guardrail_wrong_verdict_type_from_structured_output_fails_open() -> Non
 
 
 def test_output_check_keeps_only_valid_citations_and_reports_invalid_ones() -> None:
-    result = check_output("Theo quy định [2], [9] và [2].", [_chunk(), _chunk(2)])
+    result = check_output(
+        "Theo quy định [2], [9] và [2].", [_chunk(), _chunk(2)], "Câu hỏi"
+    )
 
     assert [citation.n for citation in result.citations] == [2]
     assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
         ("invalid_citation", "Citation ngoài phạm vi context: [9]")
     ]
+    assert result.warnings == []
+
+
+def test_output_check_accepts_fullwidth_brackets_as_citation() -> None:
+    """Quan sát thật (2026-09-27): dù prompt đã yêu cầu ASCII (quy tắc 2), model vẫn
+    thỉnh thoảng dùng dấu toàn giác "【n】" thay vì "[n]" — LLM không đảm bảo tuân thủ
+    100%. _CITATION_PATTERN phải nhận diện được cả 2 dạng, nếu không citation coi như
+    không tồn tại (rỗng) VÀ số bên trong ngoặc bị hiểu nhầm thành "số lạ chưa xác minh".
+    """
+    result = check_output("Theo quy định 【1】.", [_chunk()], "Câu hỏi")
+
+    assert [citation.n for citation in result.citations] == [1]
+    assert result.hard_issues == []
     assert result.warnings == []
 
 
@@ -1185,6 +1344,7 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
                 raw_table="| Mức |\n| 4.960.000 |",
             )
         ],
+        "Câu hỏi",
     )
 
     assert result.hard_issues == []
@@ -1194,7 +1354,9 @@ def test_output_check_accepts_numbers_from_breadcrumb_and_raw_table() -> None:
 def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_ones() -> (
     None
 ):
-    result = check_output("1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()])
+    result = check_output(
+        "1. Mức 99 ngày. Năm 2025 áp dụng; 2024.", [_chunk()], "Câu hỏi"
+    )
 
     assert [(issue.code, issue.detail) for issue in result.hard_issues] == [
         (
@@ -1207,9 +1369,32 @@ def test_output_check_blocks_unverified_sensitive_numbers_but_warns_on_ordinary_
     ]
 
 
+def test_output_check_accepts_numbers_echoed_from_the_question() -> None:
+    """Quan sát thật (2026-09-27): câu hỏi "Lương tháng 10 triệu, làm thêm giờ 4 tiếng
+    thì được trả thêm bao nhiêu tiền?" bị chặn oan bằng unverified_sensitive_number
+    "10, 4" — model KHÔNG bịa số, chỉ nhắc lại đúng số người dùng tự cung cấp trong câu
+    hỏi để giải thích tại sao không tính được kết quả cuối (đúng quy tắc 10). Hard gate
+    trước đây chỉ so số trong câu trả lời với số trong context (chunks), quên mất câu
+    hỏi gốc cũng là nguồn hợp lệ — gây refusal oan (unable_to_verify) sau khi hết ngân
+    sách repair, dù nội dung model trả lời hoàn toàn đúng và an toàn.
+    """
+    result = check_output(
+        "Do lương tháng là 10 triệu đồng, cần biết thêm dữ liệu để tính ra số tiền cho"
+        " 4 giờ làm thêm.",
+        [_chunk()],
+        "Lương tháng 10 triệu, làm thêm giờ vào ngày nghỉ 4 tiếng thì được trả thêm bao"
+        " nhiêu tiền?",
+    )
+
+    assert result.hard_issues == []
+    assert result.warnings == []
+
+
 def test_output_check_refusal_without_citation_or_number_has_no_warning() -> None:
     result = check_output(
-        "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có.", [_chunk()]
+        "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có.",
+        [_chunk()],
+        "Câu hỏi",
     )
 
     assert result.citations == []

@@ -142,7 +142,12 @@ class GenerationSettings(BaseSettings):
     """Cấu hình Groq cho bước sinh câu trả lời có stream.
 
     Ưu tiên ``GROQ_API_KEY_2`` để tách ngân sách rate limit khỏi HyDE và
-    guardrail; khi không đặt key thứ hai, dùng lại ``GROQ_API_KEY``.
+    guardrail; khi không đặt key thứ hai, dùng lại ``GROQ_API_KEY``. Generation là
+    bước tốn TPD nhất trong pipeline (conversation_spec.md mục 16.2) — khi có thêm
+    ``GROQ_API_KEY_3`` (tài khoản Groq thứ 3, TÙY CHỌN), ``AnswerGenerator`` round-robin
+    giữa key 2 và key 3 theo từng lượt gọi (draft/repair) để giãn TPD ra 2 tài khoản
+    thay vì dồn hết vào 1 — quan sát thật 2026-09-27: dùng hết ~200k TPD chỉ trong 1
+    phiên test nhiều lượt liên tiếp trên 1 tài khoản.
     """
 
     model_config = SettingsConfigDict(
@@ -151,6 +156,9 @@ class GenerationSettings(BaseSettings):
 
     api_key: str = Field(
         validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY")
+    )
+    round_robin_api_key: str | None = Field(
+        default=None, validation_alias="GROQ_API_KEY_3"
     )
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2

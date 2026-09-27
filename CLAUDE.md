@@ -14,6 +14,7 @@ data/                          raw -> markdown -> chunks -> embeddings, bm25/ ch
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
 deploy/                        Docker compose + docs triển khai (deploy/deploy_spec.md), không phải code import được
 docs/                          Tài liệu tổng quan hệ thống (vd. online_flow.md — activity diagram 1 câu hỏi)
+.claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
 
 Mỗi package trong `src/production_legal_qa_rag/` có một `<package>_spec.md` nằm ngay
@@ -33,6 +34,59 @@ trong package tương ứng.
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
 | `chatlog/`      | Ghi mỗi lượt hỏi-đáp vào Postgres để quan sát/đánh giá (không phải lịch sử hội thoại) | [chatlog_spec.md](src/production_legal_qa_rag/chatlog/chatlog_spec.md)                |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres, spec tổng toàn hệ thống                  | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
+
+## Tiến độ
+
+Toàn bộ 9 package trong pipeline (`formatting/` → `chunking/` → `embedding/` →
+`retrieval/` → `generation/` → `conversation/` → `cache/` → `chatlog/` → `api/`) đã
+implement xong, có spec, có test — chatbot chạy được end-to-end qua API OpenAI-compatible
+(#53), kèm OpenWebUI + Redis + Postgres.
+
+**Deploy production đã xong (2026-09-27)** — `deploy/docker-compose.yml` (deploy_spec.md
+mục 4) đã tạo, entrypoint duy nhất `deploy/up.sh` (tự dò GPU NVIDIA, build đúng biến thể
+torch — `cpu` mặc định, `cu126` trở lên cho GPU vì `cu121`/`cu124` không có wheel Python
+3.14 — rồi `up -d`). Đã nghiệm thu thật: public qua Cloudflare quick tunnel, end-user
+hỏi-đáp multi-turn thành công (citation, Evidence Judge chạy đúng). Bài học vận hành đã ghi
+vào deploy_spec.md: `api` cần `mem_limit: 3g` (1.5g cũ bị OOM-killer giết ngay lượt hỏi
+retrieval+rerank đầu); Groq giới hạn rate limit theo tài khoản chứ không theo API key —
+`GROQ_API_KEY_2`/`GROQ_JUDGE_API_KEY` chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq
+khác. `deploy/docker-compose.dev.yml` vẫn phục vụ dev cục bộ (Redis + Postgres) như cũ.
+
+Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
+
+1. **Đánh giá chất lượng bằng RAGAS** — lấy mẫu Q&A thật từ bảng `chat_turns` (chatlog),
+   gán nhãn, dựng eval pipeline. Phase này đứng trước vì cần dữ liệu thật tích lũy từ
+   chatlog mới có ý nghĩa.
+2. **CI/CD** (GitHub Actions cho CD) + **tracking/tracing/observability** (Prometheus +
+   Grafana + Langfuse — Langfuse trace từng bước condense → retrieve → rerank → generate,
+   Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
+   (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
+   việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
+   để tính sau, chưa chốt. `deploy/observability/` đã có compose khung cho
+   Prometheus/Grafana.
+
+Giữ nguyên quyết định: `chatlog` (Postgres tự host) vẫn là nguồn dữ liệu chính chủ, không
+thay bằng Langfuse cloud (lý do riêng tư + cần query SQL trực tiếp lên schema nghiệp vụ).
+
+## Quy trình phát triển (`.claude/`)
+
+Project có agent/skill riêng cho vòng đời spec → implement → test → review:
+
+| Agent         | Vai trò                                                                                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `architect` | Brainstorm và chốt`*_spec.md` cùng người dùng trước khi implement (logic/workflow lẫn lựa chọn công nghệ)                                                                                            |
+| `developer` | Implement code từ spec đã chốt; chỉ commit local, không push/mở PR                                                                                                                                           |
+| `tester`    | Viết Unit/Integration/Data-schema test theo spec; đảm nhiệm push + mở PR để CI chạy, tổng hợp feedback                                                                                                    |
+| `reviewer`  | Review kiến trúc/logic/security/scalability đối chiếu spec + skill`coding-convention`; chạy local sau khi CI pass, PASS thì comment kết luận lên PR — không tự merge, người dùng merge thủ công |
+
+Skill `develop-cycle` (`.claude/skills/develop-cycle/`) chạy trọn vòng lặp
+developer → tester → reviewer cho một spec cụ thể (`argument-hint: <đường dẫn spec.md> <tên branch>`). Skill `coding-convention` (`.claude/skills/coding-convention/`) là quy ước
+coding chuẩn production dùng chung (kiến trúc thư mục, naming, format, docstring, công cụ
+pydantic/typer/ruff) — `reviewer` đối chiếu theo skill này.
+
+`.claude/settings.json` allowlist các lệnh `git`/`gh`/đọc-file an toàn (status, log, diff,
+pr view/list/diff/checks, grep/rg/find/cat/ls...) và deny các thao tác phá hoại
+(`push --force`, `reset --hard`, `git clean`, `rm`, đọc `.env`, ...).
 
 ## Lệnh dev
 

@@ -1,9 +1,10 @@
-# Hạ tầng cho môi trường phát triển cục bộ (chỉ Redis, không mật khẩu).
+# Hạ tầng cho môi trường phát triển cục bộ: Redis + Postgres.
 # Bản triển khai đầy đủ (deploy_spec.md mục 4) là deploy/docker-compose.yml, chưa tạo.
 #
 # Dùng:  docker compose -f deploy/docker-compose.dev.yml up -d
 # Dừng:  docker compose -f deploy/docker-compose.dev.yml down
 # .env:  REDIS_URL=redis://localhost:6379/0
+#        CHATLOG_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot
 name: legal-qa-dev
 
 services:
@@ -20,3 +21,24 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: chatbot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # Chỉ mở cho process cục bộ; production phải dùng credential riêng.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - legal_qa_dev_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  legal_qa_dev_postgres_data:

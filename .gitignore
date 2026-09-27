@@ -10,3 +10,6 @@ data/bm25/
 
 # Model artifacts tải cục bộ để chạy offline; không đưa weights lớn vào Git.
 models/
+
+# Backup pg_dump sinh bởi deploy/backup.sh (deploy_spec.md mục 8) — chứa dữ liệu người dùng.
+deploy/backups/
