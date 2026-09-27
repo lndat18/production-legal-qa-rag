@@ -65,8 +65,11 @@ if [[ "${compose_profile}" == "quick" ]]; then
     echo "Đang chờ URL từ Cloudflare quick tunnel..."
     tunnel_url=""
     for _ in $(seq 1 15); do
+        # `|| true` bắt buộc: grep không khớp gì (bình thường ở vài vòng đầu, log chưa kịp
+        # có URL) trả exit code 1, cộng `pipefail` sẽ làm cả pipeline coi như lỗi và `set -e`
+        # giết luôn script ngay vòng đầu tiên nếu không chặn lại.
         tunnel_url="$(docker compose --env-file .env "${compose_files[@]}" logs cloudflared-quick 2>/dev/null \
-            | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | tail -1)"
+            | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | tail -1 || true)"
         [[ -n "${tunnel_url}" ]] && break
         sleep 2
     done
