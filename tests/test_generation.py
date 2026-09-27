@@ -1024,6 +1024,33 @@ def test_answer_generator_buffers_internal_stream_before_pipeline_verification()
     )
 
 
+def test_answer_generator_normalizes_fullwidth_brackets_to_ascii() -> None:
+    """Quan sát thật (2026-09-27): dù prompt đã yêu cầu ASCII (quy tắc 2), model vẫn
+    thỉnh thoảng phát "【n】" thay vì "[n]". output_check.py đã nới regex để hệ thống hiểu
+    đúng citation, nhưng người dùng vẫn thấy nguyên "【n】" trên UI nếu không chuẩn hoá
+    text hiển thị — _buffer() phải tự sửa cả .text lẫn .fragments trước khi trả về, để
+    TokenEvent phát ra cho client luôn đúng ASCII bất kể model tuân thủ prompt hay không.
+    """
+    settings = SimpleNamespace(
+        api_key="generation-key",
+        model_name="generation-model",
+        max_retries=2,
+        timeout_seconds=60,
+    )
+    fake_client = _FakeChatModel(
+        [
+            _FakeChunk("Nghỉ 12 ngày【1】, "),
+            _FakeChunk("chưa qua đào tạo【2】.", finish_reason="stop"),
+        ]
+    )
+
+    generator = AnswerGenerator(settings, client=fake_client)  # type: ignore[arg-type]
+    answer = asyncio.run(generator.draft("Câu hỏi", [_chunk()]))
+
+    assert answer.text == "Nghỉ 12 ngày[1], chưa qua đào tạo[2]."
+    assert answer.fragments == ["Nghỉ 12 ngày[1], ", "chưa qua đào tạo[2]."]
+
+
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:
     settings = SimpleNamespace(
         api_key="judge-key",

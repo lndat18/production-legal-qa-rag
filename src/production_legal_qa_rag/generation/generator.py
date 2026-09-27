@@ -154,6 +154,14 @@ Draft cũ:
 Issues cần sửa:
 {issues}"""
 
+# Prompt đã yêu cầu ASCII "[" "]" (quy tắc 2) nhưng LLM không tuân thủ 100% — đã quan sát
+# thật model thỉnh thoảng vẫn phát "【n】". output_check.py đã nới regex để nhận diện cả 2
+# dạng (fix việc hệ thống hiểu sai citation), nhưng không tự sửa lại text hiển thị cho
+# người dùng. Chuẩn hoá ngay tại đây — trước khi buffer thành .text/.fragments, tức trước
+# cả hard gate/Judge lẫn khi phát TokenEvent — để người dùng luôn thấy đúng "[n]" bất kể
+# model có tuân thủ prompt hay không.
+_FULLWIDTH_BRACKETS: Final = str.maketrans({"【": "[", "】": "]"})
+
 
 class GenerationDelta(BaseModel):
     """Một chunk thô từ Groq, gồm nội dung và metadata cuối stream nếu có."""
@@ -368,7 +376,7 @@ class AnswerGenerator:
         usage: Usage | None = None
         async for delta in stream:
             if delta.text:
-                fragments.append(delta.text)
+                fragments.append(delta.text.translate(_FULLWIDTH_BRACKETS))
             finish_reason = delta.finish_reason or finish_reason
             usage = delta.usage or usage
         return GeneratedAnswer(
