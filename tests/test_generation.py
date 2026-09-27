@@ -632,6 +632,22 @@ def test_build_messages_keeps_context_and_question_in_user_message() -> None:
     )
 
 
+def test_generation_prompt_requires_ascii_brackets_everywhere() -> None:
+    """Quy tắc 2 (đợt 2, 2026-09-27): quan sát thật cho thấy model dùng dấu ngoặc
+    toàn giác "【" "】" cho citation gắn sau gạch đầu dòng (không qua blockquote) —
+    output_check.py chỉ regex ASCII "\\[(\\d+)\\]" nên citation kiểu đó bị coi như
+    không tồn tại, "Nguồn" trả về rỗng. Yêu cầu ASCII trước đó chỉ nằm trong quy tắc
+    14 (ngay sau blockquote); giờ chuyển lên quy tắc 2 để áp dụng cho MỌI vị trí.
+    """
+    assert (
+        'LUÔN dùng đúng dấu ngoặc vuông ASCII "[" và "]" (không phải\n   dấu toàn'
+        ' giác/kiểu chữ khác như "【" "】") cho MỌI ký hiệu [n], dù đứng sau gạch\n'
+        "   đầu dòng, trong văn xuôi hay sau khối trích dẫn — hệ thống chỉ nhận diện"
+        " được\n   đúng dạng ASCII, sai dấu ngoặc coi như KHÔNG có citation."
+        in GENERATION_SYSTEM_PROMPT
+    )
+
+
 def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
     issue = VerificationIssue(
         code="citation_mismatch",
@@ -657,7 +673,7 @@ def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v7"
+    assert PROMPT_VERSION == "v8"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:

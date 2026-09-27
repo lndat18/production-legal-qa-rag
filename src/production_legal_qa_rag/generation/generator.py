@@ -15,7 +15,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v7"
+PROMPT_VERSION: Final = "v8"
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
 # dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
@@ -38,7 +38,10 @@ Quy tắc:
 2. Mọi khẳng định về quy định pháp luật phải kèm nguồn dạng [n] ngay cuối câu, n
    là số thứ tự đoạn văn bản. Một câu dùng nhiều đoạn thì ghi [1][2]. Không tự nêu
    số Điều/Khoản/Điểm trong nội dung trả lời trừ khi số đó xuất hiện nguyên văn
-   trong phần "Văn bản".
+   trong phần "Văn bản". LUÔN dùng đúng dấu ngoặc vuông ASCII "[" và "]" (không phải
+   dấu toàn giác/kiểu chữ khác như "【" "】") cho MỌI ký hiệu [n], dù đứng sau gạch
+   đầu dòng, trong văn xuôi hay sau khối trích dẫn — hệ thống chỉ nhận diện được
+   đúng dạng ASCII, sai dấu ngoặc coi như KHÔNG có citation.
 3. Giữ nguyên văn con số, mức tiền, tỉ lệ, thời hạn như trong "Văn bản"; không làm
    tròn, không quy đổi, không tính toán thêm.
 4. Nếu "Văn bản" chứa bảng, đọc theo bảng; không bịa ô không có trong bảng.
