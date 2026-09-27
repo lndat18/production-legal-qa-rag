@@ -435,6 +435,25 @@ def test_build_groq_clients_tao_dung_3_client_doc_lap_tai_khoan():
     assert all(client.model_name == "openai/gpt-oss-120b" for client in clients)
 
 
+def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
+    settings = TestsetGeneratorSettings(  # type: ignore[call-arg]
+        GROQ_API_KEY="key-1",
+        GROQ_API_KEY_2="key-2",
+        GROQ_API_KEY_3="key-3",
+        max_retries=5,
+        timeout_seconds=90,
+    )
+
+    clients = testset_generator._build_groq_clients(settings)
+
+    assert all(
+        client.openai_api_base == testset_generator._GROQ_OPENAI_BASE_URL
+        for client in clients
+    )
+    assert all(client.max_retries == 5 for client in clients)
+    assert all(client.request_timeout == 90.0 for client in clients)
+
+
 def test_build_testset_generator_wire_dung_llm_va_embeddings(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -619,3 +638,32 @@ def test_cli_goi_dung_generate_golden_testset_va_in_so_luong(
     assert result.exit_code == 0
     assert captured["args"][2] is True
     assert "Đã sinh 1 câu hỏi" in result.output
+
+
+def test_cli_mac_dinh_khong_bat_reuse_knowledge_graph_va_dung_thu_muc_mac_dinh(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from tools import generate_testset
+
+    captured: dict[str, Any] = {}
+
+    def _fake_generate(
+        markdown_dir: Path,
+        output_dir: Path,
+        *,
+        reuse_knowledge_graph: bool = False,
+    ) -> list[GoldenTestCase]:
+        captured["args"] = (markdown_dir, output_dir, reuse_knowledge_graph)
+        return []
+
+    monkeypatch.setattr(generate_testset, "generate_golden_testset", _fake_generate)
+
+    result = CliRunner().invoke(generate_testset.app, [])
+
+    assert result.exit_code == 0
+    assert captured["args"] == (
+        generate_testset.DEFAULT_MARKDOWN_DIR,
+        generate_testset.DEFAULT_OUTPUT_DIR,
+        False,
+    )
+    assert "Đã sinh 0 câu hỏi" in result.output
