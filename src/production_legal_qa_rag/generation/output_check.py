@@ -12,7 +12,12 @@ from production_legal_qa_rag.generation.models import (
 )
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
-_CITATION_PATTERN = re.compile(r"\[(\d+)\]")
+# Chấp nhận cả dấu ngoặc vuông ASCII "[…]" (chuẩn, prompt yêu cầu — generator.py quy tắc
+# 2) lẫn dấu toàn giác "【…】" — phòng khi model lỡ không tuân thủ (LLM không đảm bảo tuân
+# thủ prompt 100%, đã quan sát thật). Không siết prompt là đủ: phải nhận diện được ở đây
+# thì citation mới không bị coi là "không tồn tại" (rỗng) hay số bên trong ngoặc bị hiểu
+# nhầm thành "số lạ chưa xác minh" (unverified_number).
+_CITATION_PATTERN = re.compile(r"[\[【](\d+)[\]】]")
 _NUMBER_PATTERN = re.compile(
     r"(?<!\w)(?:\d{1,3}(?:[.,\s]\d{3})+|\d+(?:[.,]\d+)?)(?!\w)"
 )
@@ -26,6 +31,7 @@ _SENSITIVE_UNIT_PATTERN = re.compile(
 def check_output(
     text: str,
     chunks: list[RetrievedChunk],
+    query: str,
     *,
     finish_reason: str | None = None,
 ) -> HardGateResult:
@@ -34,6 +40,11 @@ def check_output(
     Args:
         text: Toàn bộ draft đã được buffer.
         chunks: Context cố định thực sự được đưa vào prompt.
+        query: Câu hỏi gốc — số người dùng tự cung cấp trong câu hỏi (vd. "lương 10
+            triệu") không phải claim pháp lý bịa ra khi model nhắc lại để giải thích,
+            nên cũng được coi là "có evidence" giống số trong context (quan sát thật
+            2026-09-27: câu hỏi tính lương làm thêm giờ bị chặn oan vì model nhắc lại
+            đúng số trong câu hỏi để giải thích tại sao KHÔNG tính được kết quả).
         finish_reason: Lý do kết thúc stream từ provider, nếu có.
 
     Returns:
@@ -59,7 +70,7 @@ def check_output(
             )
         )
 
-    sensitive, ordinary = _find_unverified_numbers(text, chunks)
+    sensitive, ordinary = _find_unverified_numbers(text, chunks, query)
     if sensitive:
         hard_issues.append(
             VerificationIssue(
@@ -115,11 +126,11 @@ def _extract_citations(
 
 
 def _find_unverified_numbers(
-    text: str, chunks: list[RetrievedChunk]
+    text: str, chunks: list[RetrievedChunk], query: str
 ) -> tuple[list[str], list[str]]:
     """Tách số không có evidence thành nhóm nhạy cảm và nhóm warning mềm."""
     answer_without_citations = _CITATION_PATTERN.sub("", text)
-    context_numbers = _context_numbers(chunks)
+    context_numbers = _context_numbers(chunks, query)
     sensitive: list[str] = []
     ordinary: list[str] = []
     seen: set[str] = set()
@@ -136,9 +147,11 @@ def _find_unverified_numbers(
     return sensitive, ordinary
 
 
-def _context_numbers(chunks: list[RetrievedChunk]) -> set[str]:
-    """Thu thập số trong breadcrumb, content và bảng gốc của context."""
-    numbers: set[str] = set()
+def _context_numbers(chunks: list[RetrievedChunk], query: str) -> set[str]:
+    """Thu thập số trong breadcrumb, content, bảng gốc của context và trong câu hỏi gốc."""
+    numbers: set[str] = {
+        _normalize_number(match.group(0)) for match in _NUMBER_PATTERN.finditer(query)
+    }
     for chunk in chunks:
         values = [chunk.breadcrumb, chunk.content]
         if chunk.raw_table:

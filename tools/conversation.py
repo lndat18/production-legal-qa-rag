@@ -5,7 +5,10 @@ Bộ hội thoại mẫu chia 3 nhóm (spec mục 15), chọn qua ``--groups``:
 - ``core``: 4 ca gốc (kế thừa Điều, đại từ, đổi chủ đề, injection).
 - ``regression``: ca 4, 6, 7, 9, 10 của bảng mục 15 (ca 8 bỏ qua — cần giả lập
   Groq lỗi/429, để bộ kiểm thử tự động đảm nhiệm).
-- ``general``: 3 hội thoại tổng quát mới (đa chủ thể, phân loại thiếu, tính toán).
+- ``general``: 6 hội thoại tổng quát (đa chủ thể, phân loại thiếu, tính toán, cùng 3 ca
+  regression định dạng câu trả lời — danh sách bullet nhiều citation, nội dung dạng
+  bảng, trích dẫn nguyên văn — thêm 2026-09-27 sau khi sửa lỗi ngoặc toàn giác/dính chữ,
+  xem conversation_spec.md mục 15, 18.1).
 
 Mỗi hội thoại có thể gọi Groq ở bước generation. Khi Groq hết hạn mức, luồng phát lỗi
 ``rate_limited`` và nêu thời gian thử lại khi API cung cấp thông tin đó.
@@ -127,7 +130,8 @@ _REGRESSION_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     ],
 }
 
-# Nhóm "general": 3 hội thoại tổng quát mới (mục 15).
+# Nhóm "general": hội thoại tổng quát (mục 15) — 3 ca gốc + 3 ca regression định dạng
+# câu trả lời thêm 2026-09-27 (mục 18.1).
 _GENERAL_CONVERSATIONS: dict[str, list[ChatMessage]] = {
     "Đa chủ thể - loại hợp đồng": [
         ChatMessage(
@@ -157,6 +161,29 @@ _GENERAL_CONVERSATIONS: dict[str, list[ChatMessage]] = {
             content=(
                 "Lương tháng 10 triệu, làm thêm giờ vào ngày nghỉ 4 tiếng thì được trả "
                 "thêm bao nhiêu tiền?"
+            ),
+        ),
+    ],
+    "Danh sách citation dạng bullet (Điều 8 BLLĐ)": [
+        ChatMessage(
+            role="user",
+            content="Những hành vi nào bị nghiêm cấm trong lĩnh vực lao động?",
+        ),
+    ],
+    "Nội dung dạng bảng (biểu thuế luỹ tiến)": [
+        ChatMessage(
+            role="user",
+            content=(
+                "Biểu thuế luỹ tiến từng phần tính thuế thu nhập cá nhân có bao nhiêu "
+                "bậc, mức thuế suất từng bậc là bao nhiêu?"
+            ),
+        ),
+    ],
+    "Trích dẫn nguyên văn hợp lệ (định nghĩa HĐLĐ)": [
+        ChatMessage(
+            role="user",
+            content=(
+                "Hợp đồng lao động được định nghĩa như thế nào theo Bộ luật Lao động?"
             ),
         ),
     ],

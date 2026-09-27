@@ -92,5 +92,37 @@ def _sample_chunk() -> RetrievedChunk:
     )
 
 
+@app.command()
+def flush(
+    redis_url: Annotated[str, typer.Option(envvar="REDIS_URL")] = _DEFAULT_REDIS_URL,
+    pattern: Annotated[
+        str, typer.Option(help="Redis key pattern cần xoá (answer/retrieval/lock).")
+    ] = "rag:*",
+    yes: Annotated[bool, typer.Option("--yes", help="Bỏ qua xác nhận.")] = False,
+) -> None:
+    """Xoá cache trên Redis để lần hỏi tiếp theo chạy lại pipeline từ đầu.
+
+    Dùng khi đang thử nghiệm generation/conversation: sửa prompt/logic xong nhưng câu hỏi
+    cũ vẫn còn answer/retrieval cache (TTL 7 ngày/24 giờ) nên không thấy thay đổi.
+    """
+    if not yes and not typer.confirm(f"Xoá mọi key khớp '{pattern}' trên {redis_url}?"):
+        raise typer.Abort()
+    asyncio.run(_flush(redis_url, pattern))
+
+
+async def _flush(redis_url: str, pattern: str) -> None:
+    """Quét theo pattern bằng SCAN (không dùng KEYS) rồi xoá từng key khớp."""
+    redis = Redis.from_url(redis_url)
+    try:
+        await redis.ping()
+        deleted = 0
+        async for key in redis.scan_iter(match=pattern):
+            await redis.delete(key)
+            deleted += 1
+        typer.echo(f"deleted={deleted} pattern={pattern}")
+    finally:
+        await redis.aclose()
+
+
 if __name__ == "__main__":
     app()

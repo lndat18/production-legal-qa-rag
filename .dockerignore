@@ -1,0 +1,25 @@
+# Build context cho deploy/Dockerfile (deploy_spec.md mục 6). Loại các thứ không cần
+# trong image: venv/git cục bộ, dữ liệu (mount runtime, không bake), test, bí mật, cache.
+.venv/
+.git/
+data/
+tests/
+.env
+deploy/.env
+deploy/backups/
+
+# Cache công cụ dev
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Model tải cục bộ (không bake vào image; reranker tải từ HF Hub lúc chạy, mục 6)
+models/
+
+# Tài liệu, cấu hình agent — không cần trong image
+.claude/
+docs/
+*.md
+!README.md

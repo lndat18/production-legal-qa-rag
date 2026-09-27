@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+import re
 from collections.abc import AsyncIterator
 from typing import Final
 
@@ -15,7 +17,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v6"
+PROMPT_VERSION: Final = "v8"
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
 # dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
@@ -38,7 +40,10 @@ Quy tắc:
 2. Mọi khẳng định về quy định pháp luật phải kèm nguồn dạng [n] ngay cuối câu, n
    là số thứ tự đoạn văn bản. Một câu dùng nhiều đoạn thì ghi [1][2]. Không tự nêu
    số Điều/Khoản/Điểm trong nội dung trả lời trừ khi số đó xuất hiện nguyên văn
-   trong phần "Văn bản".
+   trong phần "Văn bản". LUÔN dùng đúng dấu ngoặc vuông ASCII "[" và "]" (không phải
+   dấu toàn giác/kiểu chữ khác như "【" "】") cho MỌI ký hiệu [n], dù đứng sau gạch
+   đầu dòng, trong văn xuôi hay sau khối trích dẫn — hệ thống chỉ nhận diện được
+   đúng dạng ASCII, sai dấu ngoặc coi như KHÔNG có citation.
 3. Giữ nguyên văn con số, mức tiền, tỉ lệ, thời hạn như trong "Văn bản"; không làm
    tròn, không quy đổi, không tính toán thêm.
 4. Nếu "Văn bản" chứa bảng, đọc theo bảng; không bịa ô không có trong bảng.
@@ -100,7 +105,11 @@ Quy tắc:
     markdown (mỗi dòng bắt đầu bằng "> "), không diễn giải hay chỉnh sửa bên trong khối
     này; phần giải thích/diễn giải đặt ở văn xuôi thường ngay sau, tách biệt khối trích
     dẫn. Không bắt buộc dùng khối trích dẫn cho mọi câu trả lời — chỉ dùng khi có một câu
-    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. Ngay
+    ngắn trong "Văn bản" đủ làm bằng chứng trực tiếp cho một khẳng định quan trọng. TUYỆT
+    ĐỐI KHÔNG dùng khối trích dẫn để lặp lại nguyên văn một danh sách nhiều điểm/khoản đã
+    được trình bày bằng gạch đầu dòng ở phần trả lời chính — trường hợp đó chỉ cần đặt
+    citation [n] ngay cuối mỗi gạch đầu dòng theo quy tắc 2, không trích dẫn lại lần thứ
+    hai dưới dạng blockquote. Ngay
     sau khối trích dẫn (dòng cuối cùng bắt đầu bằng "> ") vẫn phải thêm đúng ký hiệu nguồn
     dạng [n] như quy tắc 2 quy định, dùng đúng dấu ngoặc vuông ASCII "[" và "]" — không
     thay bằng bất kỳ ký hiệu ngoặc nào khác (kể cả các dấu ngoặc toàn góc/kiểu chữ khác).
@@ -146,6 +155,35 @@ Draft cũ:
 
 Issues cần sửa:
 {issues}"""
+
+# Prompt đã yêu cầu ASCII "[" "]" (quy tắc 2) nhưng LLM không tuân thủ 100% — đã quan sát
+# thật model thỉnh thoảng vẫn phát "【n】". output_check.py đã nới regex để nhận diện cả 2
+# dạng (fix việc hệ thống hiểu sai citation), nhưng không tự sửa lại text hiển thị cho
+# người dùng. Chuẩn hoá ngay tại đây — trước khi buffer thành .text/.fragments, tức trước
+# cả hard gate/Judge lẫn khi phát TokenEvent — để người dùng luôn thấy đúng "[n]" bất kể
+# model có tuân thủ prompt hay không.
+_FULLWIDTH_BRACKETS: Final = str.maketrans({"【": "[", "】": "]"})
+# Model cũng hay dính citation liền vào chữ trước đó ("lao động[4]") dù prompt không cấm
+# hay yêu cầu khoảng trắng — chèn thêm 1 khoảng trắng trước "[" khi liền ngay sau một ký
+# tự không phải khoảng trắng/"[""]" (không đụng tới nhiều citation liền nhau như "[1][2]",
+# vì đó là "]" đứng trước, bị loại trừ). Không dùng regex trên toàn văn bản đã ghép vì
+# .fragments phải khớp đúng ranh giới token gốc stream từ Groq (test/generation_spec.md
+# giữ nguyên fragments làm mảnh token gốc) — nên phải bù ký tự liền trước sang từ fragment
+# trước đó (biên 2 delta có thể cắt ngay giữa "chữ" và "[n]").
+_MISSING_SPACE_BEFORE_BRACKET: Final = re.compile(r"(?<=[^\s\[\]])\[")
+_NO_SPACE_NEEDED_BEFORE: Final = " \n\t[]"
+
+
+def _normalize_answer_fragment(fragment: str, *, previous_char: str) -> str:
+    """Chuẩn hoá 1 fragment: ASCII hoá ngoặc + thêm khoảng trắng trước "[n]" bị dính chữ."""
+    text = fragment.translate(_FULLWIDTH_BRACKETS)
+    if (
+        text.startswith("[")
+        and previous_char
+        and previous_char not in _NO_SPACE_NEEDED_BEFORE
+    ):
+        text = " " + text
+    return _MISSING_SPACE_BEFORE_BRACKET.sub(" [", text)
 
 
 class GenerationDelta(BaseModel):
@@ -251,13 +289,44 @@ class AnswerGenerator:
         client: ChatOpenAI | None = None,
     ) -> None:
         self._settings = settings
-        self._client = LoopBoundClient(self._create_client, client)
+        self._fixed_client = client
+        self._clients: list[LoopBoundClient[ChatOpenAI]] | None = None
+        self._next_client_index = 0
 
-    def _create_client(self) -> ChatOpenAI:
+    def _get_clients(self) -> list[LoopBoundClient[ChatOpenAI]]:
+        """Dựng lười 1 hoặc 2 client theo key — 2 client chỉ khi có key round-robin."""
+        if self._clients is None:
+            settings = self._get_settings()
+            keys = [settings.api_key]
+            if settings.round_robin_api_key:
+                keys.append(settings.round_robin_api_key)
+            self._clients = [
+                LoopBoundClient(
+                    functools.partial(self._create_client, key),
+                    self._fixed_client if index == 0 else None,
+                )
+                for index, key in enumerate(keys)
+            ]
+        return self._clients
+
+    def _next_client(self) -> ChatOpenAI:
+        """Xoay vòng client theo lượt gọi — round-robin thật khi có key thứ 2.
+
+        Không round-robin trong 1 turn (repair vẫn dùng cùng key với draft): xoay
+        theo LƯỢT GỌI (mỗi lần draft/repair riêng biệt trên toàn bộ tiến trình), nên
+        TPD được giãn đều ra nhiều tài khoản Groq theo thời gian mà không cần state
+        phức tạp — key thứ 2 chỉ tồn tại khi có ``GROQ_API_KEY_3``.
+        """
+        clients = self._get_clients()
+        client = clients[self._next_client_index % len(clients)].get()
+        self._next_client_index += 1
+        return client
+
+    def _create_client(self, api_key: str) -> ChatOpenAI:
         settings = self._get_settings()
         return ChatOpenAI(
             base_url=_GROQ_OPENAI_BASE_URL,
-            api_key=settings.api_key,
+            api_key=api_key,
             model=settings.model_name,
             max_retries=settings.max_retries,
             timeout=float(settings.timeout_seconds),
@@ -347,7 +416,7 @@ class AnswerGenerator:
         self, messages: list[dict[str, str]]
     ) -> AsyncIterator[GenerationDelta]:
         """Gọi Groq stream với message đã được dựng bởi draft hoặc repair."""
-        async for chunk in self._client.get().astream(messages):
+        async for chunk in self._next_client().astream(messages):
             yield GenerationDelta(
                 text=chunk.content if isinstance(chunk.content, str) else "",
                 finish_reason=chunk.response_metadata.get("finish_reason"),
@@ -359,9 +428,14 @@ class AnswerGenerator:
         fragments: list[str] = []
         finish_reason: str | None = None
         usage: Usage | None = None
+        previous_char = ""
         async for delta in stream:
             if delta.text:
-                fragments.append(delta.text)
+                fragment = _normalize_answer_fragment(
+                    delta.text, previous_char=previous_char
+                )
+                fragments.append(fragment)
+                previous_char = fragment[-1]
             finish_reason = delta.finish_reason or finish_reason
             usage = delta.usage or usage
         return GeneratedAnswer(

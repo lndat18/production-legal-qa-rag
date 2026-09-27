@@ -1,0 +1,20 @@
+# Override GPU cho reranker in-process của `api` (deploy_spec.md mục 4.1, khuyến nghị,
+# không bắt buộc). Cần CẢ HAI: (1) build image với `--build-arg TORCH_VARIANT=cu126` (>=
+# cu126 — cu121/cu124 không có wheel cho Python 3.14, xem Dockerfile) (2) chạy với file
+# override này để container thấy được GPU:
+#
+#   docker compose -f docker-compose.yml build --build-arg TORCH_VARIANT=cu126 api
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Yêu cầu trên máy host: NVIDIA Container Toolkit + bật GPU support trong Docker Desktop
+# (Windows/WSL2 backend). Thiếu 1 trong 2 bước trên vẫn chạy được nhưng rơi về CPU-only
+# (torch tự phát hiện, không crash — retrieval_spec.md mục 6.1).
+services:
+  api:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
