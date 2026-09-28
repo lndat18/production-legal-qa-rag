@@ -188,9 +188,11 @@ def test_loi_http_chi_ghi_dong_dau_da_cat_ngan_va_khong_lo_noi_dung(
     message = "Rate limit reached " + "x" * 500 + "\nNỘI DUNG BÍ MẬT của câu hỏi"
     runner = Runner(fail_on="A.md#2", error=HttpLikeError(message))
 
-    with caplog.at_level(logging.INFO, logger=tg.logger.name):
-        with pytest.raises(tg.UnitGenerationError) as excinfo:
-            tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+    with (
+        caplog.at_level(logging.INFO, logger=tg.logger.name),
+        pytest.raises(tg.UnitGenerationError) as excinfo,
+    ):
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     failure = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure
     assert failure is not None
@@ -206,9 +208,11 @@ def test_loi_khong_co_status_http_chi_ghi_ten_loai_khong_ghi_thong_diep(
     markdown_dir, output_dir = dirs
     runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
 
-    with caplog.at_level(logging.INFO, logger=tg.logger.name):
-        with pytest.raises(tg.UnitGenerationError):
-            tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+    with (
+        caplog.at_level(logging.INFO, logger=tg.logger.name),
+        pytest.raises(tg.UnitGenerationError),
+    ):
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     failure = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure
     assert failure is not None
@@ -460,7 +464,7 @@ def test_append_toan_cau_trung_thi_khong_them_dong_va_progress_khong_tang_cau(
 
 
 def test_split_question_mix_tong_dung_va_multi_hop_doi_xung_voi_moi_tong_den_500():
-    for total in range(0, 501):
+    for total in range(501):
         mix = tg.split_question_mix(total)
 
         assert mix.total == total
