@@ -302,7 +302,9 @@ def _load_matching_graph(path: Path, unit: EvalUnit) -> KnowledgeGraph | None:
     """Nạp KG; `None` (kèm log) nếu file hỏng hoặc dựng từ văn bản khác `unit.text`."""
     try:
         graph = KnowledgeGraph.load(path)
-    except ValueError:
+    except ValueError, KeyError, TypeError, OSError:
+        # ValueError gồm JSONDecodeError/UnicodeDecodeError; KeyError/TypeError: JSON hợp lệ
+        # nhưng sai cấu trúc (`{}`, `[]`). Chỉ log đường dẫn, không log nội dung KG.
         logger.warning("KG %s không đọc được: dựng lại.", path)
         return None
     if not any(
