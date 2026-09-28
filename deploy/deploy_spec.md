@@ -235,7 +235,7 @@ không crash service.
   xem log tay dùng `docker compose logs cloudflared-named`.
 - **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
   khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
-- **Backup:** `deploy/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)
+- **Backup:** `deploy/scripts/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)
   ra `deploy/backups/<ngày>/` (thư mục này vào `.gitignore`), giữ 7 bản gần nhất; chạy tay
   hoặc bằng cron/Task Scheduler. Redis không cần backup (dữ liệu tính lại được).
 - **Cập nhật:** `git pull` → `./deploy/up.sh` (tự build lại đúng biến thể + `up -d`). Đổi
@@ -258,7 +258,7 @@ không crash service.
 4. `docker compose down && docker compose up -d` → tài khoản, lịch sử chat, dòng
    `chat_turns`, cache đều còn (volume giữ dữ liệu); phiên đăng nhập không bị đăng xuất
    (`WEBUI_SECRET_KEY` cố định).
-5. `deploy/backup.sh` tạo file dump khôi phục được vào Postgres tạm.
+5. `deploy/scripts/backup.sh` tạo file dump khôi phục được vào Postgres tạm.
 6. Tắt Redis rồi Postgres (từng cái) → chat vẫn trả lời, `/readyz` báo 503 (khớp
    `api_spec.md` mục 13).
 7. Kiểm tra image: `docker history` / `grep` không thấy bí mật; chạy bằng user không root.

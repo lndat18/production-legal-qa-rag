@@ -18,7 +18,7 @@ if [[ ! -f .env ]]; then
     # backup.sh đã áp dụng.
     root_env="../.env"
     if [[ -f "${root_env}" ]]; then
-        shared_keys=(GROQ_API_KEY GROQ_API_KEY_2 GROQ_API_KEY_3 GROQ_JUDGE_API_KEY HF_TOKEN PINECONE_API_KEY PINECONE_INDEX_NAME PINECONE_SPARSE_INDEX_NAME CHATBOT_API_KEY)
+        shared_keys=(GROQ_API_KEY GROQ_API_KEY_2 GROQ_API_KEY_3 GROQ_API_KEY_4 HF_TOKEN PINECONE_API_KEY PINECONE_INDEX_NAME PINECONE_SPARSE_INDEX_NAME CHATBOT_API_KEY)
         for key in "${shared_keys[@]}"; do
             line="$(grep -E "^${key}=.+" "${root_env}" || true)"
             [[ -n "${line}" ]] || continue

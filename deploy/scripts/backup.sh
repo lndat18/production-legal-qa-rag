@@ -4,13 +4,13 @@
 # vụ. Redis không backup (dữ liệu tính lại được).
 #
 # Dùng:
-#   deploy/backup.sh
+#   deploy/scripts/backup.sh
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
-ENV_FILE="${SCRIPT_DIR}/.env"
-BACKUPS_DIR="${SCRIPT_DIR}/backups"
+DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." &>/dev/null && pwd)"
+COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.yml"
+ENV_FILE="${DEPLOY_DIR}/.env"
+BACKUPS_DIR="${DEPLOY_DIR}/backups"
 KEEP=7
 
 if [[ ! -f "${ENV_FILE}" ]]; then

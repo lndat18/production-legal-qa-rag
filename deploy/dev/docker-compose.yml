@@ -1,19 +1,15 @@
-# Hạ tầng cho môi trường phát triển cục bộ: Redis + Postgres.
-# Bản triển khai đầy đủ (deploy_spec.md mục 4) là deploy/docker-compose.yml, chưa tạo.
-#
-# Dùng:  docker compose -f deploy/docker-compose.dev.yml up -d
-# Dừng:  docker compose -f deploy/docker-compose.dev.yml down
-# .env:  REDIS_URL=redis://localhost:6379/0
-#        CHATLOG_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot
+# Redis + Postgres cho dev cục bộ (bản đầy đủ: docker-compose.yml, deploy_spec.md mục 4).
+#   docker compose -f deploy/dev/docker-compose.yml up -d      (dừng: down)
+# .env: REDIS_URL=redis://localhost:6379/0
+#       CHATLOG_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot
 name: legal-qa-dev
 
 services:
   redis:
     image: redis:7-alpine
-    # Chỉ mở cổng trên localhost: Redis không có mật khẩu.
+    # Không mật khẩu nên chỉ mở trên localhost. Cache tính lại được nên không persistence.
     ports:
       - "127.0.0.1:6379:6379"
-    # Dữ liệu (quota, cache) tính lại được nên không cần persistence; giới hạn RAM.
     command: ["redis-server", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -28,7 +24,7 @@ services:
       POSTGRES_DB: chatbot
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-    # Chỉ mở cho process cục bộ; production phải dùng credential riêng.
+    # Chỉ cho process cục bộ; production dùng credential riêng.
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

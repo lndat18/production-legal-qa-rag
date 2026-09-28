@@ -196,7 +196,9 @@ không xuất chain-of-thought, và không khẳng định luật đúng/sai ngo
 insufficient_evidence nghĩa là context retrieved không đủ, không phải luật không
 tồn tại.
 
-Trước enforce, Judge phải được hiệu chỉnh trên case có nhãn người duyệt. Khi
+Trước enforce, Judge phải được hiệu chỉnh trên case có nhãn người duyệt. Từ
+2026-09-28 Judge chạy `gpt-oss-20b`: phải hiệu chỉnh lại trên bộ ca đó, so với kết quả
+120b, trước khi coi bản 20b là enforce được. Khi
 enforce, lỗi mạng, timeout, JSON sai hoặc verdict/issue không hợp lệ là fail-closed:
 không phát draft và refusal(unable_to_verify). Shadow mode chỉ phục vụ hiệu chỉnh,
 không phải chế độ production an toàn cho workflow này.
@@ -245,15 +247,26 @@ tích hợp thật, không phải workaround; đồng thời tránh đổi versi
   mục 1-7. Pydantic v2 vẫn là nguồn sự thật cho mọi schema.
 
 - GuardrailSettings: input safeguard, fail-open.
-- GenerationSettings: generator, ưu tiên GROQ_API_KEY_2. Thêm 2026-09-27:
-  `round_robin_api_key` (env `GROQ_API_KEY_3`, TÙY CHỌN) — khi có, `AnswerGenerator`
+- GenerationSettings: generator, ưu tiên `GROQ_API_KEY_3` (fallback `GROQ_API_KEY`).
+  `round_robin_api_key` (env `GROQ_API_KEY_4`, TÙY CHỌN) — khi có, `AnswerGenerator`
   giữ 2 `LoopBoundClient` (1 mỗi key) và xoay vòng theo từng lượt gọi draft/repair
-  (`_next_client()`, index tăng dần mod số client). Quan sát thật: TPD của generation
-  (nút thắt nhất, mục 16.2 conversation_spec.md) cạn chỉ sau 1 phiên test nhiều lượt
-  dồn hết vào 1 tài khoản — round-robin giãn TPD ra 2 tài khoản thay vì 1. Không set
-  `GROQ_API_KEY_3` thì hành vi giữ nguyên như trước (1 client duy nhất, không xoay).
+  (`_next_client()`, index tăng dần mod số client). Quan sát thật 2026-09-27: TPD của
+  generation (nút thắt nhất, mục 16.2 conversation_spec.md) cạn chỉ sau 1 phiên test nhiều
+  lượt dồn hết vào 1 tài khoản — round-robin giãn TPD ra 2 tài khoản thay vì 1. Không set
+  `GROQ_API_KEY_4` thì chỉ 1 client duy nhất, không xoay. Chốt 2026-09-28: generation dùng
+  key 3 ⇄ 4 (trước là 2 ⇄ 3); key 1, 2 dành cho nhóm bước nhẹ.
 - JudgeSettings: model, timeout, retry, key qua pydantic-settings; model phải
   đổi được bằng config. Judge/generator không share client state qua event loop.
+  Chốt 2026-09-28 (chi tiết: `conversation_spec.md` mục 12.1): `model_name` đổi từ
+  `gpt-oss-120b` sang `openai/gpt-oss-20b`; chuỗi key đổi thành `GROQ_API_KEY_2` →
+  `GROQ_API_KEY` (bỏ `GROQ_JUDGE_API_KEY`; bỏ `GROQ_API_KEY_3`/`_4` khỏi fallback — 2 key
+  đó thuộc generation). Judge chạy trên tài khoản B riêng, nên không tranh bucket với
+  generation (khác model, khác tài khoản) lẫn với Condense/HyDE (khác tài khoản). Judge
+  dùng throttle chung theo bucket `(model, key)` (`retrieval/llm_throttle.py`): gọi
+  `acquire(...)` trước mỗi lời gọi Judge, `ThrottleTimeout` được coi như lỗi Judge nên vẫn
+  fail-closed theo mục 6 — không thêm nhánh xử lý mới.
+- Guardrail giữ `gpt-oss-safeguard-20b` trên `GROQ_API_KEY`, không qua throttle chung
+  (bucket model riêng).
 
 | Module | Trách nhiệm |
 |---|---|
@@ -266,7 +279,8 @@ tích hợp thật, không phải workaround; đồng thời tránh đổi versi
 
 Judge model/version và prompt version là một phần trace và cache identity. Đổi model,
 prompt hoặc shadow/enforce phải invalidate cache ở cache/; không replay answer chưa
-được Judge duyệt. conversation/ chỉ chuyển event, record trace và cache answer
+được Judge duyệt. Lưu ý: khoá cache hiện chỉ chứa `GenerationSettings.model_name`
+(`cache_spec.md`), nên đổi model Judge phải kèm bump `PROMPT_VERSION` mới invalidate được. conversation/ chỉ chuyển event, record trace và cache answer
 approved; không diễn giải verdict hay verify lần hai.
 
 ## 9. Observability và acceptance

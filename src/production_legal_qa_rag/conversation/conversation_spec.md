@@ -121,7 +121,8 @@ và `warning`, trước `done`.
 ## 5. Condense (`condenser.py`)
 
 `QueryCondenser.condense(query, history) -> str` — 1 call Groq, **model
-`openai/gpt-oss-20b`** (ngân sách rate limit tách khỏi HyDE/generation `120b`),
+`openai/gpt-oss-20b`** (thuộc nhóm bước nhẹ, dùng chung bucket 20b với HyDE và Judge —
+mục 12.1; trước 2026-09-28 bucket này tách khỏi HyDE/generation `120b`),
 `reasoning_effort="medium"`, `temperature=0`, `include_reasoning=False`,
 `max_completion_tokens=2048` (đã chốt bằng đo — `low`/512 làm reasoning ăn hết content,
 xem bài học mục 16). Client dùng `LoopBoundClient` như `hyde.py`.
@@ -468,13 +469,115 @@ phase sau): **đường ngắn nhất, chỉ cần kết quả cuối**.
 - `AdmissionSettings` (mục 9) chỉ có `max_concurrent_answers = 2` (mỗi câu ~3–4K token
   trên TPM 8K) và `max_waiting = 6`; không có Redis hay quota theo ngày. Cache cần Redis
   thì dùng cấu hình riêng khi cache được triển khai.
-- `GenerationSettings`: `api_key` (ưu tiên `GROQ_API_KEY_2`, tách ngân sách rate limit
-  khỏi HyDE/guardrail, fallback `GROQ_API_KEY`), `model_name = "openai/gpt-oss-120b"`.
+- `GenerationSettings`: `api_key` (ưu tiên `GROQ_API_KEY_3`, fallback `GROQ_API_KEY`),
+  `round_robin_api_key` (`GROQ_API_KEY_4`), `model_name = "openai/gpt-oss-120b"` — bước
+  duy nhất còn dùng 120b (mục 12.1).
+- `ThrottleSettings` (mới, mục 12.1): giới hạn của bucket 20b dùng chung.
 - Hằng số nội bộ `conversation/`: `HISTORY_MAX_TURNS`, `HISTORY_ASSISTANT_MAX_CHARS`,
   `MAX_QUERY_CHARS`, `GUARDRAIL_CONTEXT_TURNS`, `CORPUS_SNAPSHOT_DATE`,
   `DATA_SNAPSHOT_DISCLAIMER` (`history.py`); `MIN_RERANK_SCORE` (`retrieval/relevance.py`).
 
 Module không đọc `.env` trực tiếp.
+
+### 12.1 Chính sách model / key / rate limit (chốt 2026-09-28)
+
+**Nguyên tắc (quyết định trực tiếp với người dùng):** bước nặng dùng model nặng và được
+xoay vòng key; mọi bước nhẹ dùng `gpt-oss-20b`, mỗi bước gắn **một** key cố định (không
+xoay vòng), có giãn thời gian (throttle). Groq tính rate limit theo `(tài khoản, model)`,
+nên hai model khác nhau trên cùng một tài khoản là hai bucket độc lập.
+
+Hiện có 4 tài khoản Groq (A–D, tương ứng `GROQ_API_KEY`, `_2`, `_3`, `_4`). Sắp xếp chốt
+2026-09-28 (người dùng): **key 1, 2 cho việc nhẹ; key 3, 4 xoay vòng luân phiên cho việc
+nặng.** Trong nhóm nhẹ, mỗi bước gắn một key cố định (không xoay vòng); cách chia giữa key
+1 và key 2 là đề xuất của architect, dựa trên ước tính token dưới đây.
+
+| Bước | Package | Model | Key | Bucket |
+|---|---|---|---|---|
+| Generation (draft + repair) | `generation/` | `gpt-oss-120b` | `GROQ_API_KEY_3` ⇄ `GROQ_API_KEY_4` xoay vòng từng lượt gọi | 120b của C, D |
+| Condense | `conversation/` | `gpt-oss-20b` | `GROQ_API_KEY` | 20b của A — throttle chung với HyDE |
+| HyDE | `retrieval/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY` | 20b của A — throttle chung với Condense |
+| Evidence Judge | `generation/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY_2`, không set thì fallback `GROQ_API_KEY` | 20b của B — throttle riêng (fallback A thì dùng chung với Condense/HyDE) |
+| Guardrail | `generation/` | `gpt-oss-safeguard-20b` (không đổi) | `GROQ_API_KEY` | safeguard-20b của A — bucket riêng, không throttle |
+
+Judge tách sang key 2 vì đây là bước nặng nhất của nhóm nhẹ (prompt chứa cả context, có
+thể chạy 2 lần/lượt sau repair) và fail-closed — xem "Rủi ro đã biết" dưới. Chuỗi key:
+Judge `GROQ_API_KEY_2` → `GROQ_API_KEY`; generation `GROQ_API_KEY_3` → `GROQ_API_KEY`
+(key 4 là round-robin, tuỳ chọn như hiện tại). Biến `GROQ_JUDGE_API_KEY` bị bỏ. Lưu ý
+ý nghĩa cũ của `GROQ_API_KEY_2`/`_3` đổi (trước: generation xoay vòng 2 ⇄ 3): `.env` đã có
+đủ 4 key nên không hỏng, nhưng mọi chú thích và tài liệu nhắc "key 2 = generation" phải
+sửa theo.
+
+**Throttle dùng chung (`retrieval/llm_throttle.py`, cạnh `loop_bound.py`).** Đặt ở
+`retrieval/` vì đây là tầng thấp nhất trong 3 package cùng gọi LLM, giống lý do
+`LoopBoundClient` đang nằm ở đó — không thêm package mới.
+
+- `TokenWindowThrottle`: cửa sổ trượt 60 giây theo cả token (TPM) lẫn số request (RPM),
+  `asyncio.Lock` in-process (cùng giới hạn 1 worker với admission, mục 9). Giới hạn lấy
+  từ `ThrottleSettings` (`tpm_limit = 8000`, `rpm_limit = 30`, hệ số an toàn `0.9` — cùng
+  hệ số `formatting/llm_client.py`). Con số Groq của `gpt-oss-20b` cần xác nhận trên
+  `console.groq.com/settings/limits` trước khi chốt.
+- Mỗi bucket `(model, key)` có đúng một instance, lấy qua `get_throttle(model, api_key)`
+  (`functools.cache`, định danh bucket là `model` + sha256(api_key)[:8] — không lưu/log key
+  thật) để condense, HyDE, Judge ở 3 package khác nhau tự dùng chung khi cùng bucket mà
+  không phải truyền qua orchestrator. Nhờ khoá theo key thật, cấu hình đổi key của Judge
+  (B hay fallback A) tự cho ra đúng hành vi: khác key → throttle riêng, cùng key → dùng
+  chung. Constructor cho phép inject instance riêng khi test.
+- API: `await throttle.acquire(estimated_tokens, max_wait_seconds)` → `Reservation`, chỉ
+  chờ khi cửa sổ sắp đầy (đủ ngân sách thì trả về ngay, không cộng độ trễ); quá
+  `max_wait_seconds` raise `ThrottleTimeout`. `throttle.settle(reservation, actual_tokens)`
+  cập nhật theo `usage` thật khi response có, không thì giữ số ước lượng. Hàng đợi FIFO.
+- Ước lượng token = độ dài prompt (đo tỷ lệ ký tự/token thật trên tiếng Việt) + hằng số
+  `EXPECTED_COMPLETION_TOKENS` riêng từng bước, đo từ `usage` thật. KHÔNG dùng
+  `max_completion_tokens` làm ước lượng: condense và HyDE đặt 2048, cộng lại đã vượt TPM.
+- Ngưỡng chờ tối đa khi `ThrottleTimeout`:
+  - Condense, HyDE (bước tuỳ chọn): chờ tối đa ~8 giây (giá trị khởi đầu, chỉnh theo đo),
+    quá thì degrade y như lỗi Groq — condense dùng câu gốc, HyDE bỏ nhánh A.
+  - Judge: chờ tối đa bằng `JudgeSettings.timeout_seconds`, vì Judge fail-closed
+    (`refusal(unable_to_verify)`): thà chờ còn hơn từ chối oan.
+- 429 thật từ Groq vẫn là chốt chặn cuối như mục 9; throttle chỉ giảm xác suất chạm 429.
+- Generation và guardrail không qua throttle này: đã có bucket riêng.
+
+**Rủi ro đã biết — cần đo, không đoán.** Giãn thời gian chỉ xử lý TPM (theo phút), không
+xử lý TPD. Nếu cả Condense + HyDE + Judge dồn vào 20b của A, Judge nặng nhất nhóm (prompt
+chứa cả context, có thể chạy 2 lần/lượt sau repair): ước tính thô (chưa đo) ~6–8K
+token/lượt cache-miss ≈ chỉ ~25–35 lượt/ngày trên TPD 200K, thấp hơn generation sau khi
+xoay vòng 2 tài khoản. Vì vậy Judge được đặt riêng trên key 2. Ước tính thô sau khi tách:
+A (Condense + HyDE, ~2–3K/lượt) ~70–100 lượt/ngày; B (Judge, ~3–4K/lượt) ~50–60 lượt/ngày;
+C + D (generation, ~3–4K/lượt chia đôi) ~100 lượt/ngày. Đây vẫn là số chưa đo: bước 4 dưới
+đây quyết định có cần cân đối thêm không. Ghi chú: bucket 20b của C, D và bucket 120b của
+A, B hiện nhàn rỗi — nếu Judge (B) hoặc A thành nút thắt thật, đòn bẩy rẻ nhất là chuyển
+bớt một bước nhẹ sang key 3/4 (bucket 20b của C/D không cạnh tranh với generation 120b),
+chỉ đổi cấu hình.
+
+**Việc phải làm khi đổi model (theo bài học 1 ở mục 16 — đo trước, không đoán):**
+
+1. Judge 20b: chạy lại bộ ca có nhãn người duyệt (`generation_spec.md` mục 6) trước khi
+   coi là enforce được; so tỷ lệ pass/repair/insufficient_evidence với 120b.
+2. HyDE 20b: đo lại `MIN_RERANK_SCORE` (mục 8). Ngưỡng đó được chọn trên phân phối điểm của
+   HyDE 120b `temperature=0.2`; đổi model HyDE làm phân phối điểm rerank đổi theo.
+3. Bump `PROMPT_VERSION` (`generation/generator.py`) để invalidate cache câu trả lời: khoá
+   cache chỉ chứa `GenerationSettings.model_name` (`cache_spec.md`), đổi model Judge/HyDE
+   không tự đổi khoá.
+4. Đo `usage` thật từng bước trên bucket 20b (từ `chat_turns`/log) để chốt
+   `EXPECTED_COMPLETION_TOKENS` và số lượt/ngày thực tế.
+
+**Đồng bộ cấu hình khi implement (việc cho `developer`):**
+
+- `config.py`: `JudgeSettings.api_key` alias `GROQ_API_KEY_2` → `GROQ_API_KEY`,
+  `model_name = "openai/gpt-oss-20b"`; `GenerationSettings.api_key` alias
+  `GROQ_API_KEY_3` → `GROQ_API_KEY`, `round_robin_api_key` alias `GROQ_API_KEY_4`; thêm
+  `HydeSettings` (`GROQ_API_KEY`, `gpt-oss-20b`) và `ThrottleSettings`;
+  `tests/test_config.py` (test `GROQ_JUDGE_API_KEY`, generation `_2`/`_3`) đổi theo;
+  `tests/test_generation.py` (test round-robin nhắc `GROQ_API_KEY_3`) đổi sang `_4`.
+- `.env.example` và `deploy/.env.example`: bỏ `GROQ_JUDGE_API_KEY`, thêm `GROQ_API_KEY_4`
+  (round-robin generation); viết lại đoạn chú thích Groq cho khớp bảng trên (key 1, 2 =
+  nhẹ; key 3, 4 = nặng). `deploy/.env.example` còn thiếu `GROQ_API_KEY_3` — thêm.
+- `deploy/up.sh` (`shared_keys`): thay `GROQ_JUDGE_API_KEY` bằng `GROQ_API_KEY_4`.
+- `evaluation/` (`TestsetGeneratorSettings`) hiện bắt buộc key 1–3; giữ nguyên, có thể
+  mở rộng dùng cả key 4 sau — ngoài phạm vi thay đổi này.
+- `CLAUDE.md` (mục Tiến độ) đang nhắc `GROQ_JUDGE_API_KEY` — sửa theo.
+- `.env.example` dòng "quota theo ngày (conversation/admission.py)" đã lỗi thời (quota bỏ
+  từ 2026-09-23, mục 9) — sửa thành "cache, rate limit".
 
 ## 13. Module (`src/production_legal_qa_rag/conversation/`)
 

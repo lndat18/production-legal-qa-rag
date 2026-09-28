@@ -50,7 +50,7 @@ hỏi-đáp multi-turn thành công (citation, Evidence Judge chạy đúng). B�
 vào deploy_spec.md: `api` cần `mem_limit: 3g` (1.5g cũ bị OOM-killer giết ngay lượt hỏi
 retrieval+rerank đầu); Groq giới hạn rate limit theo tài khoản chứ không theo API key —
 `GROQ_API_KEY_2`/`GROQ_JUDGE_API_KEY` chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq
-khác. `deploy/docker-compose.dev.yml` vẫn phục vụ dev cục bộ (Redis + Postgres) như cũ.
+khác. `deploy/dev/docker-compose.yml` vẫn phục vụ dev cục bộ (Redis + Postgres) như cũ.
 
 Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
 
@@ -62,7 +62,7 @@ Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược tr�
    Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
    (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
    việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
-   để tính sau, chưa chốt. `deploy/observability/` đã có compose khung cho
+   để tính sau, chưa chốt. `deploy/dev/observability/` đã có compose khung cho
    Prometheus/Grafana.
 
 Giữ nguyên quyết định: `chatlog` (Postgres tự host) vẫn là nguồn dữ liệu chính chủ, không
