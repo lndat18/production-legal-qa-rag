@@ -123,9 +123,13 @@ và `warning`, trước `done`.
 `QueryCondenser.condense(query, history) -> str` — 1 call Groq, **model
 `openai/gpt-oss-20b`** (thuộc nhóm bước nhẹ, dùng chung bucket 20b với HyDE và Judge —
 mục 12.1; trước 2026-09-28 bucket này tách khỏi HyDE/generation `120b`),
-`reasoning_effort="medium"`, `temperature=0`, `include_reasoning=False`,
-`max_completion_tokens=2048` (đã chốt bằng đo — `low`/512 làm reasoning ăn hết content,
-xem bài học mục 16). Client dùng `LoopBoundClient` như `hyde.py`.
+`reasoning_effort="low"`, `temperature=0`, `include_reasoning=False`,
+`max_completion_tokens=2048`. Chốt 2026-09-28: mọi bước nhẹ dùng `low` để giảm token
+reasoning (trước đó condense dùng `medium`, ca 7 mất 462/492 completion token cho một câu
+viết lại một dòng; reasoning tính vào TPM của bucket 20b, mục 12.1). Trần 2048 giữ nguyên
+— lần đo cũ thấy `low` lỗi là ở trần 512 làm reasoning ăn hết content (bài học mục 16);
+nếu vẫn gặp `FINISH_LENGTH` thì retry 1 lần như dưới. Không đo lại prompt ở `low` trong
+thay đổi này (mục 12.1, "Ngoài phạm vi"). Client dùng `LoopBoundClient` như `hyde.py`.
 `condense_detailed()` trả thêm mã lý do loại (`CondenseReason`), dùng cho retry (dưới).
 
 Prompt đã tinh chỉnh qua nhiều vòng đo (bài học mục 16); bản chuẩn là

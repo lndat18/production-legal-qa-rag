@@ -269,7 +269,7 @@ def test_condense_call_parameters_follow_spec() -> None:
     history = [_u("Khoản 1 Điều 113 BLLĐ nói gì?"), _a("Nghỉ hằng năm.")]
     asyncio.run(condenser.condense("Còn Khoản 2?", history))
     call = groq.calls[0]
-    assert call["reasoning_effort"] == "medium"
+    assert call["reasoning_effort"] == "low"
     assert call["temperature"] == 0
     assert call["max_completion_tokens"] == 2048
     assert call["include_reasoning"] is False
