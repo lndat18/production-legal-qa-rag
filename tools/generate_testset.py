@@ -7,10 +7,11 @@ offline không gấp -- chấp nhận chạy lâu (có thể nhiều giờ) do `
 (`pyproject.toml`, không cài khi `uv sync` mặc định) -- luôn chạy script này với
 `--group eval --no-group production` (xem evaluation_spec.md mục 3).
 
-Cách dùng:
+Cách dùng (`uv run` không cờ sẽ re-sync về `default-groups` và kéo `openai` về bản
+production trong khi `ragas` vẫn còn trong venv -- mọi lệnh `uv run` đều cần đủ cờ):
     uv sync --group eval --no-group production
-    uv run tools/generate_testset.py
-    uv run tools/generate_testset.py --reuse-knowledge-graph
+    uv run --group eval --no-group production tools/generate_testset.py
+    uv run --group eval --no-group production tools/generate_testset.py --reuse-knowledge-graph
 """
 
 from __future__ import annotations

@@ -95,9 +95,15 @@ group `eval`:
 
 ```bash
 uv sync --group eval --no-group production   # cài eval, bỏ nhóm pin `production`
-uv run tools/generate_testset.py ...
-uv run pytest tests/test_evaluation.py
+uv run --group eval --no-group production tools/generate_testset.py ...
+uv run --group eval --no-group production pytest tests/test_evaluation.py
 ```
+
+`uv run` KHÔNG kèm cờ sẽ tự re-sync venv theo `default-groups = ["dev", "production"]`:
+kéo `openai` về bản production trong khi `ragas`/`instructor` (cần `jiter<0.15`) vẫn nằm
+trong venv, không có cảnh báo. Vì vậy MỌI lệnh `uv run` liên quan tới `eval` phải mang đủ
+`--group eval --no-group production`, không chỉ lệnh `uv sync` đầu tiên. Xong việc, chạy
+`uv sync` (không cờ) để trả venv về profile mặc định.
 
 `[dependency-groups] production = ["openai>=3.19.0"]` (không chứa package thật, mặc định
 bật cùng `dev`) chỉ tồn tại để buộc `uv` tách resolve `openai` riêng cho nhóm `eval` —
