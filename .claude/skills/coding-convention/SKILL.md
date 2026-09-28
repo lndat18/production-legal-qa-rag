@@ -88,4 +88,18 @@ def split_by_khoan(text: str, max_tokens: int = 192) -> list[str]:
 | CLI                          | `typer`                                                                      | argparse                            |
 | Audit dependency (bảo mật) | `pip-audit`                                                                  | —                                  |
 
-Khi cần chọn thư viện mới cho 1 tác vụ, ưu tiên: (1) đang được cộng đồng lớn dùng trong production 2026, (2) viết bằng Rust/tốc độ cao nếu có lựa chọn tương đương, (3) miễn phí/open-source, (4) tích hợp tốt với stack hiện tại (Pydantic, LangChain, Celery/Dagster).
+Bảng trên là công cụ nền tảng, dùng xuyên suốt cả repo — không đổi theo từng bài toán.
+
+**Ngoài bảng trên, chọn thư viện/kỹ thuật cho một bài toán cụ thể là quyết định mở theo
+từng bài toán, không có danh sách cố định "luôn dùng X cho Y".** Ưu tiên phương án đo được
+là hiệu quả nhất cho đúng bài toán đó — code ngắn gọn hơn, ít bề mặt lỗi hơn, ít
+round-trip/I/O hơn, dễ test hơn — dựa trên bằng chứng cụ thể (tài liệu chính thức,
+benchmark, so sánh số dòng/độ phức tạp thực tế), không phải thói quen hay "nghe quen tên".
+Đồng thời cân nhắc: (1) cộng đồng lớn dùng trong production 2026, (2) hiệu năng cao nếu có
+lựa chọn tương đương, (3) miễn phí/open-source, (4) tích hợp tốt với stack hiện tại
+(Pydantic, Typer,...). Một lựa chọn tốt cho bài toán này (vd. ingest dữ liệu có cấu trúc
+sẵn) có thể không phải lựa chọn tốt cho bài toán khác nhìn giống nó (vd. truy vấn ngôn ngữ
+tự nhiên trên cùng dữ liệu) — đừng suy diễn một quyết định thành rule chung. Quyết định cụ
+thể kèm lý do so sánh ghi trong `*_spec.md` của package liên quan (mục "Công cụ & công
+nghệ"), không phải ở file quy ước chung này — vì lựa chọn tốt nhất có thể khác nhau giữa
+các bài toán và đổi theo thời gian khi công nghệ mới xuất hiện.
