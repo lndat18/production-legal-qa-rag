@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from production_legal_qa_rag.chunking.models import Chunk
 from production_legal_qa_rag.config import (
     EmbeddingSettings,
-    LLMSettings,
+    HydeSettings,
     VectorDBSettings,
 )
 from production_legal_qa_rag.embedding.models import PineconeMetadata
@@ -559,7 +559,7 @@ class _FakeGroq:
 
 
 def _hyde(fake: _FakeGroq, query: str = "hỏi") -> str | None:
-    generator = HydeGenerator(LLMSettings(), fake)  # type: ignore[arg-type]
+    generator = HydeGenerator(HydeSettings(GROQ_API_KEY="g"), fake)  # type: ignore[arg-type]
     return asyncio.run(generator.generate(query))
 
 
@@ -603,7 +603,7 @@ def test_hyde_truyen_dung_tham_so_groq(env: None):
     assert call["reasoning_effort"] == "low"
     assert call["temperature"] == 0.2
     assert call["max_completion_tokens"] == 2048
-    assert call["model"] == LLMSettings().model_name
+    assert call["model"] == "openai/gpt-oss-20b"
 
 
 def test_hyde_query_chua_ngoac_nhon_khong_hong(env: None):

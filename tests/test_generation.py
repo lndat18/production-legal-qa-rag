@@ -674,7 +674,7 @@ def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v8"
+    assert PROMPT_VERSION == "v9"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
@@ -1097,9 +1097,9 @@ async def _collect_next_clients(
     return [generator._next_client() for _ in range(count)]
 
 
-def test_answer_generator_round_robins_between_two_keys_when_key_3_present() -> None:
+def test_answer_generator_round_robins_between_two_keys_when_key_4_present() -> None:
     """Quan sát thật 2026-09-27: dùng hết ~200k TPD Groq chỉ trong 1 phiên test dồn
-    hết vào 1 tài khoản. Khi có ``GROQ_API_KEY_3`` (round_robin_api_key), mỗi lượt
+    hết vào 1 tài khoản. Khi có ``GROQ_API_KEY_4`` (round_robin_api_key), mỗi lượt
     draft/repair phải xoay đều sang tài khoản khác — lượt 1 và lượt 3 (xoay hết 1
     vòng) phải quay lại đúng client cũ (cache theo LoopBoundClient), lượt 2 phải khác
     lượt 1.
@@ -1120,7 +1120,7 @@ def test_answer_generator_round_robins_between_two_keys_when_key_3_present() -> 
 
 
 def test_answer_generator_uses_single_client_when_no_round_robin_key() -> None:
-    """Không có GROQ_API_KEY_3 thì hành vi giữ nguyên như trước — luôn 1 client duy
+    """Không có GROQ_API_KEY_4 thì hành vi giữ nguyên như trước — luôn 1 client duy
     nhất cho mọi lượt draft/repair, không round-robin.
     """
     settings = SimpleNamespace(

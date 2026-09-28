@@ -16,9 +16,11 @@ from production_legal_qa_rag.config import (
     EmbeddingSettings,
     GenerationSettings,
     GuardrailSettings,
+    HydeSettings,
     JudgeSettings,
     LLMSettings,
     RerankerSettings,
+    ThrottleSettings,
     VectorDBSettings,
 )
 
@@ -210,11 +212,11 @@ def test_guardrail_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatc
         GuardrailSettings()  # type: ignore[call-arg]
 
 
-def test_generation_settings_fallback_sang_key_guardrail_khi_key_2_khong_set(
+def test_generation_settings_fallback_sang_key_guardrail_khi_key_3_khong_set(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
-    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_3", raising=False)
     monkeypatch.setattr(
         GenerationSettings,
         "model_config",
@@ -229,19 +231,23 @@ def test_generation_settings_fallback_sang_key_guardrail_khi_key_2_khong_set(
     assert settings.timeout_seconds == 60
 
 
-def test_generation_settings_uu_tien_key_2(monkeypatch: pytest.MonkeyPatch):
+def test_generation_settings_uu_tien_key_3(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
     monkeypatch.setattr(
         GenerationSettings,
         "model_config",
         {**GenerationSettings.model_config, "env_file": None},
     )
 
-    assert GenerationSettings().api_key == "org-b-key"  # type: ignore[call-arg]
+    assert GenerationSettings().api_key == "org-c-key"  # type: ignore[call-arg]
 
 
-def test_generation_settings_doc_key_3_cho_round_robin(monkeypatch: pytest.MonkeyPatch):
+def test_generation_settings_khong_dung_key_2_cua_nhom_nhe(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Key 2 thuộc nhóm bước nhẹ (mục 12.1): generation không được lấy nó."""
     monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
     monkeypatch.delenv("GROQ_API_KEY_3", raising=False)
@@ -251,19 +257,34 @@ def test_generation_settings_doc_key_3_cho_round_robin(monkeypatch: pytest.Monke
         {**GenerationSettings.model_config, "env_file": None},
     )
 
+    assert GenerationSettings().api_key == "org-a-key"  # type: ignore[call-arg]
+
+
+def test_generation_settings_doc_key_4_cho_round_robin(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
+    monkeypatch.delenv("GROQ_API_KEY_4", raising=False)
+    monkeypatch.setattr(
+        GenerationSettings,
+        "model_config",
+        {**GenerationSettings.model_config, "env_file": None},
+    )
+
     assert GenerationSettings().round_robin_api_key is None  # type: ignore[call-arg]
 
-    monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
+    monkeypatch.setenv("GROQ_API_KEY_4", "org-d-key")
 
-    assert GenerationSettings().round_robin_api_key == "org-c-key"  # type: ignore[call-arg]
+    assert GenerationSettings().round_robin_api_key == "org-d-key"  # type: ignore[call-arg]
 
 
-def test_judge_settings_uses_dedicated_key_and_independent_defaults(
+def test_judge_settings_uses_key_2_and_independent_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
-    monkeypatch.setenv("GROQ_JUDGE_API_KEY", "judge-key")
+    monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
+    # GROQ_JUDGE_API_KEY đã bỏ (mục 12.1): có đặt cũng không được ưu tiên.
+    monkeypatch.setenv("GROQ_JUDGE_API_KEY", "legacy-judge-key")
     monkeypatch.setattr(
         JudgeSettings,
         "model_config",
@@ -272,17 +293,16 @@ def test_judge_settings_uses_dedicated_key_and_independent_defaults(
 
     settings = JudgeSettings()  # type: ignore[call-arg]
 
-    assert settings.api_key == "judge-key"
-    assert settings.model_name == "openai/gpt-oss-120b"
+    assert settings.api_key == "org-b-key"
+    assert settings.model_name == "openai/gpt-oss-20b"
     assert settings.max_retries == 1
     assert settings.timeout_seconds == 45
 
 
-def test_judge_settings_falls_back_to_generation_keys(
+def test_judge_settings_falls_back_to_groq_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.delenv("GROQ_JUDGE_API_KEY", raising=False)
-    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
     monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
     monkeypatch.setattr(
         JudgeSettings,
@@ -290,7 +310,94 @@ def test_judge_settings_falls_back_to_generation_keys(
         {**JudgeSettings.model_config, "env_file": None},
     )
 
-    assert JudgeSettings().api_key == "org-b-key"  # type: ignore[call-arg]
+    assert JudgeSettings().api_key == "org-a-key"  # type: ignore[call-arg]
+
+
+# ==========================================================================
+# HydeSettings / ThrottleSettings (conversation_spec.md mục 12.1)
+# ==========================================================================
+
+
+def test_hyde_settings_dung_key_1_va_model_20b(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
+    monkeypatch.setattr(
+        HydeSettings, "model_config", {**HydeSettings.model_config, "env_file": None}
+    )
+
+    settings = HydeSettings()  # type: ignore[call-arg]
+
+    assert settings.api_key == "org-a-key"
+    assert settings.model_name == "openai/gpt-oss-20b"
+    assert settings.max_retries == 2
+    assert settings.timeout_seconds == 30
+
+
+def test_hyde_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(
+        HydeSettings, "model_config", {**HydeSettings.model_config, "env_file": None}
+    )
+
+    with pytest.raises(ValidationError):
+        HydeSettings()  # type: ignore[call-arg]
+
+
+def test_throttle_settings_gia_tri_mac_dinh(monkeypatch: pytest.MonkeyPatch):
+    for name in (
+        "TPM_LIMIT",
+        "RPM_LIMIT",
+        "SAFETY_FACTOR",
+        "CHARS_PER_TOKEN",
+        "CONDENSE_COMPLETION_TOKENS",
+        "HYDE_COMPLETION_TOKENS",
+        "JUDGE_COMPLETION_TOKENS",
+        "OPTIONAL_STEP_MAX_WAIT_SECONDS",
+    ):
+        monkeypatch.delenv(f"THROTTLE_{name}", raising=False)
+    monkeypatch.setattr(
+        ThrottleSettings,
+        "model_config",
+        {**ThrottleSettings.model_config, "env_file": None},
+    )
+
+    settings = ThrottleSettings()
+
+    assert settings.tpm_limit == 8000
+    assert settings.rpm_limit == 30
+    assert settings.safety_factor == 0.9
+    assert settings.optional_step_max_wait_seconds == 8.0
+
+
+def test_throttle_settings_doc_env_prefix_throttle(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("THROTTLE_TPM_LIMIT", "1234")
+    monkeypatch.setenv("THROTTLE_RPM_LIMIT", "5")
+    monkeypatch.setattr(
+        ThrottleSettings,
+        "model_config",
+        {**ThrottleSettings.model_config, "env_file": None},
+    )
+
+    settings = ThrottleSettings()
+
+    assert settings.tpm_limit == 1234
+    assert settings.rpm_limit == 5
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("tpm_limit", 0),
+        ("rpm_limit", 0),
+        ("safety_factor", 0),
+        ("safety_factor", 1.5),
+        ("chars_per_token", 0),
+        ("optional_step_max_wait_seconds", -1),
+    ],
+)
+def test_throttle_settings_tu_choi_gia_tri_khong_hop_le(field: str, value: float):
+    with pytest.raises(ValidationError):
+        ThrottleSettings.model_validate({field: value})
 
 
 # ==========================================================================

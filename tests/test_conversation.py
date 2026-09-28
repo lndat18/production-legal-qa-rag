@@ -47,6 +47,7 @@ from production_legal_qa_rag.generation.models import (
     StatusEvent,
     TokenEvent,
 )
+from production_legal_qa_rag.retrieval.llm_throttle import TokenWindowThrottle
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 
@@ -178,7 +179,10 @@ def _condenser(
 ) -> tuple[QueryCondenser, _FakeGroq]:
     fake = _FakeGroq(content, finish_reason)
     settings = CondenseSettings(GROQ_API_KEY="k")
-    return QueryCondenser(settings, fake), fake  # type: ignore[arg-type]
+    # Throttle riêng, rộng: test này gọi condense nhiều lần trong một hàm nên không
+    # được phụ thuộc ngân sách bucket dùng chung của tiến trình.
+    throttle = TokenWindowThrottle(tpm_limit=10**9, rpm_limit=10**6)
+    return QueryCondenser(settings, fake, throttle=throttle), fake  # type: ignore[arg-type]
 
 
 def test_condense_uses_model_and_returns_rewrite() -> None:
