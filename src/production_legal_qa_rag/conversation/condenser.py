@@ -95,7 +95,7 @@ _ROLE_LABELS: Final = {"user": "Người dùng", "assistant": "Trợ lý"}
 
 # `reasoning_effort` là tham số riêng của họ gpt-oss; đổi sang model khác không
 # hỗ trợ thì lời gọi lỗi và condense degrade về câu gốc.
-_REASONING_EFFORT: Final = "medium"
+_REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.0
 _MAX_COMPLETION_TOKENS: Final = 2048
 _INCLUDE_REASONING: Final = False
