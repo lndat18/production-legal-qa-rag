@@ -29,10 +29,12 @@ from langchain_core.documents import Document
 from langchain_core.prompt_values import StringPromptValue
 from openai import (
     APIConnectionError,
+    APIStatusError,
     APITimeoutError,
     AuthenticationError,
     BadRequestError,
     InternalServerError,
+    PermissionDeniedError,
     RateLimitError,
 )
 from ragas.prompt.mixin import PromptMixin
@@ -709,3 +711,161 @@ def test_build_unit_runner_thieu_key_chi_bao_ten_bien_khong_lo_gia_tri(
     assert "gsk_BI_MAT" not in message
     assert excinfo.value.__cause__ is None
     assert excinfo.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    ("cls", "status"),
+    [
+        (AuthenticationError, 401),
+        (PermissionDeniedError, 403),
+        (APIStatusError, 413),  # tất định
+    ],
+)
+def test_llm_loi_tat_dinh_401_403_413_khong_bi_ragas_thu_lai(
+    monkeypatch: pytest.MonkeyPatch, cls: type[Any], status: int
+):
+    runner = _runner(monkeypatch)
+    _raise_from_all_clients(runner, lambda: _status_error(cls, status))
+
+    with pytest.raises(cls):
+        _ask(runner)
+
+    assert sum(runner.router.call_counts) == 1
+
+
+def _connection_error() -> Any:
+    return APIConnectionError(
+        request=httpx.Request("POST", "https://api.groq.com/openai/v1")
+    )
+
+
+def _timeout_error() -> Any:
+    return APITimeoutError(
+        request=httpx.Request("POST", "https://api.groq.com/openai/v1")
+    )
+
+
+@pytest.mark.parametrize(
+    "error_factory",
+    [
+        lambda: _status_error(InternalServerError, 500),
+        lambda: _status_error(InternalServerError, 503),
+        _connection_error,
+        _timeout_error,
+    ],
+    ids=["500", "503", "loi-ket-noi", "timeout"],
+)
+def test_llm_loi_tam_thoi_5xx_ket_noi_timeout_bi_thu_lai_dung_max_retries_lan(
+    monkeypatch: pytest.MonkeyPatch, error_factory: Any
+):
+    runner = _runner(monkeypatch)
+    _raise_from_all_clients(runner, error_factory)
+
+    with pytest.raises((InternalServerError, APIConnectionError)):
+        _ask(runner)
+
+    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES
+
+
+# ==========================================================================
+# KG lưu ngay sau khi dựng: lần sau tái dùng cho đơn vị dở (mục 4.5, 8)
+# ==========================================================================
+
+
+def test_run_unit_loi_o_buoc_sinh_cau_thi_lan_sau_tai_dung_kg_khong_dung_lai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    kg_path = tmp_path / "knowledge_graph" / "A__01.json"
+    first = _patch_generation(
+        monkeypatch, runner, samples=[], error=RuntimeError("429")
+    )
+    with pytest.raises(RuntimeError):
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
+        )
+    saved_after_failure = kg_path.read_text("utf-8")
+    reloaded = _FakeGraph()
+    monkeypatch.setattr(KnowledgeGraph, "load", staticmethod(lambda _p: reloaded))
+    second = _patch_generation(monkeypatch, runner, samples=[_sample(1), _sample(2)])
+
+    result = runner.run_unit(
+        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
+    )
+
+    assert first["built"] == 1
+    assert second["built"] == 0  # không tốn lại 30-160K token dựng KG
+    assert second["kg_used"] is reloaded
+    assert [c.user_input for c in result.cases] == ["Câu hỏi 1?", "Câu hỏi 2?"]
+    assert kg_path.read_text("utf-8") == saved_after_failure
+
+
+def _document_graph(page_content: str) -> KnowledgeGraph:
+    return KnowledgeGraph(
+        nodes=[
+            Node(
+                type=NodeType.DOCUMENT,
+                properties={
+                    "page_content": page_content,
+                    "document_metadata": {"source": "A.md"},
+                },
+            )
+        ]
+    )
+
+
+def test_luu_kg_nguyen_tu_roi_nap_lai_that_thi_khop_van_ban_moi_duoc_tai_dung(
+    tmp_path: Path,
+):
+    unit = _unit()
+    path = tmp_path / "knowledge_graph" / "A__01.json"
+
+    ragas_runner._save_graph_atomic(_document_graph(unit.text), path)
+    same = ragas_runner._load_matching_graph(path, unit)
+    edited = ragas_runner._load_matching_graph(
+        path, unit.model_copy(update={"text": unit.text + " sửa"})
+    )
+
+    assert list(path.parent.glob("*.tmp")) == []
+    assert same is not None
+    assert [n.properties["page_content"] for n in same.nodes] == [unit.text]
+    assert edited is None  # văn bản đơn vị đã đổi -> phải dựng lại
+
+
+def test_nap_kg_khong_co_node_document_thi_khong_tai_dung(tmp_path: Path):
+    unit = _unit()
+    path = tmp_path / "A__01.json"
+    graph = KnowledgeGraph(
+        nodes=[Node(type=NodeType.CHUNK, properties={"page_content": unit.text})]
+    )
+    ragas_runner._save_graph_atomic(graph, path)
+
+    assert ragas_runner._load_matching_graph(path, unit) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "{hỏng",  # JSON cắt dở
+        "",
+        "[]",  # JSON hợp lệ nhưng sai hình dạng
+        "{}",
+        '{"nodes": []}',  # thiếu "relationships"
+        '{"nodes": [{"properties": 5}], "relationships": []}',
+    ],
+    ids=["cat-do", "rong", "mang", "doi-tuong-rong", "thieu-relationships", "node-sai"],
+)
+def test_file_kg_hong_bat_ke_dang_hong_thi_dung_lai_thay_vi_crash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, content: str
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    kg_path = tmp_path / "A__01.json"
+    kg_path.write_text(content, encoding="utf-8")
+
+    runner.run_unit(
+        _unit(), QuestionQuota(single_hop=1), kg_path, reuse_knowledge_graph=True
+    )
+
+    assert seen["built"] == 1
+    assert kg_path.read_text("utf-8") == "{}"  # đã ghi đè bằng KG mới dựng

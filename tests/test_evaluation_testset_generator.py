@@ -555,6 +555,51 @@ def test_cli_append_khong_kem_only_thoat_ma_2(dirs: tuple[Path, Path]):
     assert "--only" in result.output
 
 
+def test_cli_dry_run_append_khong_kem_only_cung_thoat_ma_2_con_co_only_thi_in_ke_hoach(
+    dirs: tuple[Path, Path],
+):
+    from tools import generate_testset
+
+    markdown_dir, output_dir = dirs
+    base = ["--markdown-dir", str(markdown_dir), "--output-dir", str(output_dir)]
+
+    without_only = CliRunner().invoke(
+        generate_testset.app, ["generate", "--dry-run", "--append", *base]
+    )
+    with_only = CliRunner().invoke(
+        generate_testset.app,
+        ["generate", "--dry-run", "--append", "--only", "A.md#2", *base],
+    )
+
+    assert without_only.exit_code == 2
+    assert "--only" in without_only.output
+    assert "Lỗi đầu vào" in without_only.output
+    assert with_only.exit_code == 0, with_only.output
+    assert "A.md#2" in with_only.output
+    assert not output_dir.exists()  # dry-run không tạo gì
+
+
+def test_append_khong_kem_only_bi_chan_du_progress_da_co_khong_chay_lai_50_don_vi(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    tg.generate_testset(markdown_dir, output_dir, unit_runner=FakeUnitRunner())
+    raw_before = (output_dir / tg.RAW_TESTSET_FILENAME).read_bytes()
+    runner = FakeUnitRunner()
+
+    with pytest.raises(tg.EvalInputError, match="--only"):
+        tg.generate_testset(
+            markdown_dir,
+            output_dir,
+            append=True,
+            reuse_knowledge_graph=True,
+            unit_runner=runner,
+        )
+
+    assert runner.calls == []
+    assert (output_dir / tg.RAW_TESTSET_FILENAME).read_bytes() == raw_before
+
+
 def test_thieu_thu_muc_markdown_la_loi_dau_vao_thoat_ma_2(tmp_path: Path):
     from tools import generate_testset
 
