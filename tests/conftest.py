@@ -27,8 +27,13 @@ def _clear_throttle_buckets() -> None:
     có gì để xoá.
     """
     module = sys.modules.get("production_legal_qa_rag.retrieval.llm_throttle")
-    if module is not None:
-        module._get_bucket_throttle.cache_clear()
+    if module is None:
+        return
+    # Test có thể đang thay `_get_bucket_throttle` bằng spy (monkeypatch chỉ hoàn tác
+    # sau teardown của fixture này), spy không có `cache_clear`.
+    cache_clear = getattr(module._get_bucket_throttle, "cache_clear", None)
+    if cache_clear is not None:
+        cache_clear()
 
 
 @pytest.fixture(autouse=True)
