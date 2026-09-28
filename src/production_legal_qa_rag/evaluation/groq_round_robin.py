@@ -1,4 +1,4 @@
-"""Round-robin 3 `ChatOpenAI` (Groq) độc lập tài khoản cho `generator_llm`.
+"""Round-robin 6 `ChatOpenAI` (Groq) độc lập tài khoản cho `generator_llm`.
 
 Pattern MỚI trong repo (evaluation_spec.md mục 3.1), khác hẳn cách dùng nhiều
 key Groq hiện có ở `GenerationSettings`/`JudgeSettings`/`formatting/llm_client.py`
@@ -44,21 +44,35 @@ class GroqRoundRobinChatModel(BaseChatModel):
     lần (evaluation_spec.md mục 3.1, mục 10).
     """
 
+    # Phase 1 dùng đúng 6 client, mỗi client gắn 1 key cố định.
     clients: list[ChatOpenAI]
 
-    _cycle: Iterator[ChatOpenAI] = PrivateAttr()
+    _cycle: Iterator[int] = PrivateAttr()
+    _call_counts: list[int] = PrivateAttr()
 
     def model_post_init(self, context: Any, /) -> None:
         if not self.clients:
             raise ValueError("GroqRoundRobinChatModel cần ít nhất 1 client.")
-        self._cycle = itertools.cycle(self.clients)
+        self._cycle = itertools.cycle(range(len(self.clients)))
+        self._call_counts = [0] * len(self.clients)
 
     @property
     def _llm_type(self) -> str:
         return "groq-round-robin"
 
+    @property
+    def call_counts(self) -> list[int]:
+        """Số lượt gọi (kể cả lượt bị 429 rồi chuyển client) đã gửi tới từng client.
+
+        Dùng để ghi `llm_calls` theo đơn vị vào `generation_progress.json` và để
+        kiểm tra tải có rải đều qua các tài khoản (evaluation_spec.md mục 4.5, 9.3).
+        """
+        return list(self._call_counts)
+
     def _next_client(self) -> ChatOpenAI:
-        return next(self._cycle)
+        index = next(self._cycle)
+        self._call_counts[index] += 1
+        return self.clients[index]
 
     def _generate(
         self,

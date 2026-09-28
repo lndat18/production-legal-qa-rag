@@ -56,6 +56,8 @@ dev = [
 eval = [
     "langchain-community<0.4",
     "ragas>=0.4.3",
+    # ragas import rapidfuzz lúc dựng OverlapScoreBuilder nhưng không khai báo là dependency.
+    "rapidfuzz",
 ]
 # Nhóm không chứa package thật, chỉ ràng buộc version `openai` khi KHÔNG cài `eval`.
 # Lý do: `ragas`/`instructor` (nhóm `eval`) ép `jiter<0.15`, kéo `openai` xuống bản cũ

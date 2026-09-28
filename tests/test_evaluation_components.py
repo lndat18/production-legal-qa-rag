@@ -56,6 +56,48 @@ def test_golden_test_case_giu_synthesizer_name_khi_co():
     assert case.synthesizer_name == "single_hop_specific_query_synthesizer"
 
 
+def test_golden_test_case_giu_nguon_van_ban_va_chuong_khi_co():
+    case = GoldenTestCase(
+        user_input="Câu hỏi",
+        reference="Đáp án",
+        reference_contexts=["Ngữ cảnh"],
+        source_document="Luật bảo hiểm y tế.md",
+        source_section="Chương IX + Chương X",
+    )
+
+    assert case.source_document == "Luật bảo hiểm y tế.md"
+    assert case.source_section == "Chương IX + Chương X"
+    assert (
+        GoldenTestCase(
+            user_input="a", reference="b", reference_contexts=["c"]
+        ).source_document
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({}, []),
+        ({"user_input": "  "}, ["user_input"]),
+        ({"reference": ""}, ["reference"]),
+        ({"reference_contexts": []}, ["reference_contexts"]),
+        ({"reference_contexts": [" ", ""]}, ["reference_contexts"]),
+    ],
+)
+def test_golden_test_case_empty_required_fields(
+    kwargs: dict[str, object], expected: list[str]
+):
+    fields: dict[str, object] = {
+        "user_input": "Câu hỏi",
+        "reference": "Đáp án",
+        "reference_contexts": ["Ngữ cảnh"],
+    }
+    fields.update(kwargs)
+
+    assert GoldenTestCase(**fields).empty_required_fields() == expected  # type: ignore[arg-type]
+
+
 def test_golden_test_case_thieu_field_bat_buoc_bi_tu_choi():
     with pytest.raises(ValidationError):
         GoldenTestCase(user_input="Câu hỏi")  # type: ignore[call-arg]
@@ -294,6 +336,24 @@ def test_generate_khong_bat_loi_khac_rate_limit():
         router._generate(messages=[])
 
 
+def test_call_counts_dem_ca_luot_bi_429_roi_chuyen_client():
+    client_a = _fake_client(name="a")
+    client_b = _fake_client(name="b")
+
+    def _generate_a(messages: object, **kwargs: object) -> ChatResult:
+        raise _rate_limit_error()
+
+    client_a._generate = _generate_a  # type: ignore[method-assign]
+    client_b._generate = lambda messages, **kwargs: _chat_result("ok")  # type: ignore[method-assign]
+    router = GroqRoundRobinChatModel(clients=[client_a, client_b])
+
+    router._generate(messages=[])
+    router._generate(messages=[])
+
+    # Lượt 1: a (429) -> b; lượt 2 bắt đầu từ a (429) -> b.
+    assert router.call_counts == [2, 2]
+
+
 def test_router_bao_loi_khi_khong_co_client_nao():
     with pytest.raises(ValueError, match="ít nhất 1 client"):
         GroqRoundRobinChatModel(clients=[])
@@ -305,39 +365,49 @@ def test_router_llm_type_co_ten_rieng():
 
 
 # ==========================================================================
-# config.py -- TestsetGeneratorSettings (mục 6): cả 3 key BẮT BUỘC
+# config.py -- TestsetGeneratorSettings (mục 6): cả 6 key BẮT BUỘC
 # ==========================================================================
 
+_GROQ_KEY_ENVS = [
+    "GROQ_API_KEY",
+    "GROQ_API_KEY_2",
+    "GROQ_API_KEY_3",
+    "GROQ_API_KEY_4",
+    "GROQ_API_KEY_5",
+    "GROQ_API_KEY_6",
+]
 
-def test_testset_generator_settings_doc_dung_ca_3_key_va_default(
+
+def _set_all_groq_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    for position, env_name in enumerate(_GROQ_KEY_ENVS, start=1):
+        monkeypatch.setenv(env_name, f"key-{position}")
+
+
+def test_testset_generator_settings_doc_dung_ca_6_key_va_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "key-1")
-    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
-    monkeypatch.setenv("GROQ_API_KEY_3", "key-3")
+    _set_all_groq_keys(monkeypatch)
 
     settings = TestsetGeneratorSettings()  # type: ignore[call-arg]
 
-    assert (settings.api_key, settings.api_key_2, settings.api_key_3) == (
-        "key-1",
-        "key-2",
-        "key-3",
-    )
+    assert (
+        settings.api_key,
+        settings.api_key_2,
+        settings.api_key_3,
+        settings.api_key_4,
+        settings.api_key_5,
+        settings.api_key_6,
+    ) == ("key-1", "key-2", "key-3", "key-4", "key-5", "key-6")
     assert settings.model_name == "openai/gpt-oss-120b"
     assert settings.max_retries == 2
     assert settings.timeout_seconds == 60
 
 
-@pytest.mark.parametrize(
-    "missing_env",
-    ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"],
-)
+@pytest.mark.parametrize("missing_env", _GROQ_KEY_ENVS)
 def test_testset_generator_settings_bao_loi_khi_thieu_bat_ky_key_nao(
     monkeypatch: pytest.MonkeyPatch, missing_env: str
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "key-1")
-    monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
-    monkeypatch.setenv("GROQ_API_KEY_3", "key-3")
+    _set_all_groq_keys(monkeypatch)
     monkeypatch.delenv(missing_env, raising=False)
     monkeypatch.setattr(
         TestsetGeneratorSettings,

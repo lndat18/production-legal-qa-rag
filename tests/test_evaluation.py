@@ -1,23 +1,18 @@
-"""Unit test cho package `evaluation/` — điều phối `ragas` (Phase 1 sinh golden testset).
+"""Unit test cho `evaluation/ragas_runner.py` — phần chạm `ragas` (Phase 1 sinh golden testset).
 
-Mọi interaction Groq/HuggingFace/`ragas.testset.TestsetGenerator` trong file
-này dùng fake đã bị monkeypatch — không gọi dịch vụ ngoài, không build
-`KnowledgeGraph`/sinh câu hỏi thật (evaluation_spec.md mục 8, 10). Chữ ký thật
-của `TestsetGenerator`/`generate_with_langchain_docs` đã được xác nhận trực
-tiếp trên `ragas==0.4.3` cài thật bằng `inspect.signature` lúc implement
-(mục 10.4), không phải qua test này.
+Mọi interaction Groq/HuggingFace/`TestsetGenerator.generate` dùng fake hoặc monkeypatch —
+không gọi dịch vụ ngoài, không dựng KG/sinh câu hỏi thật (evaluation_spec.md mục 4.3, 8).
+Chữ ký `prepare_combinations` của 3 synthesizer và `calculate_split_values` là của
+`ragas==0.4.3` cài thật (test gọi thẳng code ragas để phát hiện khi nâng version).
 
-`ragas` chỉ nằm trong dependency-group `eval` (`uv sync` mặc định — venv
-production — không cài, xem [dependency-groups] trong `pyproject.toml`), nên
-toàn bộ module này được skip nếu chạy trên venv không có `eval`
-(`uv run --group eval --no-group production pytest` để chạy thật). Các test
-không cần `ragas` (models, corpus_loader, embeddings_adapter, groq_round_robin,
-`TestsetGeneratorSettings`) nằm ở `test_evaluation_components.py` và luôn chạy.
+`ragas` chỉ nằm trong dependency-group `eval` (venv mặc định không cài, xem
+`[dependency-groups]` trong `pyproject.toml`), nên module này được skip nếu thiếu
+(`uv run --group eval --no-group production pytest` để chạy thật). Logic điều phối thuần
+(thứ tự, progress, finalize, CLI) nằm ở `test_evaluation_testset_generator.py` và luôn chạy.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -28,45 +23,242 @@ pytest.importorskip(
     reason="ragas chỉ có trong dependency-group `eval` (`uv sync --group eval`)",
 )
 
-from typer.testing import CliRunner
+from langchain_core.documents import Document
+from ragas.testset.graph import KnowledgeGraph, Node, NodeType
+from ragas.testset.persona import Persona
+from ragas.testset.synthesizers.base import QueryStyle
+from ragas.testset.synthesizers.utils import calculate_split_values
+from ragas.testset.transforms import default_transforms
 
 from production_legal_qa_rag.config import EmbeddingSettings, TestsetGeneratorSettings
-from production_legal_qa_rag.evaluation import testset_generator
+from production_legal_qa_rag.evaluation import ragas_runner, testset_generator
 from production_legal_qa_rag.evaluation.embeddings_adapter import RagasEmbeddingsAdapter
 from production_legal_qa_rag.evaluation.groq_round_robin import GroqRoundRobinChatModel
-from production_legal_qa_rag.evaluation.models import GoldenTestCase
-
-# ==========================================================================
-# testset_generator.py -- điều phối TestsetGenerator (mục 4, 8, 9); toàn bộ
-# tương tác ragas.testset.TestsetGenerator được fake, không build KG/sinh câu
-# hỏi thật.
-# ==========================================================================
+from production_legal_qa_rag.evaluation.testset_generator import QuestionQuota
+from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit
 
 
-def _testset_settings() -> TestsetGeneratorSettings:
+def _settings(**overrides: Any) -> TestsetGeneratorSettings:
     return TestsetGeneratorSettings(  # type: ignore[call-arg]
-        GROQ_API_KEY="key-1", GROQ_API_KEY_2="key-2", GROQ_API_KEY_3="key-3"
+        GROQ_API_KEY="key-1",
+        GROQ_API_KEY_2="key-2",
+        GROQ_API_KEY_3="key-3",
+        GROQ_API_KEY_4="key-4",
+        GROQ_API_KEY_5="key-5",
+        GROQ_API_KEY_6="key-6",
+        **overrides,
     )
 
 
-def _sample(index: int) -> dict[str, Any]:
-    return {
-        "user_input": f"Câu hỏi {index}?",
-        "reference": f"Đáp án {index}.",
-        "reference_contexts": [f"Ngữ cảnh {index}"],
-        "synthesizer_name": "single_hop_specific_query_synthesizer",
+def _runner(monkeypatch: pytest.MonkeyPatch) -> ragas_runner.RagasUnitRunner:
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+    adapter = RagasEmbeddingsAdapter(EmbeddingSettings(), client=object())  # type: ignore[arg-type]
+    return ragas_runner.RagasUnitRunner(_settings(), embeddings_adapter=adapter)
+
+
+def _unit() -> EvalUnit:
+    return EvalUnit(
+        source_document="A.md",
+        index=1,
+        title="Chương I",
+        text="## Chương I. X\n\n#### Điều 1. Y\n\n" + "nội dung " * 500,
+    )
+
+
+# ==========================================================================
+# Client Groq, transforms
+# ==========================================================================
+
+
+def test_build_groq_clients_tao_dung_6_client_doc_lap_tai_khoan():
+    clients = ragas_runner._build_groq_clients(_settings())
+
+    assert [client.openai_api_key.get_secret_value() for client in clients] == [
+        f"key-{n}" for n in range(1, 7)
+    ]
+    assert all(client.model_name == "openai/gpt-oss-120b" for client in clients)
+
+
+def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
+    clients = ragas_runner._build_groq_clients(
+        _settings(max_retries=5, timeout_seconds=90)
+    )
+
+    assert all(
+        client.openai_api_base == ragas_runner._GROQ_OPENAI_BASE_URL
+        for client in clients
+    )
+    assert all(client.max_retries == 5 for client in clients)
+    assert all(client.request_timeout == 90.0 for client in clients)
+
+
+def test_runner_wire_dung_llm_round_robin_6_key_embeddings_va_max_workers(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+
+    assert isinstance(runner.llm.langchain_llm, GroqRoundRobinChatModel)
+    assert len(runner.llm.langchain_llm.clients) == 6
+    assert runner.run_config.max_workers == ragas_runner.MAX_WORKERS == 4
+
+
+def test_cap_token_limit_ha_dung_4_extractor_cua_transforms_mac_dinh(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    unit = _unit()
+    document = Document(
+        page_content=unit.text, metadata={"source": unit.source_document}
+    )
+    transforms = default_transforms(
+        documents=[document], llm=runner.llm, embedding_model=runner.embeddings
+    )
+
+    changed = ragas_runner.cap_token_limit(transforms, 4000)
+
+    assert changed == 4  # số đã đo ở pilot (mục 4.3)
+
+
+def test_cap_token_limit_bo_qua_transform_khong_phai_extractor():
+    assert ragas_runner.cap_token_limit([object(), []], 4000) == 0
+
+
+def test_build_unit_runner_dung_runner_ragas_that(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
+
+    runner = testset_generator.build_unit_runner(_settings())
+
+    assert isinstance(runner, ragas_runner.RagasUnitRunner)
+
+
+# ==========================================================================
+# Ép PERFECT_GRAMMAR cho CẢ 3 synthesizer (mục 4.3): gọi prepare_combinations thật của ragas
+# ==========================================================================
+
+_PERSONAS = [Persona(name="An", role_description="Người lao động")]
+
+
+def _node(**properties: Any) -> Node:
+    return Node(type=NodeType.CHUNK, properties={"page_content": "x", **properties})
+
+
+def test_single_hop_ep_perfect_grammar(monkeypatch: pytest.MonkeyPatch):
+    runner = _runner(monkeypatch)
+    synthesizer = ragas_runner.CleanSingleHopSynthesizer(llm=runner.llm)
+
+    combinations = synthesizer.prepare_combinations(
+        _node(), ["thử việc"], _PERSONAS, {"An": ["thử việc"]}
+    )
+
+    assert combinations
+    assert all(c["styles"] == [QueryStyle.PERFECT_GRAMMAR] for c in combinations)
+    assert all(
+        c["personas"] == _PERSONAS for c in combinations
+    )  # phần còn lại giữ nguyên
+
+
+@pytest.mark.parametrize(
+    ("synthesizer_class", "property_name"),
+    [
+        (ragas_runner.CleanMultiHopAbstractSynthesizer, "themes"),
+        (ragas_runner.CleanMultiHopSpecificSynthesizer, "entities"),
+    ],
+)
+def test_multi_hop_ep_perfect_grammar_voi_chu_ky_keyword_cua_ragas(
+    monkeypatch: pytest.MonkeyPatch, synthesizer_class: type, property_name: str
+):
+    runner = _runner(monkeypatch)
+    synthesizer = synthesizer_class(llm=runner.llm)
+    nodes = [
+        _node(**{property_name: ["thử việc"]}),
+        _node(**{property_name: ["lương"]}),
+    ]
+
+    combinations = synthesizer.prepare_combinations(
+        nodes,
+        [["thử việc", "lương"]],
+        personas=_PERSONAS,
+        persona_item_mapping={"An": ["thử việc"]},
+        property_name=property_name,
+    )
+
+    assert len(combinations) == 1
+    assert combinations[0]["styles"] == [QueryStyle.PERFECT_GRAMMAR]
+    assert len(combinations[0]["nodes"]) == 2
+
+
+# ==========================================================================
+# query_distribution: trọng số cho ra ĐÚNG số câu từng loại theo ragas
+# ==========================================================================
+
+
+class _FakeSynthesizer:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        (4, 1, 1),
+        (192, 24, 24),
+        (3, 0, 2),
+        (1, 1, 0),
+        (7, 3, 3),
+        (17, 2, 1),
+        (0, 0, 5),
+    ],
+)
+def test_query_distribution_cho_ra_dung_so_cau_theo_calculate_split_values(
+    monkeypatch: pytest.MonkeyPatch, counts: tuple[int, int, int]
+):
+    runner = _runner(monkeypatch)
+    runner._synthesizers = {
+        "single_hop": _FakeSynthesizer("single_hop"),  # type: ignore[dict-item]
+        "abstract": _FakeSynthesizer("abstract"),  # type: ignore[dict-item]
+        "specific": _FakeSynthesizer("specific"),  # type: ignore[dict-item]
     }
+    monkeypatch.setattr(ragas_runner, "_has_clusters", lambda *_args: True)
+    quota = QuestionQuota(single_hop=counts[0], abstract=counts[1], specific=counts[2])
+
+    distribution, total = runner._query_distribution(KnowledgeGraph(), quota)
+
+    assert total == sum(counts)
+    splits, _ = calculate_split_values([prob for _, prob in distribution], total)
+    assert splits == [n for n in counts if n > 0]
+    assert [s.name for s, _ in distribution] == [  # type: ignore[attr-defined]
+        kind
+        for kind, n in zip(("single_hop", "abstract", "specific"), counts, strict=True)
+        if n > 0
+    ]
 
 
-class _FakeKnowledgeGraph:
-    """Ghi lại đường dẫn `save()` được gọi để kiểm tra thay vì I/O ragas thật."""
+def test_query_distribution_bo_loai_khong_co_cum_va_khong_bu(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    runner._synthesizers = {
+        "single_hop": _FakeSynthesizer("single_hop"),  # type: ignore[dict-item]
+        "abstract": _FakeSynthesizer("abstract"),  # type: ignore[dict-item]
+        "specific": _FakeSynthesizer("specific"),  # type: ignore[dict-item]
+    }
+    monkeypatch.setattr(
+        ragas_runner,
+        "_has_clusters",
+        lambda synthesizer, *_args: synthesizer.name != "abstract",
+    )
 
-    def __init__(self, marker: str = "built") -> None:
-        self.marker = marker
-        self.saved_to: Path | None = None
+    distribution, total = runner._query_distribution(
+        KnowledgeGraph(), QuestionQuota(single_hop=5, abstract=2, specific=1)
+    )
 
-    def save(self, path: Path) -> None:
-        self.saved_to = Path(path)
+    assert total == 6
+    assert [s.name for s, _ in distribution] == ["single_hop", "specific"]  # type: ignore[attr-defined]
+
+
+# ==========================================================================
+# run_unit: KG chỉ lưu khi sinh xong, tái dùng KG, đếm lượt gọi
+# ==========================================================================
 
 
 class _FakeTestset:
@@ -77,276 +269,194 @@ class _FakeTestset:
         return self._samples
 
 
-class _FakeTestsetGenerator:
-    """Fake thay cho `ragas.testset.TestsetGenerator` -- không gọi Groq/HF thật."""
-
-    def __init__(
-        self,
-        samples: list[dict[str, Any]],
-        *,
-        error: Exception | None = None,
-    ) -> None:
-        self.knowledge_graph: Any = _FakeKnowledgeGraph()
-        self._samples = samples
-        self._error = error
-        self.generate_with_langchain_docs_calls: list[tuple[Any, int]] = []
-        self.generate_calls: list[int] = []
-
-    def generate_with_langchain_docs(
-        self, documents: Any, testset_size: int
-    ) -> _FakeTestset:
-        self.generate_with_langchain_docs_calls.append((documents, testset_size))
-        if self._error is not None:
-            raise self._error
-        return _FakeTestset(self._samples)
-
-    def generate(self, testset_size: int) -> _FakeTestset:
-        self.generate_calls.append(testset_size)
-        if self._error is not None:
-            raise self._error
-        return _FakeTestset(self._samples)
+def _sample(index: int, **overrides: Any) -> dict[str, Any]:
+    sample = {
+        "user_input": f"Câu hỏi {index}?",
+        "reference": f"Đáp án {index}.",
+        "reference_contexts": [f"Ngữ cảnh {index}"],
+        "synthesizer_name": "single_hop_specific_query_synthesizer",
+    }
+    sample.update(overrides)
+    return sample
 
 
-def test_build_groq_clients_tao_dung_3_client_doc_lap_tai_khoan():
-    clients = testset_generator._build_groq_clients(_testset_settings())
+class _FakeGraph:
+    saved_to: Path | None = None
 
-    assert [client.openai_api_key.get_secret_value() for client in clients] == [
-        "key-1",
-        "key-2",
-        "key-3",
-    ]
-    assert all(client.model_name == "openai/gpt-oss-120b" for client in clients)
+    def save(self, path: Path) -> None:
+        self.saved_to = Path(path)
+        Path(path).write_text("{}", encoding="utf-8")
 
 
-def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
-    settings = TestsetGeneratorSettings(  # type: ignore[call-arg]
-        GROQ_API_KEY="key-1",
-        GROQ_API_KEY_2="key-2",
-        GROQ_API_KEY_3="key-3",
-        max_retries=5,
-        timeout_seconds=90,
-    )
-
-    clients = testset_generator._build_groq_clients(settings)
-
-    assert all(
-        client.openai_api_base == testset_generator._GROQ_OPENAI_BASE_URL
-        for client in clients
-    )
-    assert all(client.max_retries == 5 for client in clients)
-    assert all(client.request_timeout == 90.0 for client in clients)
-
-
-def test_build_testset_generator_wire_dung_llm_va_embeddings(
+def _patch_generation(
     monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("HF_TOKEN", "hf-test-token")
-    adapter = RagasEmbeddingsAdapter(EmbeddingSettings(), client=object())  # type: ignore[arg-type]
+    runner: ragas_runner.RagasUnitRunner,
+    *,
+    samples: list[dict[str, Any]],
+    error: Exception | None = None,
+) -> dict[str, Any]:
+    """Thay dựng KG + `TestsetGenerator` bằng fake; trả dict ghi lại các lần gọi."""
+    seen: dict[str, Any] = {"built": 0, "generate_calls": []}
+    graph = _FakeGraph()
 
-    generator = testset_generator.build_testset_generator(
-        _testset_settings(), embeddings_adapter=adapter
-    )
+    def _build(unit: EvalUnit) -> _FakeGraph:
+        seen["built"] += 1
+        return graph
 
-    assert isinstance(generator.llm.langchain_llm, GroqRoundRobinChatModel)
-    assert len(generator.llm.langchain_llm.clients) == 3
-    assert generator.embedding_model.embeddings is adapter
+    class _FakeGenerator:
+        def __init__(self, **_kwargs: Any) -> None:
+            self.knowledge_graph: Any = None
+
+        def generate(self, **kwargs: Any) -> _FakeTestset:
+            seen["generate_calls"].append(kwargs)
+            seen["kg_used"] = self.knowledge_graph
+            if error is not None:
+                raise error
+            return _FakeTestset(samples)
+
+    monkeypatch.setattr(runner, "_build_knowledge_graph", _build)
+    monkeypatch.setattr(ragas_runner, "TestsetGenerator", _FakeGenerator)
+    runner._synthesizers = {
+        "single_hop": _FakeSynthesizer("single_hop"),  # type: ignore[dict-item]
+        "abstract": _FakeSynthesizer("abstract"),  # type: ignore[dict-item]
+        "specific": _FakeSynthesizer("specific"),  # type: ignore[dict-item]
+    }
+    monkeypatch.setattr(ragas_runner, "_has_clusters", lambda *_args: True)
+    seen["graph"] = graph
+    return seen
 
 
-def test_generate_golden_testset_fail_fast_truoc_khi_dung_groq(
+def test_run_unit_dung_kg_rieng_sinh_cau_va_luu_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    def _khong_duoc_goi(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("build_testset_generator không được gọi khi corpus lỗi")
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1), _sample(2)])
+    kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    monkeypatch.setattr(testset_generator, "build_testset_generator", _khong_duoc_goi)
+    result = runner.run_unit(
+        _unit(),
+        QuestionQuota(single_hop=2),
+        kg_path,
+        reuse_knowledge_graph=False,
+    )
 
-    with pytest.raises(FileNotFoundError):
-        testset_generator.generate_golden_testset(
-            tmp_path / "khong-ton-tai", tmp_path / "out"
+    assert [c.user_input for c in result.cases] == ["Câu hỏi 1?", "Câu hỏi 2?"]
+    assert seen["built"] == 1
+    assert seen["kg_used"] is seen["graph"]
+    assert seen["generate_calls"][0]["testset_size"] == 2
+    assert seen["generate_calls"][0]["run_config"] is runner.run_config
+    assert kg_path.exists()
+
+
+def test_run_unit_loi_sinh_cau_thi_khong_luu_kg_do_dang(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    _patch_generation(monkeypatch, runner, samples=[], error=RuntimeError("429"))
+    kg_path = tmp_path / "knowledge_graph" / "A__01.json"
+
+    with pytest.raises(RuntimeError):
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
         )
 
+    assert not kg_path.exists()
+    assert not kg_path.parent.exists()
 
-def test_generate_golden_testset_luu_ca_2_file_va_tra_ve_golden_test_case(
+
+def test_run_unit_reuse_nap_kg_da_luu_va_khong_dung_lai_khong_ghi_de(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    markdown_dir = tmp_path / "markdown"
-    markdown_dir.mkdir()
-    (markdown_dir / "luat.md").write_text("Nội dung luật", encoding="utf-8")
-    output_dir = tmp_path / "out"
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    kg_path = tmp_path / "A__01.json"
+    loaded_graph = _FakeGraph()
+    loaded_from: list[Path] = []
+    kg_path.write_text("nguyên trạng", encoding="utf-8")
 
-    fake_generator = _FakeTestsetGenerator([_sample(1), _sample(2)])
-    monkeypatch.setattr(
-        testset_generator, "build_testset_generator", lambda *_a, **_kw: fake_generator
+    def _load(path: Path) -> _FakeGraph:
+        loaded_from.append(path)
+        return loaded_graph
+
+    monkeypatch.setattr(KnowledgeGraph, "load", staticmethod(_load))
+
+    runner.run_unit(
+        _unit(), QuestionQuota(single_hop=1), kg_path, reuse_knowledge_graph=True
     )
 
-    cases = testset_generator.generate_golden_testset(
-        markdown_dir, output_dir, testset_size=2
-    )
-
-    assert cases == [GoldenTestCase(**_sample(1)), GoldenTestCase(**_sample(2))]
-    assert len(fake_generator.generate_with_langchain_docs_calls) == 1
-    assert fake_generator.generate_with_langchain_docs_calls[0][1] == 2
-    assert fake_generator.knowledge_graph.saved_to == (
-        output_dir / "knowledge_graph.json"
-    )
-
-    saved_testset = json.loads(
-        (output_dir / "golden_testset.json").read_text(encoding="utf-8")
-    )
-    assert saved_testset == [_sample(1), _sample(2)]
+    assert loaded_from == [kg_path]
+    assert seen["built"] == 0
+    assert seen["kg_used"] is loaded_graph
+    assert kg_path.read_text("utf-8") == "nguyên trạng"
 
 
-def test_generate_golden_testset_tai_dung_knowledge_graph_khi_co_flag_va_file(
+def test_run_unit_reuse_nhung_chua_co_file_kg_thi_van_dung_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    markdown_dir = tmp_path / "markdown"
-    markdown_dir.mkdir()
-    (markdown_dir / "luat.md").write_text("Nội dung luật", encoding="utf-8")
-    output_dir = tmp_path / "out"
-    output_dir.mkdir()
-    (output_dir / "knowledge_graph.json").write_text("{}", encoding="utf-8")
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    kg_path = tmp_path / "A__01.json"
 
-    fake_generator = _FakeTestsetGenerator([_sample(1)])
-    loaded_graph = _FakeKnowledgeGraph(marker="loaded")
-    monkeypatch.setattr(
-        testset_generator, "build_testset_generator", lambda *_a, **_kw: fake_generator
-    )
-    monkeypatch.setattr(
-        testset_generator.KnowledgeGraph, "load", lambda _path: loaded_graph
+    runner.run_unit(
+        _unit(), QuestionQuota(single_hop=1), kg_path, reuse_knowledge_graph=True
     )
 
-    testset_generator.generate_golden_testset(
-        markdown_dir, output_dir, reuse_knowledge_graph=True, testset_size=1
-    )
-
-    assert fake_generator.generate_with_langchain_docs_calls == []
-    assert fake_generator.generate_calls == [1]
-    assert fake_generator.knowledge_graph is loaded_graph
-    assert loaded_graph.saved_to == output_dir / "knowledge_graph.json"
+    assert seen["built"] == 1
+    assert kg_path.exists()
 
 
-def test_generate_golden_testset_khong_co_file_kg_thi_van_build_lai(
+def test_run_unit_quota_bang_0_khong_goi_generate_van_luu_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    markdown_dir = tmp_path / "markdown"
-    markdown_dir.mkdir()
-    (markdown_dir / "luat.md").write_text("Nội dung luật", encoding="utf-8")
-    output_dir = tmp_path / "out"  # chưa có knowledge_graph.json
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
 
-    fake_generator = _FakeTestsetGenerator([_sample(1)])
-    monkeypatch.setattr(
-        testset_generator, "build_testset_generator", lambda *_a, **_kw: fake_generator
+    result = runner.run_unit(
+        _unit(), QuestionQuota(), tmp_path / "A__01.json", reuse_knowledge_graph=False
     )
 
-    testset_generator.generate_golden_testset(
-        markdown_dir, output_dir, reuse_knowledge_graph=True, testset_size=1
-    )
-
-    assert fake_generator.generate_calls == []
-    assert len(fake_generator.generate_with_langchain_docs_calls) == 1
+    assert result.cases == []
+    assert seen["generate_calls"] == []
+    assert (tmp_path / "A__01.json").exists()
 
 
-def test_generate_golden_testset_loi_groq_khong_luu_file_do_dang(
+def test_run_unit_llm_calls_la_hieu_so_dem_cua_router(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    markdown_dir = tmp_path / "markdown"
-    markdown_dir.mkdir()
-    (markdown_dir / "luat.md").write_text("Nội dung luật", encoding="utf-8")
-    output_dir = tmp_path / "out"
+    runner = _runner(monkeypatch)
+    _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    router = runner.router
+    router._next_client()  # lượt gọi từ trước (vd. adapt_prompts) không tính vào đơn vị này
+    original_build = runner._build_knowledge_graph
 
-    fake_generator = _FakeTestsetGenerator([], error=RuntimeError("Groq lỗi"))
-    monkeypatch.setattr(
-        testset_generator, "build_testset_generator", lambda *_a, **_kw: fake_generator
+    def _build_and_call(unit: EvalUnit) -> Any:
+        for _ in range(3):
+            router._next_client()
+        return original_build(unit)
+
+    monkeypatch.setattr(runner, "_build_knowledge_graph", _build_and_call)
+
+    result = runner.run_unit(
+        _unit(),
+        QuestionQuota(single_hop=1),
+        tmp_path / "A__01.json",
+        reuse_knowledge_graph=False,
     )
 
-    with pytest.raises(RuntimeError, match="Groq lỗi"):
-        testset_generator.generate_golden_testset(markdown_dir, output_dir)
-
-    assert not output_dir.exists()
+    assert result.llm_calls == 3
 
 
-def test_generate_golden_testset_tu_choi_executor_tra_ve(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
-    markdown_dir = tmp_path / "markdown"
-    markdown_dir.mkdir()
-    (markdown_dir / "luat.md").write_text("Nội dung luật", encoding="utf-8")
+def test_to_cases_bo_mau_thieu_cot_bat_buoc_va_giu_synthesizer_name():
+    samples = [
+        _sample(1),
+        _sample(2, reference=""),
+        _sample(3, reference_contexts=[]),
+        {"user_input": "thiếu cột"},
+        _sample(5, synthesizer_name="multi_hop_abstract_query_synthesizer"),
+    ]
 
-    class _FakeExecutorMarker:
-        """Đứng thay cho `ragas.executor.Executor` trong test isinstance."""
+    cases = ragas_runner._to_cases(samples)
 
-    fake_generator = _FakeTestsetGenerator([])
-
-    def _generate_with_langchain_docs(
-        _documents: Any, testset_size: int
-    ) -> _FakeExecutorMarker:
-        del testset_size
-        return _FakeExecutorMarker()
-
-    fake_generator.generate_with_langchain_docs = _generate_with_langchain_docs  # type: ignore[method-assign]
-    monkeypatch.setattr(
-        testset_generator, "build_testset_generator", lambda *_a, **_kw: fake_generator
-    )
-    monkeypatch.setattr(testset_generator, "Executor", _FakeExecutorMarker)
-
-    with pytest.raises(TypeError, match="return_executor"):
-        testset_generator.generate_golden_testset(markdown_dir, tmp_path / "out")
-
-
-# ==========================================================================
-# tools/generate_testset.py -- CLI mỏng gọi testset_generator (mục 7)
-# ==========================================================================
-
-
-def test_cli_goi_dung_generate_golden_testset_va_in_so_luong(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from tools import generate_testset
-
-    captured: dict[str, Any] = {}
-
-    def _fake_generate(
-        markdown_dir: Path,
-        output_dir: Path,
-        *,
-        reuse_knowledge_graph: bool = False,
-    ) -> list[GoldenTestCase]:
-        captured["args"] = (markdown_dir, output_dir, reuse_knowledge_graph)
-        return [GoldenTestCase(**_sample(1))]
-
-    monkeypatch.setattr(generate_testset, "generate_golden_testset", _fake_generate)
-
-    result = CliRunner().invoke(generate_testset.app, ["--reuse-knowledge-graph"])
-
-    assert result.exit_code == 0
-    assert captured["args"][2] is True
-    assert "Đã sinh 1 câu hỏi" in result.output
-
-
-def test_cli_mac_dinh_khong_bat_reuse_knowledge_graph_va_dung_thu_muc_mac_dinh(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    from tools import generate_testset
-
-    captured: dict[str, Any] = {}
-
-    def _fake_generate(
-        markdown_dir: Path,
-        output_dir: Path,
-        *,
-        reuse_knowledge_graph: bool = False,
-    ) -> list[GoldenTestCase]:
-        captured["args"] = (markdown_dir, output_dir, reuse_knowledge_graph)
-        return []
-
-    monkeypatch.setattr(generate_testset, "generate_golden_testset", _fake_generate)
-
-    result = CliRunner().invoke(generate_testset.app, [])
-
-    assert result.exit_code == 0
-    assert captured["args"] == (
-        generate_testset.DEFAULT_MARKDOWN_DIR,
-        generate_testset.DEFAULT_OUTPUT_DIR,
-        False,
-    )
-    assert "Đã sinh 0 câu hỏi" in result.output
+    assert [c.user_input for c in cases] == ["Câu hỏi 1?", "Câu hỏi 5?"]
+    assert cases[1].synthesizer_name == "multi_hop_abstract_query_synthesizer"
+    assert all(c.source_document is None for c in cases)  # do testset_generator gắn
