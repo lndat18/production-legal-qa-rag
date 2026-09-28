@@ -92,8 +92,9 @@ class GuardrailSettings(BaseSettings):
 class CondenseSettings(BaseSettings):
     """Cấu hình Groq cho bước condense câu follow-up (conversation_spec.md mục 5).
 
-    Dùng model ``gpt-oss-20b`` để ngân sách rate limit tách khỏi HyDE và
-    generation (cùng ``gpt-oss-120b``). Timeout ngắn vì condense lỗi thì
+    Dùng model ``gpt-oss-20b`` trên ``GROQ_API_KEY`` để tách bucket khỏi
+    generation (``gpt-oss-120b``); chung bucket với HyDE nên hai bước dùng chung
+    throttle (conversation_spec.md mục 12.1). Timeout ngắn vì condense lỗi thì
     degrade về câu gốc, không đáng để người dùng chờ.
     """
 
@@ -139,15 +140,15 @@ class CacheSettings(BaseSettings):
 
 
 class GenerationSettings(BaseSettings):
-    """Cấu hình Groq cho bước sinh câu trả lời có stream.
+    """Cấu hình Groq cho bước sinh câu trả lời có stream (model 120b).
 
-    Ưu tiên ``GROQ_API_KEY_2`` để tách ngân sách rate limit khỏi HyDE và
-    guardrail; khi không đặt key thứ hai, dùng lại ``GROQ_API_KEY``. Generation là
-    bước tốn TPD nhất trong pipeline (conversation_spec.md mục 16.2) — khi có thêm
-    ``GROQ_API_KEY_3`` (tài khoản Groq thứ 3, TÙY CHỌN), ``AnswerGenerator`` round-robin
-    giữa key 2 và key 3 theo từng lượt gọi (draft/repair) để giãn TPD ra 2 tài khoản
-    thay vì dồn hết vào 1 — quan sát thật 2026-09-27: dùng hết ~200k TPD chỉ trong 1
-    phiên test nhiều lượt liên tiếp trên 1 tài khoản.
+    Generation là bước tốn TPD nhất pipeline (conversation_spec.md mục 16.2) nên
+    dùng riêng cặp tài khoản nặng: ``api_key`` ưu tiên ``GROQ_API_KEY_3``, fallback
+    ``GROQ_API_KEY``. Khi có thêm ``GROQ_API_KEY_4`` (tài khoản Groq thứ 4, TÙY
+    CHỌN), ``AnswerGenerator`` round-robin giữa key 3 và key 4 theo từng lượt gọi
+    (draft/repair) để giãn TPD ra 2 tài khoản thay vì dồn vào 1 — quan sát thật
+    2026-09-27: dùng hết ~200k TPD chỉ trong 1 phiên test nhiều lượt liên tiếp trên
+    1 tài khoản. Key 1, 2 dành cho nhóm bước nhẹ (conversation_spec.md mục 12.1).
     """
 
     model_config = SettingsConfigDict(
@@ -155,10 +156,10 @@ class GenerationSettings(BaseSettings):
     )
 
     api_key: str = Field(
-        validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY")
+        validation_alias=AliasChoices("GROQ_API_KEY_3", "GROQ_API_KEY")
     )
     round_robin_api_key: str | None = Field(
-        default=None, validation_alias="GROQ_API_KEY_3"
+        default=None, validation_alias="GROQ_API_KEY_4"
     )
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
@@ -168,7 +169,8 @@ class GenerationSettings(BaseSettings):
 class JudgeSettings(BaseSettings):
     """Cấu hình Evidence Judge độc lập với client generation.
 
-    Judge dùng cùng cơ chế fallback key với generator nhưng có model, timeout và
+    Judge chạy ``gpt-oss-20b`` trên tài khoản nhẹ thứ 2: ưu tiên ``GROQ_API_KEY_2``,
+    fallback ``GROQ_API_KEY`` (conversation_spec.md mục 12.1). Model, timeout và
     retry riêng để thay đổi evaluator không ảnh hưởng prompt tạo answer.
     """
 
@@ -177,13 +179,57 @@ class JudgeSettings(BaseSettings):
     )
 
     api_key: str = Field(
-        validation_alias=AliasChoices(
-            "GROQ_JUDGE_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY"
-        )
+        validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY")
     )
-    model_name: str = "openai/gpt-oss-120b"
+    model_name: str = "openai/gpt-oss-20b"
     max_retries: int = 1
     timeout_seconds: int = 45
+
+
+class HydeSettings(BaseSettings):
+    """Cấu hình Groq cho bước HyDE (retrieval_spec.md mục 3, 4).
+
+    Tách khỏi ``LLMSettings`` vì đó là config của ``formatting/`` (120b): đổi model
+    ở đó sẽ kéo formatting đổi theo. HyDE chạy ``gpt-oss-20b`` trên ``GROQ_API_KEY``,
+    chung bucket với condense (conversation_spec.md mục 12.1).
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True
+    )
+
+    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    model_name: str = "openai/gpt-oss-20b"
+    max_retries: int = 2
+    timeout_seconds: int = 30
+
+
+class ThrottleSettings(BaseSettings):
+    """Giới hạn của throttle bucket ``gpt-oss-20b`` dùng chung (conversation_spec.md mục 12.1).
+
+    Chỉ là giá trị mặc định hợp lý, chỉnh bằng env ``THROTTLE_*`` khi cần — không
+    có bước đo đi kèm. ``tpm_limit``/``rpm_limit`` là giới hạn gốc của Groq free
+    tier; hệ số ``safety_factor`` (cùng 0.9 với ``formatting/llm_client.py``) áp dụng
+    bên trong ``TokenWindowThrottle``. ``*_completion_tokens`` là ước lượng số token
+    output (kể cả reasoning) mỗi bước, cộng với ước lượng token prompt từ
+    ``chars_per_token``; sai số được bù bằng ``usage`` thật khi response có.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_prefix="THROTTLE_",
+        extra="ignore",
+        env_ignore_empty=True,
+    )
+
+    tpm_limit: int = Field(default=8000, gt=0)
+    rpm_limit: int = Field(default=30, gt=0)
+    safety_factor: float = Field(default=0.9, gt=0, le=1)
+    chars_per_token: float = Field(default=3.0, gt=0)
+    condense_completion_tokens: int = Field(default=500, ge=0)
+    hyde_completion_tokens: int = Field(default=400, ge=0)
+    judge_completion_tokens: int = Field(default=600, ge=0)
+    optional_step_max_wait_seconds: float = Field(default=8.0, ge=0)
 
 
 class RerankerSettings(BaseSettings):

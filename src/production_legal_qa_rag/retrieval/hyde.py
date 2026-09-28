@@ -1,4 +1,8 @@
-"""Sinh hypothetical document (HyDE) bằng Groq (mục 4)."""
+"""Sinh hypothetical document (HyDE) bằng Groq (mục 4).
+
+Chạy ``gpt-oss-20b`` qua ``HydeSettings`` và dùng chung throttle với condense
+(``conversation_spec.md`` mục 12.1).
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,14 @@ from typing import Final
 
 from groq import AsyncGroq
 
-from production_legal_qa_rag.config import LLMSettings
+from production_legal_qa_rag.config import HydeSettings, ThrottleSettings
+from production_legal_qa_rag.retrieval.llm_throttle import (
+    ThrottleTimeout,
+    TokenWindowThrottle,
+    estimate_tokens,
+    get_throttle,
+    read_total_tokens,
+)
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
@@ -49,7 +60,7 @@ Quy tắc:
 
 HYDE_USER_TEMPLATE = "Câu hỏi: {query}"
 
-# Tham số Groq (mục 4): hằng số nội bộ, không vào LLMSettings.
+# Tham số Groq (mục 4): hằng số nội bộ, không vào HydeSettings.
 # `reasoning_effort` là tham số đặc thù của họ gpt-oss: nếu đổi sang model không
 # hỗ trợ, lời gọi sẽ lỗi và HyDE degrade im lặng (bỏ nhánh A, chỉ có warning).
 _REASONING_EFFORT: Final = "low"
@@ -62,15 +73,28 @@ class HydeGenerator:
 
     def __init__(
         self,
-        settings: LLMSettings | None = None,
+        settings: HydeSettings | None = None,
         client: AsyncGroq | None = None,
+        *,
+        throttle: TokenWindowThrottle | None = None,
+        throttle_settings: ThrottleSettings | None = None,
     ) -> None:
-        self._settings = settings or LLMSettings()
+        self._settings = settings or HydeSettings()  # type: ignore[call-arg]
         self._client = LoopBoundClient(self._create_client, client)
+        self._throttle = throttle
+        self._throttle_settings = throttle_settings or ThrottleSettings()
+
+    def _get_throttle(self) -> TokenWindowThrottle:
+        """Throttle của bucket ``(model, key)``, lấy lười để chia sẻ với condense."""
+        if self._throttle is None:
+            self._throttle = get_throttle(
+                self._settings.model_name, self._settings.api_key
+            )
+        return self._throttle
 
     def _create_client(self) -> AsyncGroq:
         return AsyncGroq(
-            api_key=self._settings.groq_api_key,
+            api_key=self._settings.api_key,
             max_retries=self._settings.max_retries,
             timeout=float(self._settings.timeout_seconds),
         )
@@ -82,10 +106,24 @@ class HydeGenerator:
             query: Câu hỏi gốc của người dùng.
 
         Returns:
-            Đoạn văn đã strip, hoặc `None` khi Groq lỗi/timeout hoặc trả rỗng
-            (vd. model reasoning dùng hết token cho reasoning) — pipeline sẽ
-            bỏ nhánh A (mục 10).
+            Đoạn văn đã strip, hoặc `None` khi Groq lỗi/timeout, throttle quá hạn
+            chờ hoặc trả rỗng (vd. model reasoning dùng hết token cho
+            reasoning) — pipeline sẽ bỏ nhánh A (mục 10).
         """
+        throttle = self._get_throttle()
+        estimated_tokens = estimate_tokens(
+            len(HYDE_SYSTEM_PROMPT) + len(HYDE_USER_TEMPLATE.format(query=query)),
+            self._throttle_settings.chars_per_token,
+            self._throttle_settings.hyde_completion_tokens,
+        )
+        try:
+            reservation = await throttle.acquire(
+                estimated_tokens,
+                self._throttle_settings.optional_step_max_wait_seconds,
+            )
+        except ThrottleTimeout:
+            logger.warning("Throttle HyDE quá hạn chờ, bỏ nhánh A.")
+            return None
         try:
             response = await self._client.get().chat.completions.create(
                 model=self._settings.model_name,
@@ -104,6 +142,7 @@ class HydeGenerator:
             logger.warning("Groq HyDE lỗi, bỏ nhánh A.", exc_info=True)
             return None
 
+        throttle.settle(reservation, read_total_tokens(response))
         content = (response.choices[0].message.content or "").strip()
         if not content:
             logger.warning("Groq HyDE trả về rỗng, bỏ nhánh A.")

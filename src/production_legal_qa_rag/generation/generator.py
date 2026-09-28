@@ -17,7 +17,7 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v8"
+PROMPT_VERSION: Final = "v9"
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
 # dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
