@@ -1,4 +1,9 @@
-"""Evidence Judge kiểm tra draft dựa duy nhất trên query và context cố định."""
+"""Evidence Judge kiểm tra draft dựa duy nhất trên query và context cố định.
+
+Judge chạy ``gpt-oss-20b`` và đi qua throttle chung theo bucket ``(model, key)``
+(``conversation_spec.md`` mục 12.1); ``ThrottleTimeout`` được coi như lỗi Judge
+nên pipeline vẫn fail-closed.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,14 @@ from typing import Final
 
 from langchain_openai import ChatOpenAI
 
-from production_legal_qa_rag.config import JudgeSettings
+from production_legal_qa_rag.config import JudgeSettings, ThrottleSettings
 from production_legal_qa_rag.generation.generator import build_context
 from production_legal_qa_rag.generation.models import Citation, JudgeVerdict
+from production_legal_qa_rag.retrieval.llm_throttle import (
+    TokenWindowThrottle,
+    estimate_tokens,
+    get_throttle,
+)
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
@@ -56,9 +66,14 @@ class EvidenceJudge:
         self,
         settings: JudgeSettings | None = None,
         client: ChatOpenAI | None = None,
+        *,
+        throttle: TokenWindowThrottle | None = None,
+        throttle_settings: ThrottleSettings | None = None,
     ) -> None:
         self._settings = settings
         self._client = LoopBoundClient(self._create_client, client)
+        self._throttle = throttle
+        self._throttle_settings = throttle_settings or ThrottleSettings()
 
     def _create_client(self) -> ChatOpenAI:
         settings = self._get_settings()
@@ -79,6 +94,13 @@ class EvidenceJudge:
             self._settings = JudgeSettings()
         return self._settings
 
+    def _get_throttle(self) -> TokenWindowThrottle:
+        """Throttle của bucket ``(model, key)`` Judge, lấy lười theo settings."""
+        if self._throttle is None:
+            settings = self._get_settings()
+            self._throttle = get_throttle(settings.model_name, settings.api_key)
+        return self._throttle
+
     async def judge(
         self,
         query: str,
@@ -98,24 +120,33 @@ class EvidenceJudge:
             Verdict có cấu trúc của Judge.
 
         Raises:
-            JudgeError: Provider lỗi, trả rỗng, JSON sai hoặc schema không hợp lệ.
+            JudgeError: Provider lỗi, throttle quá hạn chờ, trả rỗng, JSON sai hoặc
+                schema không hợp lệ.
         """
         try:
+            user_message = _USER_TEMPLATE.format(
+                context=build_context(chunks),
+                query=query,
+                draft=draft,
+                citations=_render_citations(citations),
+            )
+            # Chờ tối đa bằng timeout của Judge: fail-closed nên thà chờ còn hơn
+            # từ chối oan (conversation_spec.md mục 12.1).
+            await self._get_throttle().acquire(
+                estimate_tokens(
+                    len(_SYSTEM_PROMPT) + len(user_message),
+                    self._throttle_settings.chars_per_token,
+                    self._throttle_settings.judge_completion_tokens,
+                ),
+                float(self._get_settings().timeout_seconds),
+            )
             structured_client = self._client.get().with_structured_output(
                 JudgeVerdict, method="json_mode"
             )
             verdict = await structured_client.ainvoke(
                 [
                     {"role": "system", "content": _SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": _USER_TEMPLATE.format(
-                            context=build_context(chunks),
-                            query=query,
-                            draft=draft,
-                            citations=_render_citations(citations),
-                        ),
-                    },
+                    {"role": "user", "content": user_message},
                 ]
             )
             if not isinstance(verdict, JudgeVerdict):

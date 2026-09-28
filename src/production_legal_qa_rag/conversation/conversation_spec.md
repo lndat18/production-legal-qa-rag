@@ -282,7 +282,8 @@ liên quan → từ chối" là **chính sách của lớp điều phối hội 
 `-6.8` là ngưỡng hiệu chỉnh bằng đo (không đoán): hiệu chỉnh trên logit thô của
 `AITeamVN/Vietnamese_Reranker`, đo **nhiều lần/câu** (vì HyDE `temperature=0.2` làm điểm
 dao động), thiên **bảo thủ** ("thà bỏ sót còn hơn chặn oan"). Rủi ro tồn đọng đã biết:
-mục 18.
+mục 18. Từ 2026-09-28 HyDE chạy `gpt-oss-20b` nhưng ngưỡng **giữ nguyên, không đo lại**
+(mục 12.1, "Ngoài phạm vi").
 
 ## 9. Admission (`admission.py`)
 
@@ -514,8 +515,8 @@ sửa theo.
 - `TokenWindowThrottle`: cửa sổ trượt 60 giây theo cả token (TPM) lẫn số request (RPM),
   `asyncio.Lock` in-process (cùng giới hạn 1 worker với admission, mục 9). Giới hạn lấy
   từ `ThrottleSettings` (`tpm_limit = 8000`, `rpm_limit = 30`, hệ số an toàn `0.9` — cùng
-  hệ số `formatting/llm_client.py`). Con số Groq của `gpt-oss-20b` cần xác nhận trên
-  `console.groq.com/settings/limits` trước khi chốt.
+  hệ số `formatting/llm_client.py`). Đây chỉ là giá trị mặc định trong `ThrottleSettings`,
+  chỉnh bằng env khi cần — không phải bước đo riêng.
 - Mỗi bucket `(model, key)` có đúng một instance, lấy qua `get_throttle(model, api_key)`
   (`functools.cache`, định danh bucket là `model` + sha256(api_key)[:8] — không lưu/log key
   thật) để condense, HyDE, Judge ở 3 package khác nhau tự dùng chung khi cùng bucket mà
@@ -526,40 +527,35 @@ sửa theo.
   chờ khi cửa sổ sắp đầy (đủ ngân sách thì trả về ngay, không cộng độ trễ); quá
   `max_wait_seconds` raise `ThrottleTimeout`. `throttle.settle(reservation, actual_tokens)`
   cập nhật theo `usage` thật khi response có, không thì giữ số ước lượng. Hàng đợi FIFO.
-- Ước lượng token = độ dài prompt (đo tỷ lệ ký tự/token thật trên tiếng Việt) + hằng số
-  `EXPECTED_COMPLETION_TOKENS` riêng từng bước, đo từ `usage` thật. KHÔNG dùng
-  `max_completion_tokens` làm ước lượng: condense và HyDE đặt 2048, cộng lại đã vượt TPM.
+- Ước lượng token = độ dài prompt (heuristic `CHARS_PER_TOKEN` cố định cho tiếng Việt) +
+  hằng số `EXPECTED_COMPLETION_TOKENS` riêng từng bước (giá trị khởi đầu hợp lý, đặt ở
+  `ThrottleSettings`). Sai số được `settle(...)` bù bằng `usage` thật ở cuối mỗi lời gọi.
+  KHÔNG dùng `max_completion_tokens` làm ước lượng: condense và HyDE đặt 2048, cộng lại đã
+  vượt TPM.
 - Ngưỡng chờ tối đa khi `ThrottleTimeout`:
-  - Condense, HyDE (bước tuỳ chọn): chờ tối đa ~8 giây (giá trị khởi đầu, chỉnh theo đo),
+  - Condense, HyDE (bước tuỳ chọn): chờ tối đa ~8 giây (mặc định trong `ThrottleSettings`),
     quá thì degrade y như lỗi Groq — condense dùng câu gốc, HyDE bỏ nhánh A.
   - Judge: chờ tối đa bằng `JudgeSettings.timeout_seconds`, vì Judge fail-closed
     (`refusal(unable_to_verify)`): thà chờ còn hơn từ chối oan.
 - 429 thật từ Groq vẫn là chốt chặn cuối như mục 9; throttle chỉ giảm xác suất chạm 429.
 - Generation và guardrail không qua throttle này: đã có bucket riêng.
 
-**Rủi ro đã biết — cần đo, không đoán.** Giãn thời gian chỉ xử lý TPM (theo phút), không
-xử lý TPD. Nếu cả Condense + HyDE + Judge dồn vào 20b của A, Judge nặng nhất nhóm (prompt
-chứa cả context, có thể chạy 2 lần/lượt sau repair): ước tính thô (chưa đo) ~6–8K
-token/lượt cache-miss ≈ chỉ ~25–35 lượt/ngày trên TPD 200K, thấp hơn generation sau khi
-xoay vòng 2 tài khoản. Vì vậy Judge được đặt riêng trên key 2. Ước tính thô sau khi tách:
-A (Condense + HyDE, ~2–3K/lượt) ~70–100 lượt/ngày; B (Judge, ~3–4K/lượt) ~50–60 lượt/ngày;
-C + D (generation, ~3–4K/lượt chia đôi) ~100 lượt/ngày. Đây vẫn là số chưa đo: bước 4 dưới
-đây quyết định có cần cân đối thêm không. Ghi chú: bucket 20b của C, D và bucket 120b của
-A, B hiện nhàn rỗi — nếu Judge (B) hoặc A thành nút thắt thật, đòn bẩy rẻ nhất là chuyển
-bớt một bước nhẹ sang key 3/4 (bucket 20b của C/D không cạnh tranh với generation 120b),
-chỉ đổi cấu hình.
+**Rủi ro đã biết (chấp nhận, không xử lý ở thay đổi này).** Giãn thời gian chỉ xử lý TPM
+(theo phút), không xử lý TPD. Judge là bước nặng nhất nhóm nhẹ (prompt chứa cả context, có
+thể chạy 2 lần/lượt sau repair) nên được đặt riêng trên key 2 thay vì dồn chung với
+Condense + HyDE trên key 1. Nếu sau này Judge (B) hoặc A thành nút thắt TPD thật, đòn bẩy
+rẻ nhất là chuyển bớt một bước nhẹ sang key 3/4 (bucket 20b của C/D không cạnh tranh với
+generation 120b), chỉ đổi cấu hình.
 
-**Việc phải làm khi đổi model (theo bài học 1 ở mục 16 — đo trước, không đoán):**
+**Ngoài phạm vi (quyết định 2026-09-28):** không có bước đo/hiệu chỉnh đi kèm thay đổi này —
+không đo lại `MIN_RERANK_SCORE` với HyDE 20b, không chạy lại bộ ca Judge 20b, không đo
+`usage` để chốt hằng số throttle. Các ngưỡng/hằng số hiện có giữ nguyên giá trị; nếu chất
+lượng lệch khi chạy thật thì xử lý ở vòng đánh giá RAGAS (roadmap mục 1), không chặn việc
+implement.
 
-1. Judge 20b: chạy lại bộ ca có nhãn người duyệt (`generation_spec.md` mục 6) trước khi
-   coi là enforce được; so tỷ lệ pass/repair/insufficient_evidence với 120b.
-2. HyDE 20b: đo lại `MIN_RERANK_SCORE` (mục 8). Ngưỡng đó được chọn trên phân phối điểm của
-   HyDE 120b `temperature=0.2`; đổi model HyDE làm phân phối điểm rerank đổi theo.
-3. Bump `PROMPT_VERSION` (`generation/generator.py`) để invalidate cache câu trả lời: khoá
-   cache chỉ chứa `GenerationSettings.model_name` (`cache_spec.md`), đổi model Judge/HyDE
-   không tự đổi khoá.
-4. Đo `usage` thật từng bước trên bucket 20b (từ `chat_turns`/log) để chốt
-   `EXPECTED_COMPLETION_TOKENS` và số lượt/ngày thực tế.
+**Việc bắt buộc khi đổi model:** bump `PROMPT_VERSION` (`generation/generator.py`) để
+invalidate cache câu trả lời — khoá cache chỉ chứa `GenerationSettings.model_name`
+(`cache_spec.md`), đổi model Judge/HyDE không tự đổi khoá.
 
 **Đồng bộ cấu hình khi implement (việc cho `developer`):**
 

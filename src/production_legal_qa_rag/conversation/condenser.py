@@ -14,11 +14,18 @@ from typing import Final
 
 from groq import AsyncGroq
 
-from production_legal_qa_rag.config import CondenseSettings
+from production_legal_qa_rag.config import CondenseSettings, ThrottleSettings
 from production_legal_qa_rag.conversation.models import ChatMessage
 from production_legal_qa_rag.retrieval.citation import (
     extract_citation_khoans,
     extract_citation_numbers,
+)
+from production_legal_qa_rag.retrieval.llm_throttle import (
+    ThrottleTimeout,
+    TokenWindowThrottle,
+    estimate_tokens,
+    get_throttle,
+    read_total_tokens,
 )
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
@@ -124,15 +131,24 @@ class CondenseOutcome:
 
 
 class QueryCondenser:
-    """Sở hữu client Groq của bước condense."""
+    """Sở hữu client Groq của bước condense.
+
+    Mỗi lời gọi Groq đi qua throttle chung của bucket ``(model, key)`` với HyDE
+    (conversation_spec.md mục 12.1); hết hạn chờ thì degrade về câu gốc như lỗi Groq.
+    """
 
     def __init__(
         self,
         settings: CondenseSettings | None = None,
         client: AsyncGroq | None = None,
+        *,
+        throttle: TokenWindowThrottle | None = None,
+        throttle_settings: ThrottleSettings | None = None,
     ) -> None:
         self._settings = settings or CondenseSettings()  # type: ignore[call-arg]
         self._client = LoopBoundClient(self._create_client, client)
+        self._throttle = throttle
+        self._throttle_settings = throttle_settings or ThrottleSettings()
 
     def _create_client(self) -> AsyncGroq:
         return AsyncGroq(
@@ -182,19 +198,42 @@ class QueryCondenser:
             outcome = await self._condense_once(query, history)
         return outcome
 
+    def _get_throttle(self) -> TokenWindowThrottle:
+        """Throttle của bucket ``(model, key)``, lấy lười để chia sẻ với HyDE."""
+        if self._throttle is None:
+            self._throttle = get_throttle(
+                self._settings.model_name, self._settings.api_key
+            )
+        return self._throttle
+
     async def _condense_once(
         self, query: str, history: Sequence[ChatMessage]
     ) -> CondenseOutcome:
         """Đúng 1 lời gọi Groq + kiểm tra đầu ra; không tự retry."""
+        user_message = build_condense_user_message(query, history)
+        throttle = self._get_throttle()
+        estimated_tokens = estimate_tokens(
+            len(CONDENSE_SYSTEM_PROMPT) + len(user_message),
+            self._throttle_settings.chars_per_token,
+            self._throttle_settings.condense_completion_tokens,
+        )
+        try:
+            reservation = await throttle.acquire(
+                estimated_tokens,
+                self._throttle_settings.optional_step_max_wait_seconds,
+            )
+        except ThrottleTimeout:
+            logger.warning(
+                "Throttle condense quá hạn chờ, dùng câu gốc (reason=%s).",
+                CondenseReason.GROQ_ERROR,
+            )
+            return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
         try:
             response = await self._client.get().chat.completions.create(
                 model=self._settings.model_name,
                 messages=[
                     {"role": "system", "content": CONDENSE_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": build_condense_user_message(query, history),
-                    },
+                    {"role": "user", "content": user_message},
                 ],
                 reasoning_effort=_REASONING_EFFORT,
                 temperature=_TEMPERATURE,
@@ -209,6 +248,7 @@ class QueryCondenser:
             )
             return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
 
+        throttle.settle(reservation, read_total_tokens(response))
         choice = response.choices[0]
         raw_output = choice.message.content or ""
         finish_reason = choice.finish_reason

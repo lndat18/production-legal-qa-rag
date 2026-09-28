@@ -196,10 +196,10 @@ không xuất chain-of-thought, và không khẳng định luật đúng/sai ngo
 insufficient_evidence nghĩa là context retrieved không đủ, không phải luật không
 tồn tại.
 
-Trước enforce, Judge phải được hiệu chỉnh trên case có nhãn người duyệt. Từ
-2026-09-28 Judge chạy `gpt-oss-20b`: phải hiệu chỉnh lại trên bộ ca đó, so với kết quả
-120b, trước khi coi bản 20b là enforce được. Khi
-enforce, lỗi mạng, timeout, JSON sai hoặc verdict/issue không hợp lệ là fail-closed:
+Trước enforce, Judge phải được hiệu chỉnh trên case có nhãn người duyệt (đã làm với
+120b). Từ 2026-09-28 Judge chạy `gpt-oss-20b`; việc hiệu chỉnh lại trên bộ ca đó nằm
+ngoài phạm vi thay đổi model (`conversation_spec.md` mục 12.1), chất lượng bản 20b sẽ được
+theo dõi ở vòng đánh giá RAGAS. Khi enforce, lỗi mạng, timeout, JSON sai hoặc verdict/issue không hợp lệ là fail-closed:
 không phát draft và refusal(unable_to_verify). Shadow mode chỉ phục vụ hiệu chỉnh,
 không phải chế độ production an toàn cho workflow này.
 

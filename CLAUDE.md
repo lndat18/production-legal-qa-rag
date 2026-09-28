@@ -58,13 +58,12 @@ key — key chỉ tách được ngân sách thật nếu lấy từ tài khoả
   (`deploy/dev/docker-compose.yml` vẫn phục vụ dev cục bộ: Redis + Postgres), `backup.sh` +
   `reset_cache.sh` vào `deploy/scripts/`. Dockerfile, compose và 2 file `.env.example` đã rút
   gọn; hướng dẫn cấu hình chi tiết nằm trong `README.md`.
-- **Chốt spec model + key LLM để tránh rate limit** (chưa implement code — `conversation_spec.md`
-  mục 12.1): generation giữ `gpt-oss-120b` xoay vòng `GROQ_API_KEY_3` ⇄ `_4`; condense/HyDE/
-  Judge/guardrail dùng model 20b trên key 1, 2 (Judge riêng key 2), có throttle cửa sổ trượt
-  dùng chung (`retrieval/llm_throttle.py`). `GROQ_JUDGE_API_KEY` bỏ, thay bằng
-  `GROQ_API_KEY_4`. Việc còn lại cho developer: `config.py` (+`HydeSettings`,
-  `ThrottleSettings`), `llm_throttle.py`, đo lại `MIN_RERANK_SCORE` với HyDE 20b, chạy lại bộ
-  ca Judge 20b, bump `PROMPT_VERSION`; `.env.example` hiện mô tả trạng thái đích.
+- **Chính sách model + key LLM để tránh rate limit** (`conversation_spec.md` mục 12.1; đã
+  implement, chờ tester/reviewer): generation giữ `gpt-oss-120b` xoay vòng `GROQ_API_KEY_3` ⇄
+  `_4`; condense/HyDE/Judge dùng `gpt-oss-20b` trên key 1, 2 (Judge riêng key 2, fallback
+  key 1), guardrail giữ `gpt-oss-safeguard-20b`; throttle cửa sổ trượt dùng chung theo bucket
+  `(model, key)` ở `retrieval/llm_throttle.py`. `GROQ_JUDGE_API_KEY` đã bỏ. Không có bước đo
+  đi kèm (không đo lại `MIN_RERANK_SCORE`, không chạy lại bộ ca Judge) — chốt 2026-09-28.
 - **Evaluation Phase 1 đã merge** (#55): `evaluation/` + `tools/generate_testset.py` sinh
   golden testset (RAGAS, round-robin 3 tài khoản Groq). Chưa ghi nhận đã chạy sinh testset
   và duyệt tay; Phase 2 (chạy pipeline thật, tính metric) chưa làm.

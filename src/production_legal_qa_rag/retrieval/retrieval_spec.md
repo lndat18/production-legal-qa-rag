@@ -81,8 +81,8 @@ văn bản, năm hay mức số cụ thể**. Hypo hỏng/rỗng thì bỏ nhán
 nhánh B.
 
 Từ 2026-09-28 HyDE chạy `openai/gpt-oss-20b` (trước là 120b) để nhường bucket 120b cho
-generation. Phân phối `rerank_score` có thể đổi theo, nên `MIN_RERANK_SCORE`
-(`relevance.py`) phải đo lại trước khi coi thay đổi này là xong.
+generation. `MIN_RERANK_SCORE` (`relevance.py`) giữ nguyên, không đo lại trong thay đổi
+này (`conversation_spec.md` mục 12.1); lệch chất lượng nếu có sẽ thấy ở vòng đánh giá RAGAS.
 
 ## 4. Dense, sparse và fusion
 
