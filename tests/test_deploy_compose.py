@@ -350,9 +350,9 @@ def test_gitignore_loai_tru_thu_muc_backup() -> None:
 
 
 def test_backup_script_cu_phap_shell_hop_le() -> None:
-    """`deploy/backup.sh` phải là bash hợp lệ (kiểm tra cú pháp, không chạy thật)."""
+    """`deploy/scripts/backup.sh` phải là bash hợp lệ (kiểm tra cú pháp, không chạy thật)."""
     result = subprocess.run(
-        ["bash", "-n", str(DEPLOY_DIR / "backup.sh")],
+        ["bash", "-n", str(DEPLOY_DIR / "scripts" / "backup.sh")],
         capture_output=True,
         text=True,
         timeout=10,
@@ -363,7 +363,7 @@ def test_backup_script_cu_phap_shell_hop_le() -> None:
 
 def test_backup_script_giu_dung_7_ban_va_dump_ca_2_database() -> None:
     """Backup phải dump cả `openwebui` và `chatbot`, giữ 7 bản gần nhất (mục 8)."""
-    content = (DEPLOY_DIR / "backup.sh").read_text(encoding="utf-8")
+    content = (DEPLOY_DIR / "scripts" / "backup.sh").read_text(encoding="utf-8")
     assert "KEEP=7" in content
     assert "openwebui" in content
     assert "chatbot" in content

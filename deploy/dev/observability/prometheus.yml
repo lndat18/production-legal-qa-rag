@@ -14,7 +14,7 @@ scrape_configs:
       - targets: ["localhost:9090"]
 
   # Mẫu để bật sau khi api có /metrics — cùng network `legal-qa-observability` không thấy
-  # được service `api` của docker-compose.dev.yml/docker-compose.yml (network khác), nên
+  # được service `api` của dev/docker-compose.yml, docker-compose.yml (network khác), nên
   # lúc đó cần join chung network hoặc dùng host.docker.internal.
   # - job_name: legal-qa-api
   #   static_configs:

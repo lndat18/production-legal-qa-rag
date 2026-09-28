@@ -80,6 +80,10 @@ HyDE chỉ sinh văn phong/ngữ nghĩa pháp lý, **không được bịa số 
 văn bản, năm hay mức số cụ thể**. Hypo hỏng/rỗng thì bỏ nhánh A, không làm hỏng
 nhánh B.
 
+Từ 2026-09-28 HyDE chạy `openai/gpt-oss-20b` (trước là 120b) để nhường bucket 120b cho
+generation. Phân phối `rerank_score` có thể đổi theo, nên `MIN_RERANK_SCORE`
+(`relevance.py`) phải đo lại trước khi coi thay đổi này là xong.
+
 ## 4. Dense, sparse và fusion
 
 ### Dense
@@ -255,7 +259,7 @@ Phân biệt lỗi có thể degrade và lỗi phá tính đúng đắn:
 
 | Sự cố | Hành vi |
 | --- | --- |
-| HyDE lỗi/rỗng | Bỏ nhánh A, chạy nhánh B. |
+| HyDE lỗi/rỗng/`ThrottleTimeout` | Bỏ nhánh A, chạy nhánh B. |
 | Reranker lỗi (runtime/model, ví dụ CUDA OOM) | Fallback deterministic từ các nhánh, `rerank_score=None`. |
 | Query embed, dense/sparse search hoặc metadata fetch lỗi | Raise `RetrievalError`; không giả vờ có evidence đáng tin. |
 | Corpus version mismatch | Từ chối khởi tạo/query và nêu lệnh hay thao tác rebuild. |
@@ -270,7 +274,8 @@ cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ đ�
 | Module | Trách nhiệm duy nhất |
 | --- | --- |
 | `models.py` | Pydantic public/intermediate contracts và `RetrievalError`. |
-| `hyde.py` | Sinh hypothetical legal text, best-effort. |
+| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
+| `llm_throttle.py` | `TokenWindowThrottle` dùng chung cho bucket `gpt-oss-20b` (condense, HyDE, Judge); xem `conversation_spec.md` mục 12.1. |
 | `query_embedder.py` | Query preprocessing, API batch và validate embedding. |
 | `bm25.py` | Tokenize, fit/load params, encode sparse vector. |
 | `citation.py` | Parse citation, mapping document, structural terms, extras. |

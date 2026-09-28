@@ -12,7 +12,7 @@ tools/                         CLI (Typer) chạy từng bước pipeline độc
 alembic/                       Migration schema Postgres (chatlog, ...)
 data/                          raw -> markdown -> chunks -> embeddings, bm25/ cho sparse index
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
-deploy/                        Docker compose + docs triển khai (deploy/deploy_spec.md), không phải code import được
+deploy/                        Docker compose production + docs (deploy/deploy_spec.md); dev/ (compose dev + observability), scripts/ (backup, reset cache); không phải code import được
 docs/                          Tài liệu tổng quan hệ thống (vd. online_flow.md — activity diagram 1 câu hỏi)
 .claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
@@ -34,6 +34,7 @@ trong package tương ứng.
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
 | `chatlog/`      | Ghi mỗi lượt hỏi-đáp vào Postgres để quan sát/đánh giá (không phải lịch sử hội thoại) | [chatlog_spec.md](src/production_legal_qa_rag/chatlog/chatlog_spec.md)                |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres, spec tổng toàn hệ thống                  | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
+| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset tổng hợp từ corpus (Phase 2 chạy eval — chưa làm)  | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
 
 ## Tiến độ
 
@@ -48,21 +49,38 @@ torch — `cpu` mặc định, `cu126` trở lên cho GPU vì `cu121`/`cu124` kh
 3.14 — rồi `up -d`). Đã nghiệm thu thật: public qua Cloudflare quick tunnel, end-user
 hỏi-đáp multi-turn thành công (citation, Evidence Judge chạy đúng). Bài học vận hành đã ghi
 vào deploy_spec.md: `api` cần `mem_limit: 3g` (1.5g cũ bị OOM-killer giết ngay lượt hỏi
-retrieval+rerank đầu); Groq giới hạn rate limit theo tài khoản chứ không theo API key —
-`GROQ_API_KEY_2`/`GROQ_JUDGE_API_KEY` chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq
-khác. `deploy/docker-compose.dev.yml` vẫn phục vụ dev cục bộ (Redis + Postgres) như cũ.
+retrieval+rerank đầu); Groq giới hạn rate limit theo (tài khoản, model) chứ không theo API
+key — key chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq khác.
+
+**Cập nhật 2026-09-28:**
+
+- **`deploy/` tổ chức lại** (#57): compose dev + `observability/` chuyển vào `deploy/dev/`
+  (`deploy/dev/docker-compose.yml` vẫn phục vụ dev cục bộ: Redis + Postgres), `backup.sh` +
+  `reset_cache.sh` vào `deploy/scripts/`. Dockerfile, compose và 2 file `.env.example` đã rút
+  gọn; hướng dẫn cấu hình chi tiết nằm trong `README.md`.
+- **Chốt spec model + key LLM để tránh rate limit** (chưa implement code — `conversation_spec.md`
+  mục 12.1): generation giữ `gpt-oss-120b` xoay vòng `GROQ_API_KEY_3` ⇄ `_4`; condense/HyDE/
+  Judge/guardrail dùng model 20b trên key 1, 2 (Judge riêng key 2), có throttle cửa sổ trượt
+  dùng chung (`retrieval/llm_throttle.py`). `GROQ_JUDGE_API_KEY` bỏ, thay bằng
+  `GROQ_API_KEY_4`. Việc còn lại cho developer: `config.py` (+`HydeSettings`,
+  `ThrottleSettings`), `llm_throttle.py`, đo lại `MIN_RERANK_SCORE` với HyDE 20b, chạy lại bộ
+  ca Judge 20b, bump `PROMPT_VERSION`; `.env.example` hiện mô tả trạng thái đích.
+- **Evaluation Phase 1 đã merge** (#55): `evaluation/` + `tools/generate_testset.py` sinh
+  golden testset (RAGAS, round-robin 3 tài khoản Groq). Chưa ghi nhận đã chạy sinh testset
+  và duyệt tay; Phase 2 (chạy pipeline thật, tính metric) chưa làm.
 
 Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
 
-1. **Đánh giá chất lượng bằng RAGAS** — lấy mẫu Q&A thật từ bảng `chat_turns` (chatlog),
-   gán nhãn, dựng eval pipeline. Phase này đứng trước vì cần dữ liệu thật tích lũy từ
-   chatlog mới có ý nghĩa.
+1. **Đánh giá chất lượng bằng RAGAS** — Phase 1 (code sinh golden testset tổng hợp) đã
+   merge; còn chạy sinh + duyệt tay testset, rồi Phase 2 (chạy pipeline thật, tính metric)
+   và lấy mẫu Q&A thật từ bảng `chat_turns` (chatlog) khi dữ liệu đã tích lũy đủ.
+   **Trước đó/song song:** implement chính sách model + key LLM ở trên.
 2. **CI/CD** (GitHub Actions cho CD) + **tracking/tracing/observability** (Prometheus +
    Grafana + Langfuse — Langfuse trace từng bước condense → retrieve → rerank → generate,
    Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
    (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
    việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
-   để tính sau, chưa chốt. `deploy/observability/` đã có compose khung cho
+   để tính sau, chưa chốt. `deploy/dev/observability/` đã có compose khung cho
    Prometheus/Grafana.
 
 Giữ nguyên quyết định: `chatlog` (Postgres tự host) vẫn là nguồn dữ liệu chính chủ, không
