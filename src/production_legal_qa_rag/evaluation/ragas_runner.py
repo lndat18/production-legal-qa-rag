@@ -153,11 +153,16 @@ def _build_groq_clients(settings: TestsetGeneratorSettings) -> list[ChatOpenAI]:
 def _has_clusters(
     synthesizer: BaseSynthesizer[Any], graph: KnowledgeGraph, n: int
 ) -> bool:
-    """Multi-hop cần cụm đoạn có quan hệ; KG nhỏ có thể không có -> ragas sẽ raise ValueError."""
-    if isinstance(synthesizer, MultiHopAbstractQuerySynthesizer):
-        return bool(synthesizer.get_node_clusters(graph, n))
-    if isinstance(synthesizer, MultiHopSpecificQuerySynthesizer):
-        return bool(synthesizer.get_node_clusters(graph))
+    """Multi-hop cần cụm đoạn có quan hệ; KG nhỏ có thể không có -> ragas raise ValueError."""
+    try:
+        if isinstance(synthesizer, MultiHopAbstractQuerySynthesizer):
+            return bool(synthesizer.get_node_clusters(graph, n))
+        if isinstance(synthesizer, MultiHopSpecificQuerySynthesizer):
+            return bool(synthesizer.get_node_clusters(graph))
+    except ValueError:
+        # KnowledgeGraph.find_n_indirect_clusters raise thay vì trả rỗng khi không có
+        # quan hệ nào khớp điều kiện — coi như "không có cụm" (mục 4/4.5: bỏ, không bù).
+        return False
     return True
 
 

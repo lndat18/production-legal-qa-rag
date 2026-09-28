@@ -250,6 +250,27 @@ def test_query_distribution_cho_ra_dung_so_cau_theo_calculate_split_values(
     ]
 
 
+@pytest.mark.parametrize(
+    "make_synthesizer",
+    [
+        lambda llm: ragas_runner.CleanMultiHopAbstractSynthesizer(llm=llm),
+        lambda llm: ragas_runner.CleanMultiHopSpecificSynthesizer(llm=llm),
+    ],
+)
+def test_has_clusters_tra_false_khi_kg_khong_co_quan_he_thay_vi_raise(
+    monkeypatch: pytest.MonkeyPatch, make_synthesizer: Any
+) -> None:
+    """`KnowledgeGraph.find_n_indirect_clusters` (ragas thật) raise `ValueError` khi KG
+    không có quan hệ nào khớp điều kiện — `_has_clusters` phải bắt và trả `False` (bỏ loại
+    multi-hop đó, không bù, mục 4/4.5), không để lỗi lan lên `_query_distribution`.
+    """
+    runner = _runner(monkeypatch)
+    synthesizer = make_synthesizer(runner.llm)
+    empty_graph = KnowledgeGraph()  # không node, không relationship -> ragas raise thật
+
+    assert ragas_runner._has_clusters(synthesizer, empty_graph, 2) is False
+
+
 def test_query_distribution_bo_loai_khong_co_cum_va_khong_bu(
     monkeypatch: pytest.MonkeyPatch,
 ):
