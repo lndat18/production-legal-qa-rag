@@ -14,12 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
+from openai import APIConnectionError, InternalServerError, RateLimitError
 from pydantic import ValidationError
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.executor import Executor
@@ -59,6 +61,15 @@ MAX_TOKEN_LIMIT: Final = 4_000
 MAX_WORKERS: Final = 4
 LANGUAGE: Final = "vietnamese"
 
+# Retry của ragas (mục 3.1, 8). Mặc định `RunConfig` là 10 lần với MỌI `Exception`: lỗi tất
+# định (400/401/413) bị thử lại vô ích và khi hết quota mỗi lượt gọi đốt hàng trăm request
+# (mỗi lượt đã là 6 tài khoản x retry SDK). Chỉ thử lại lỗi tạm thời, ít lần, chờ ngắn.
+MAX_RETRIES: Final = 3
+MAX_WAIT_SECONDS: Final = 30
+# 429 (`RateLimitError`, theo phút), timeout + lỗi kết nối (`APIConnectionError`), 5xx
+# (`InternalServerError`). Cố ý không có `DailyQuotaExhaustedError`, 400/401/403/413.
+RETRYABLE_EXCEPTIONS: Final = (RateLimitError, APIConnectionError, InternalServerError)
+
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8),
 # cùng pattern với generation/generator.py.
 _GROQ_OPENAI_BASE_URL: Final = "https://api.groq.com/openai/v1"
@@ -93,6 +104,16 @@ class CleanMultiHopSpecificSynthesizer(MultiHopSpecificQuerySynthesizer):
 
     def prepare_combinations(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return _force_perfect_grammar(super().prepare_combinations(*args, **kwargs))
+
+
+def build_run_config() -> RunConfig:
+    """`RunConfig` dùng chung cho dựng KG, `adapt_prompts` và sinh câu (chỉ retry lỗi tạm thời)."""
+    return RunConfig(
+        max_workers=MAX_WORKERS,
+        max_retries=MAX_RETRIES,
+        max_wait=MAX_WAIT_SECONDS,
+        exception_types=RETRYABLE_EXCEPTIONS,
+    )
 
 
 def cap_token_limit(transforms: Any, limit: int) -> int:
@@ -150,11 +171,14 @@ class RagasUnitRunner:
     ) -> None:
         settings = settings or TestsetGeneratorSettings()  # type: ignore[call-arg]
         self.router = GroqRoundRobinChatModel(clients=_build_groq_clients(settings))
-        self.llm = LangchainLLMWrapper(self.router)
+        # Ragas chỉ đọc retry từ `llm.run_config` (không từ `run_config` truyền vào
+        # `apply_transforms`, chỉ dùng cho `max_workers`), và `TestsetGenerator.generate` chỉ
+        # đặt lại nó ở bước sinh câu. Gán ngay đây để dựng KG + `adapt_prompts` cũng dùng.
+        self.run_config = build_run_config()
+        self.llm = LangchainLLMWrapper(self.router, run_config=self.run_config)
         self.embeddings = LangchainEmbeddingsWrapper(
             embeddings_adapter or RagasEmbeddingsAdapter()
         )
-        self.run_config = RunConfig(max_workers=MAX_WORKERS)
         self._synthesizers: dict[str, BaseSynthesizer[Any]] | None = None
 
     def _get_synthesizers(self) -> dict[str, BaseSynthesizer[Any]]:
@@ -219,6 +243,40 @@ class RagasUnitRunner:
             (synthesizers[kind], (n - 0.5) / total) for kind, n in wanted.items()
         ], total
 
+    def _obtain_knowledge_graph(
+        self, unit: EvalUnit, path: Path, *, reuse: bool
+    ) -> KnowledgeGraph:
+        """Nạp KG đã lưu (khi `reuse`) hoặc dựng mới và lưu NGAY; trả KG.
+
+        KG dựng xong là hoàn chỉnh (~30-160K token) nên lưu trước bước sinh câu: lỗi ở bước
+        sinh câu không làm mất nó, lần sau đơn vị dở dùng lại thay vì dựng lại.
+        """
+        if reuse and path.exists():
+            graph = _load_matching_graph(path, unit)
+            if graph is not None:
+                logger.info("Tái dùng KG đã lưu: %s", path)
+                return graph
+        graph = self._build_knowledge_graph(unit)
+        _save_graph_atomic(graph, path)
+        return graph
+
+    def _generate_cases(
+        self,
+        graph: KnowledgeGraph,
+        distribution: list[tuple[BaseSynthesizer[Any], float]],
+        total: int,
+    ) -> list[GoldenTestCase]:
+        generator = TestsetGenerator(llm=self.llm, embedding_model=self.embeddings)
+        generator.knowledge_graph = graph
+        testset = generator.generate(
+            testset_size=total,
+            query_distribution=distribution,
+            run_config=self.run_config,
+        )
+        if isinstance(testset, Executor):
+            raise TypeError("RagasUnitRunner không hỗ trợ return_executor=True.")
+        return _to_cases(testset.to_list())
+
     def run_unit(
         self,
         unit: EvalUnit,
@@ -227,35 +285,42 @@ class RagasUnitRunner:
         *,
         reuse_knowledge_graph: bool,
     ) -> UnitResult:
-        """Sinh câu hỏi cho `unit`; chỉ lưu KG khi sinh xong (không ghi KG dở, mục 8)."""
+        """Sinh câu hỏi cho `unit`; KG được lưu ngay sau khi dựng xong (trước khi sinh câu)."""
+        self._get_synthesizers()  # lần đầu gọi LLM (adapt_prompts); không tính vào đơn vị
         calls_before = sum(self.router.call_counts)
-        reused = reuse_knowledge_graph and knowledge_graph_path.exists()
-        if reused:
-            logger.info("Tái dùng KG đã lưu: %s", knowledge_graph_path)
-            graph = KnowledgeGraph.load(knowledge_graph_path)
-        else:
-            graph = self._build_knowledge_graph(unit)
-
+        graph = self._obtain_knowledge_graph(
+            unit, knowledge_graph_path, reuse=reuse_knowledge_graph
+        )
         distribution, total = self._query_distribution(graph, quota)
-        cases: list[GoldenTestCase] = []
-        if total > 0:
-            generator = TestsetGenerator(llm=self.llm, embedding_model=self.embeddings)
-            generator.knowledge_graph = graph
-            testset = generator.generate(
-                testset_size=total,
-                query_distribution=distribution,
-                run_config=self.run_config,
-            )
-            if isinstance(testset, Executor):
-                raise TypeError("RagasUnitRunner không hỗ trợ return_executor=True.")
-            cases = _to_cases(testset.to_list())
-
-        if not reused:
-            knowledge_graph_path.parent.mkdir(parents=True, exist_ok=True)
-            graph.save(knowledge_graph_path)
+        cases = self._generate_cases(graph, distribution, total) if total > 0 else []
         return UnitResult(
             cases=cases, llm_calls=sum(self.router.call_counts) - calls_before
         )
+
+
+def _load_matching_graph(path: Path, unit: EvalUnit) -> KnowledgeGraph | None:
+    """Nạp KG; `None` (kèm log) nếu file hỏng hoặc dựng từ văn bản khác `unit.text`."""
+    try:
+        graph = KnowledgeGraph.load(path)
+    except ValueError:
+        logger.warning("KG %s không đọc được: dựng lại.", path)
+        return None
+    if not any(
+        node.type == NodeType.DOCUMENT
+        and node.properties.get("page_content") == unit.text
+        for node in graph.nodes
+    ):
+        logger.warning("KG %s không khớp văn bản đơn vị hiện tại: dựng lại.", path)
+        return None
+    return graph
+
+
+def _save_graph_atomic(graph: KnowledgeGraph, path: Path) -> None:
+    """Ghi file tạm rồi đổi tên: chết giữa chừng không để lại KG dở dang."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(path.name + ".tmp")
+    graph.save(temp_path)
+    os.replace(temp_path, path)
 
 
 def _to_cases(samples: list[dict[str, Any]]) -> list[GoldenTestCase]:

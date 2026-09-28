@@ -65,18 +65,28 @@ def generate(
     ),
     reuse_knowledge_graph: bool = typer.Option(
         False,
-        help="Nạp lại KG đã lưu của đơn vị (nếu có) thay vì dựng lại, tiết kiệm token.",
+        help=(
+            "Nạp lại KG đã lưu của đơn vị ĐÃ XONG (dùng với --append). Đơn vị chưa xong "
+            "luôn tự dùng lại KG còn sót từ lần lỗi trước, không cần cờ này."
+        ),
     ),
     append: bool = typer.Option(
         False,
-        help="Chạy lại cả đơn vị đã xong, nối thêm câu vào raw và cộng dồn progress (sinh bù).",
+        help=(
+            "Chạy lại cả đơn vị đã xong, nối thêm câu vào raw và cộng dồn progress "
+            "(sinh bù). Bắt buộc đi kèm --only."
+        ),
     ),
     testset_size: int | None = typer.Option(
         None,
         help="Ghi đè tổng số câu (mặc định 240), chia cho các đơn vị đã chọn.",
     ),
 ) -> None:
-    """Sinh golden testset theo từng đơn vị; dừng ngay (mã thoát 1) khi một đơn vị lỗi."""
+    """Sinh golden testset theo từng đơn vị.
+
+    Mã thoát: 0 xong; 1 một đơn vị lỗi giữa chừng (quota...), chạy lại để làm tiếp;
+    2 đầu vào/cấu hình sai (không gọi LLM).
+    """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
@@ -122,12 +132,12 @@ def finalize(
         DEFAULT_OUTPUT_DIR, help="Thư mục chứa golden_testset_raw.json (đã review)."
     ),
 ) -> None:
-    """Chốt đúng 180 câu từ raw đã review -> golden_testset.json."""
+    """Chốt đúng 180 câu từ raw đã review -> golden_testset.json (mã thoát 2 nếu đầu vào sai)."""
     try:
         cases = finalize_golden_testset(output_dir)
     except EvalInputError as error:
-        typer.echo(f"Lỗi: {error}", err=True)
-        raise typer.Exit(1) from error
+        typer.echo(f"Lỗi đầu vào: {error}", err=True)
+        raise typer.Exit(2) from error
     typer.echo(
         f"Đã ghi {len(cases)}/{TARGET_SIZE} câu vào {output_dir / 'golden_testset.json'}."
     )

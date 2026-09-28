@@ -309,7 +309,7 @@ def test_progress_sai_hinh_dang_thi_raise_ke_ca_file_rong(
     assert runner.calls == []
 
 
-def test_progress_khong_phai_utf8_van_bao_loi_khong_coi_nhu_chua_lam_gi(
+def test_progress_khong_phai_utf8_la_loi_dau_vao_khong_coi_nhu_chua_lam_gi(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
@@ -317,10 +317,66 @@ def test_progress_khong_phai_utf8_van_bao_loi_khong_coi_nhu_chua_lam_gi(
     (output_dir / tg.PROGRESS_FILENAME).write_bytes(b"\xff\xfe{\x00")
     runner = Runner()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(tg.EvalInputError, match="hỏng"):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     assert runner.calls == []
+
+
+def test_raw_khong_phai_utf8_la_loi_dau_vao_ca_o_generate_lan_finalize(
+    dirs: tuple[Path, Path],
+):
+    from tools import generate_testset
+
+    markdown_dir, output_dir = dirs
+    output_dir.mkdir()
+    raw_path = output_dir / tg.RAW_TESTSET_FILENAME
+    raw_path.write_bytes("[]".encode("utf-16"))  # vd. lưu nhầm UTF-16 khi sửa tay
+    runner = Runner()
+
+    with pytest.raises(tg.EvalInputError, match="không phải"):
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+    with pytest.raises(tg.EvalInputError):
+        tg.finalize_golden_testset(output_dir)
+    generate_result = CliRunner().invoke(
+        generate_testset.app,
+        [
+            "generate",
+            "--markdown-dir",
+            str(markdown_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+    finalize_result = CliRunner().invoke(
+        generate_testset.app, ["finalize", "--output-dir", str(output_dir)]
+    )
+
+    assert runner.calls == []
+    assert generate_result.exit_code == 2
+    assert finalize_result.exit_code == 2
+    assert not (output_dir / tg.GOLDEN_TESTSET_FILENAME).exists()
+
+
+def test_progress_khong_phai_utf8_qua_cli_thoat_ma_2(dirs: tuple[Path, Path]):
+    from tools import generate_testset
+
+    markdown_dir, output_dir = dirs
+    output_dir.mkdir()
+    (output_dir / tg.PROGRESS_FILENAME).write_bytes(b"\xff\xfe{\x00")
+
+    result = CliRunner().invoke(
+        generate_testset.app,
+        [
+            "generate",
+            "--markdown-dir",
+            str(markdown_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 2
 
 
 def test_dry_run_va_cli_dry_run_cung_dung_khi_progress_hong(dirs: tuple[Path, Path]):

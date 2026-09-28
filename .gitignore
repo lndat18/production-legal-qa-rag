@@ -13,3 +13,9 @@ models/
 
 # Backup pg_dump sinh bởi deploy/scripts/backup.sh (deploy_spec.md mục 8) — chứa dữ liệu người dùng.
 deploy/backups/
+
+# Sinh ra bởi tools/generate_testset.py (evaluation_spec.md mục 4.5): KG chứa embedding nên rất
+# lớn, dựng lại được; *.tmp là file ghi dở của lần ghi nguyên tử. golden_testset*.json và
+# generation_progress.json cần commit nên KHÔNG ignore.
+data/eval/knowledge_graph/
+data/eval/**/*.tmp

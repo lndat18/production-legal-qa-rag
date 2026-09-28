@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Final
 
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -22,6 +22,26 @@ from langchain_core.outputs import ChatResult
 from langchain_openai import ChatOpenAI
 from openai import RateLimitError
 from pydantic import PrivateAttr
+
+# Groq ghi giới hạn theo ngày trong thông điệp 429: "... on tokens per day (TPD): Limit ...".
+# Giới hạn theo phút ghi "per minute (TPM/RPM)" — tạm thời, chờ là hết, khác hẳn hết ngày.
+_DAILY_LIMIT_MARKERS: Final = ("per day", "(tpd)", "(rpd)")
+
+
+class DailyQuotaExhaustedError(RuntimeError):
+    """Mọi tài khoản đều báo hết quota THEO NGÀY; chờ/thử lại trong ngày là vô ích.
+
+    Cố ý KHÔNG kế thừa `openai.RateLimitError` để retry của ragas không thử lại, và mọi
+    lượt gọi sau đó trong cùng process được từ chối ngay (không gửi request nào nữa).
+    `status_code` giữ để `last_failure` ghi được thông điệp lỗi HTTP như 429 thường.
+    """
+
+    status_code = 429
+
+
+def _is_daily_limit(error: RateLimitError) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in _DAILY_LIMIT_MARKERS)
 
 
 class GroqRoundRobinChatModel(BaseChatModel):
@@ -49,6 +69,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
 
     _cycle: Iterator[int] = PrivateAttr()
     _call_counts: list[int] = PrivateAttr()
+    _daily_quota_error: DailyQuotaExhaustedError | None = PrivateAttr(default=None)
 
     def model_post_init(self, context: Any, /) -> None:
         if not self.clients:
@@ -87,8 +108,15 @@ class GroqRoundRobinChatModel(BaseChatModel):
         thiết kế ở evaluation_spec.md mục 3.1: 1 lần đầu + tối đa `len(clients) - 1`
         lần fallback); hết vòng vẫn lỗi thì raise nguyên lỗi cuối, không giữ vòng
         lặp vô hạn, không tự ý bỏ qua lượt gọi.
+
+        Nếu cả vòng đều là lỗi hết quota THEO NGÀY thì ghi nhớ và từ chối mọi lượt gọi
+        sau đó ngay lập tức (`DailyQuotaExhaustedError`): ragas không huỷ các task còn
+        lại khi một task lỗi, nên không chặn ở đây thì mỗi task còn lại vẫn tự đốt
+        `len(clients)` x (retry SDK) request vô ích và ăn RPD của các tài khoản.
         """
-        last_error: RateLimitError | None = None
+        if self._daily_quota_error is not None:
+            raise self._daily_quota_error
+        errors: list[RateLimitError] = []
         for _ in range(len(self.clients)):
             client = self._next_client()
             try:
@@ -96,11 +124,13 @@ class GroqRoundRobinChatModel(BaseChatModel):
                     messages, stop=stop, run_manager=run_manager, **kwargs
                 )
             except RateLimitError as error:
-                last_error = error
-                continue
+                errors.append(error)
 
-        if last_error is None:
-            # Không thể xảy ra: `model_post_init` đã chặn `clients` rỗng nên
-            # vòng lặp trên chạy ít nhất 1 lần và luôn return hoặc set biến này.
-            raise RuntimeError("GroqRoundRobinChatModel: vòng round-robin không chạy.")
-        raise last_error
+        # `model_post_init` đã chặn `clients` rỗng nên vòng lặp trên chạy ít nhất 1 lần
+        # và hoặc return hoặc thêm vào `errors`.
+        if all(_is_daily_limit(error) for error in errors):
+            self._daily_quota_error = DailyQuotaExhaustedError(
+                f"Hết quota theo ngày trên cả {len(errors)} tài khoản Groq: {errors[-1]}"
+            )
+            raise self._daily_quota_error from errors[-1]
+        raise errors[-1]

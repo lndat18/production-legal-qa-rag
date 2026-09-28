@@ -13,9 +13,11 @@ Chữ ký `prepare_combinations` của 3 synthesizer và `calculate_split_values
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 pytest.importorskip(
@@ -24,6 +26,16 @@ pytest.importorskip(
 )
 
 from langchain_core.documents import Document
+from langchain_core.prompt_values import StringPromptValue
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
+from ragas.prompt.mixin import PromptMixin
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType
 from ragas.testset.persona import Persona
 from ragas.testset.synthesizers.base import QueryStyle
@@ -33,7 +45,10 @@ from ragas.testset.transforms import default_transforms
 from production_legal_qa_rag.config import EmbeddingSettings, TestsetGeneratorSettings
 from production_legal_qa_rag.evaluation import ragas_runner, testset_generator
 from production_legal_qa_rag.evaluation.embeddings_adapter import RagasEmbeddingsAdapter
-from production_legal_qa_rag.evaluation.groq_round_robin import GroqRoundRobinChatModel
+from production_legal_qa_rag.evaluation.groq_round_robin import (
+    DailyQuotaExhaustedError,
+    GroqRoundRobinChatModel,
+)
 from production_legal_qa_rag.evaluation.testset_generator import QuestionQuota
 from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit
 
@@ -281,7 +296,12 @@ def _sample(index: int, **overrides: Any) -> dict[str, Any]:
 
 
 class _FakeGraph:
-    saved_to: Path | None = None
+    """KG giả: có 1 node DOCUMENT mang `page_content` để kiểm khớp văn bản khi nạp lại."""
+
+    def __init__(self, page_content: str | None = None) -> None:
+        text = _unit().text if page_content is None else page_content
+        self.nodes = [Node(type=NodeType.DOCUMENT, properties={"page_content": text})]
+        self.saved_to: Path | None = None
 
     def save(self, path: Path) -> None:
         self.saved_to = Path(path)
@@ -348,7 +368,7 @@ def test_run_unit_dung_kg_rieng_sinh_cau_va_luu_kg(
     assert kg_path.exists()
 
 
-def test_run_unit_loi_sinh_cau_thi_khong_luu_kg_do_dang(
+def test_run_unit_loi_sinh_cau_van_giu_kg_da_dung_xong_khong_de_lai_file_tam(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
@@ -360,8 +380,28 @@ def test_run_unit_loi_sinh_cau_thi_khong_luu_kg_do_dang(
             _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
         )
 
+    assert kg_path.exists()
+    assert list(kg_path.parent.glob("*.tmp")) == []
+
+
+def test_run_unit_loi_khi_dung_kg_thi_khong_de_lai_file_kg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    _patch_generation(monkeypatch, runner, samples=[])
+
+    def _build_fails(unit: EvalUnit) -> Any:
+        raise RuntimeError("429 giữa lúc dựng KG")
+
+    monkeypatch.setattr(runner, "_build_knowledge_graph", _build_fails)
+    kg_path = tmp_path / "knowledge_graph" / "A__01.json"
+
+    with pytest.raises(RuntimeError):
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+        )
+
     assert not kg_path.exists()
-    assert not kg_path.parent.exists()
 
 
 def test_run_unit_reuse_nap_kg_da_luu_va_khong_dung_lai_khong_ghi_de(
@@ -388,6 +428,44 @@ def test_run_unit_reuse_nap_kg_da_luu_va_khong_dung_lai_khong_ghi_de(
     assert seen["built"] == 0
     assert seen["kg_used"] is loaded_graph
     assert kg_path.read_text("utf-8") == "nguyên trạng"
+
+
+def test_run_unit_reuse_nhung_kg_dung_tu_van_ban_khac_thi_dung_lai_va_ghi_de(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    kg_path = tmp_path / "A__01.json"
+    kg_path.write_text("cũ", encoding="utf-8")
+    monkeypatch.setattr(
+        KnowledgeGraph,
+        "load",
+        staticmethod(lambda _path: _FakeGraph(page_content="văn bản đã bị sửa")),
+    )
+
+    runner.run_unit(
+        _unit(), QuestionQuota(single_hop=1), kg_path, reuse_knowledge_graph=True
+    )
+
+    assert seen["built"] == 1
+    assert kg_path.read_text("utf-8") == "{}"
+
+
+def test_run_unit_reuse_nhung_file_kg_hong_thi_dung_lai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner, samples=[_sample(1)])
+    kg_path = tmp_path / "A__01.json"
+    kg_path.write_text(
+        "{hỏng", encoding="utf-8"
+    )  # KnowledgeGraph.load thật -> ValueError
+
+    runner.run_unit(
+        _unit(), QuestionQuota(single_hop=1), kg_path, reuse_knowledge_graph=True
+    )
+
+    assert seen["built"] == 1
 
 
 def test_run_unit_reuse_nhung_chua_co_file_kg_thi_van_dung_kg(
@@ -460,3 +538,174 @@ def test_to_cases_bo_mau_thieu_cot_bat_buoc_va_giu_synthesizer_name():
     assert [c.user_input for c in cases] == ["Câu hỏi 1?", "Câu hỏi 5?"]
     assert cases[1].synthesizer_name == "multi_hop_abstract_query_synthesizer"
     assert all(c.source_document is None for c in cases)  # do testset_generator gắn
+
+
+# ==========================================================================
+# Retry của ragas (mục 3.1, 8): chỉ lỗi tạm thời, ít lần, và có hiệu lực TRƯỚC generate()
+# ==========================================================================
+
+
+def _status_error(cls: type[Any], status: int, message: str = "lỗi") -> Any:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return cls(message, response=httpx.Response(status, request=request), body=None)
+
+
+def test_run_config_chi_retry_loi_tam_thoi_voi_so_lan_va_thoi_gian_cho_han_che():
+    config = ragas_runner.build_run_config()
+
+    assert config.max_retries == ragas_runner.MAX_RETRIES == 3
+    assert config.max_wait == ragas_runner.MAX_WAIT_SECONDS == 30
+    assert config.max_workers == ragas_runner.MAX_WORKERS
+    types = config.exception_types
+    assert isinstance(types, tuple)
+    for transient in (
+        RateLimitError,
+        APIConnectionError,
+        APITimeoutError,
+        InternalServerError,
+    ):
+        assert issubclass(transient, types)
+    for deterministic in (
+        BadRequestError,
+        AuthenticationError,
+        DailyQuotaExhaustedError,
+    ):
+        assert not issubclass(deterministic, types)
+
+
+def test_llm_dung_chung_run_config_cua_runner_ngay_tu_khoi_tao(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+
+    assert runner.llm.run_config is runner.run_config
+    assert runner.llm.run_config.exception_types == ragas_runner.RETRYABLE_EXCEPTIONS
+    assert runner.llm.run_config.max_retries == ragas_runner.MAX_RETRIES
+
+
+def _raise_from_all_clients(
+    runner: ragas_runner.RagasUnitRunner, error_factory: Any
+) -> None:
+    def _generate(messages: object, **kwargs: object) -> Any:
+        raise error_factory()
+
+    for client in runner.router.clients:
+        client._generate = _generate  # type: ignore[method-assign]
+    runner.llm.run_config.max_wait = 0  # test không được ngủ thật giữa các lần thử
+
+
+def _ask(runner: ragas_runner.RagasUnitRunner) -> None:
+    asyncio.run(runner.llm.generate(StringPromptValue(text="x")))
+
+
+def test_llm_loi_tat_dinh_400_khong_bi_ragas_thu_lai_ngay_ca_khi_chua_goi_generate(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    _raise_from_all_clients(runner, lambda: _status_error(BadRequestError, 400))
+
+    with pytest.raises(BadRequestError):
+        _ask(runner)
+
+    assert sum(runner.router.call_counts) == 1
+
+
+def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_6_tai_khoan(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    _raise_from_all_clients(
+        runner,
+        lambda: _status_error(
+            RateLimitError, 429, "Rate limit reached on tokens per minute (TPM)"
+        ),
+    )
+
+    with pytest.raises(RateLimitError):
+        _ask(runner)
+
+    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES * 6
+
+
+def test_llm_het_quota_ngay_dung_sau_mot_vong_va_tu_choi_moi_luot_sau_do(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    _raise_from_all_clients(
+        runner,
+        lambda: _status_error(
+            RateLimitError, 429, "Rate limit reached on tokens per day (TPD)"
+        ),
+    )
+
+    with pytest.raises(DailyQuotaExhaustedError):
+        _ask(runner)
+    after_first = sum(runner.router.call_counts)
+    with pytest.raises(DailyQuotaExhaustedError):
+        _ask(runner)
+
+    assert after_first == 6
+    assert sum(runner.router.call_counts) == 6  # lượt sau không gửi request nào
+
+
+# ==========================================================================
+# adapt_prompts đúng 1 lần mỗi synthesizer, dùng lại qua nhiều đơn vị (mục 4, 4.3b)
+# ==========================================================================
+
+
+def test_get_synthesizers_adapt_prompts_dung_1_lan_moi_synthesizer_qua_nhieu_don_vi(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+    adapt_calls: list[tuple[str, str, Any]] = []
+    set_calls: list[tuple[str, set[str]]] = []
+    original_set_prompts = PromptMixin.set_prompts
+
+    async def _fake_adapt(self: Any, language: str, llm: Any, *_a: Any) -> Any:
+        adapt_calls.append((type(self).__name__, language, llm))
+        return dict(self.get_prompts())
+
+    def _spy_set_prompts(self: Any, **prompts: Any) -> None:
+        set_calls.append((type(self).__name__, set(prompts)))
+        original_set_prompts(self, **prompts)
+
+    monkeypatch.setattr(PromptMixin, "adapt_prompts", _fake_adapt)
+    monkeypatch.setattr(PromptMixin, "set_prompts", _spy_set_prompts)
+    monkeypatch.setattr(ragas_runner, "_has_clusters", lambda *_args: True)
+
+    for _ in range(3):  # ba đơn vị liên tiếp
+        runner._query_distribution(KnowledgeGraph(), QuestionQuota(single_hop=2))
+
+    names = sorted(name for name, _language, _llm in adapt_calls)
+    assert names == sorted(
+        [
+            "CleanSingleHopSynthesizer",
+            "CleanMultiHopAbstractSynthesizer",
+            "CleanMultiHopSpecificSynthesizer",
+        ]
+    )
+    assert all(language == "vietnamese" for _n, language, _l in adapt_calls)
+    assert all(llm is runner.llm for _n, _lang, llm in adapt_calls)
+    assert [name for name, _keys in set_calls] == [name for name, _l, _m in adapt_calls]
+    assert all(keys for _name, keys in set_calls)  # prompt đã dịch được áp lại
+
+
+def test_build_unit_runner_thieu_key_chi_bao_ten_bien_khong_lo_gia_tri(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.chdir(tmp_path)  # tránh đọc .env thật của repo
+    for name in ("GROQ_API_KEY_5", "GROQ_API_KEY_6"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_BI_MAT_KEY_1_xyz")
+    for n in (2, 3, 4):
+        monkeypatch.setenv(f"GROQ_API_KEY_{n}", f"gsk_BI_MAT_KEY_{n}_xyz")
+
+    with pytest.raises(testset_generator.EvalInputError) as excinfo:
+        testset_generator.build_unit_runner()
+
+    message = str(excinfo.value)
+    assert "GROQ_API_KEY_5" in message
+    assert "GROQ_API_KEY_6" in message
+    assert "gsk_BI_MAT" not in message
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__suppress_context__

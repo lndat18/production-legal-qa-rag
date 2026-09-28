@@ -360,7 +360,8 @@ theo THỨ TỰ CHẠY = số ký tự tăng dần (nhỏ trước, mục 4.5), 
         (build KnowledgeGraph CỦA RIÊNG Chương này: tóm tắt, trích entity, dựng quan hệ
          trong nội bộ Chương — tốn nhiều lượt gọi, rải qua 6 tài khoản round-robin; số câu
          và trọng số từng loại lấy từ `allocate_questions` bên dưới)
-    → lưu KG ra data/eval/knowledge_graph/<tên>__<chương>.json
+    → lưu KG ra data/eval/knowledge_graph/<tên>__<chương>.json NGAY SAU KHI dựng xong (nguyên
+      tử, TRƯỚC bước sinh câu; lần sau đơn vị dở dùng lại KG đó nếu còn khớp văn bản — mục 4.5)
     → convert → list[GoldenTestCase] (gắn source_document=<tên>, source_section=<chương>)
       → NỐI vào data/eval/golden_testset_raw.json NGAY, rồi ghi đơn vị vào
         generation_progress.json (checkpoint theo đơn vị, mục 4.5)
@@ -523,7 +524,8 @@ testset = generator.generate_with_langchain_docs(
     testset_size=n,
     transforms=transforms,
     query_distribution=[(synthesizer, 1.0)],
-    run_config=RunConfig(max_workers=4),  # ragas.run_config; mặc định 16
+    # mã pilot; code thật dùng build_run_config() (mục 4.5)
+    run_config=RunConfig(max_workers=4),
 )
 ```
 
@@ -641,10 +643,39 @@ của `split_document`, không đổi khi sắp xếp lại; dùng số thứ t�
   chưa có trong progress → **coi là đã xong** (ghi bổ sung vào progress, log rõ), không sinh
   lại (tránh trùng câu).
 - **Khi hết quota/lỗi giữa đơn vị** (429 sau khi mọi tài khoản đã thử, timeout, 413...):
-  đơn vị đang dở KHÔNG được ghi vào raw/KG/`units`; ghi `last_failure` (tên đơn vị, loại lỗi,
+  đơn vị đang dở KHÔNG được ghi vào raw/`units`; ghi `last_failure` (tên đơn vị, loại lỗi,
   thời điểm, không có nội dung câu hỏi/context); in tóm tắt tiến độ; **dừng luôn, không thử
   đơn vị kế** (quota các tài khoản chung nhau nên đơn vị kế cũng sẽ lỗi, chỉ đốt thêm token
   vào lượt dở); thoát với mã khác 0. Lần chạy sau thành công thì xoá `last_failure`.
+- **KG và đơn vị dở (chốt 2026-09-28, sau review PR #60):** KG dựng xong là một đồ thị hoàn
+  chỉnh (~30-160K token, tới ~10% TPD của 6 tài khoản), nên được lưu ngay sau `apply_transforms`,
+  trước bước sinh câu, bằng ghi nguyên tử (file tạm rồi đổi tên; chết giữa chừng không để lại
+  KG dở). Vì vậy KG có thể tồn tại cho đơn vị CHƯA xong; trạng thái "xong" vẫn chỉ do
+  `generation_progress.json` quyết định. Đơn vị chưa có trong `units` (dở do lỗi, hoặc mới
+  chạy) **tự dùng lại** KG đã lưu nếu file còn và `page_content` của node DOCUMENT vẫn khớp
+  văn bản đơn vị hiện tại (lệch hoặc file hỏng thì dựng lại, có log); đơn vị đã xong (`--append`)
+  chỉ dùng lại khi có `--reuse-knowledge-graph`. Muốn ép dựng lại KG của đơn vị dở thì xoá file
+  `knowledge_graph/<văn bản>__<số>.json`.
+- **`--append` bắt buộc đi kèm `--only`:** `--append` chạy lại cả đơn vị đã xong, thiếu `--only`
+  sẽ chạy lại mọi đơn vị (đốt quota nhiều ngày) nên báo lỗi đầu vào (mã thoát 2, không gọi LLM).
+- **Mã thoát của CLI:** 0 xong; 1 một đơn vị lỗi giữa chừng (chạy lại để làm tiếp); 2 đầu vào/cấu
+  hình sai (`--only` sai, `--append` thiếu `--only`, thiếu thư mục/`.md` nguồn, progress hoặc raw
+  hỏng/không phải UTF-8, thiếu `GROQ_API_KEY_*`, `finalize` thiếu câu). Cả `generate` và
+  `finalize` dùng cùng quy ước.
+- **Chính sách retry của ragas (chốt 2026-09-28, sau review PR #60):** ragas đọc retry từ
+  `llm.run_config` (mặc định 10 lần với mọi `Exception`; `LangchainLLMWrapper` chỉ thu hẹp sang
+  `RateLimitError` khi llm là `ChatOpenAI`, ở đây là `GroqRoundRobinChatModel` nên KHÔNG thu hẹp),
+  còn `run_config` truyền vào `apply_transforms` chỉ được dùng cho `max_workers`. `RagasUnitRunner`
+  tạo MỘT `RunConfig` (`max_retries=3`, `max_wait=30`, `max_workers=4`, `exception_types` = 429
+  `RateLimitError`, `APIConnectionError` gồm timeout, `InternalServerError` 5xx — KHÔNG có
+  400/401/403/413) và gán cho `LangchainLLMWrapper` ngay lúc khởi tạo để dựng KG,
+  `adapt_prompts` và sinh câu cùng dùng. Ngoài ra, khi MỌI tài khoản trong một vòng round-robin
+  đều báo hết quota THEO NGÀY (thông điệp 429 chứa "per day"/"(TPD)"/"(RPD)"), router ném
+  `DailyQuotaExhaustedError` (không kế thừa `RateLimitError` nên ragas không retry) và từ chối
+  ngay mọi lượt gọi sau đó trong process: ragas không huỷ các task còn lại khi một task lỗi,
+  không chặn thì mỗi task còn lại vẫn đốt hàng chục request vô ích. 429 theo phút vẫn được retry
+  (chờ là hết). Kết quả mong muốn khi hết quota: dừng sau một vòng vài chục request, ghi
+  `last_failure`, mã thoát 1.
 - **Kiểm tra khớp nguồn:** mỗi lần chạy, đơn vị đã có trong `units` mà `chars` khác với kết
   quả chia hiện tại (văn bản `.md` hoặc quy tắc chia đã đổi) → dừng với lỗi rõ chỉ tên đơn vị,
   không tự bỏ qua hay ghi đè (số thứ tự có thể đã trỏ sang đơn vị khác).
@@ -769,7 +800,7 @@ class TestsetGeneratorSettings(BaseSettings):
 | `unit_splitter.py` | **Đã implement:** `EvalUnit` (Pydantic: `source_document`, `index`, `title`, `text`, `char_count`, `estimated_tokens`), `split_document`, `split_directory` (chia Chương/Mục, gộp, bỏ chú thích, thuần Python, không import `ragas`); hằng số `MAX_UNIT_CHARS=30.000`, `MIN_UNIT_CHARS=6.000`, `TOKENS_PER_CHAR=5,5`, `FIXED_TOKENS_PER_UNIT=4.000`. Test: `tests/test_evaluation_unit_splitter.py`. |
 | `tools/split_eval_units.py` | **Đã implement:** CLI chia + ghi `data/eval/units/` và `data/eval/units_plan.md` để duyệt, không gọi LLM. Khi lệnh `generate --dry-run` xong (mục 4.5) thì CLI này chỉ còn dùng để xem nguyên văn đơn vị; giữ lại, không xoá. |
 | `testset_generator.py` | Điều phối: khởi tạo `TestsetGenerator` (+ transforms hạ `max_token_limit`, `adapt_prompts` tiếng Việt, 3 synthesizer ép `PERFECT_GRAMMAR` — mục 4.3); **vòng lặp từng văn bản rồi từng Chương** (bỏ qua đơn vị đã xong theo `generation_progress.json`, mục 4.5): `generate_with_langchain_docs` → lưu `KnowledgeGraph` riêng + nối `golden_testset_raw.json` ngay; `allocate_questions` (quota 192/24/24 theo đơn vị); `finalize_testset(raw_cases, target=TARGET_SIZE)` cắt phân tầng đúng 180 câu (mục 4.2). Hằng số `GENERATE_SIZE=240`, `TARGET_SIZE=180`, `MIN_UNIT_CHARS`. |
-| `tools/generate_testset.py` | Typer app mỏng với **2 lệnh**, chỉ gọi `testset_generator.py`, không chứa business logic. `generate`: `--markdown-dir`, `--output-dir`, `--only <tên>[#<số thứ tự đơn vị>]` (lặp lại được; chọn cả văn bản hoặc từng đơn vị), `--dry-run` (in kế hoạch theo thứ tự chạy nhỏ → lớn: đơn vị, ước lượng token, trạng thái xong/chưa/lỗi lần cuối, tóm tắt tiến độ; KHÔNG gọi LLM — mục 4.4, 4.5), `--reuse-knowledge-graph`, `--append`, `--testset-size` (tổng, mặc định `GENERATE_SIZE=240`). `finalize`: `--output-dir` → đọc raw, ghi `golden_testset.json` (đúng 180). Hiện `generate_golden_testset` chỉ xử lý cả thư mục một lần và ghi `golden_testset.json` — cần viết lại theo vòng lặp từng văn bản rồi từng Chương. |
+| `tools/generate_testset.py` | Typer app mỏng với **2 lệnh**, chỉ gọi `testset_generator.py`, không chứa business logic. `generate`: `--markdown-dir`, `--output-dir`, `--only <tên>[#<số thứ tự đơn vị>]` (lặp lại được; chọn cả văn bản hoặc từng đơn vị), `--dry-run` (in kế hoạch theo thứ tự chạy nhỏ → lớn: đơn vị, ước lượng token, trạng thái xong/chưa/lỗi lần cuối, tóm tắt tiến độ; KHÔNG gọi LLM — mục 4.4, 4.5), `--reuse-knowledge-graph` (chỉ cần cho đơn vị đã xong; đơn vị dở tự dùng lại KG, mục 4.5), `--append` (bắt buộc kèm `--only`), `--testset-size` (tổng, mặc định `GENERATE_SIZE=240`); mã thoát 0/1/2 (mục 4.5). `finalize`: `--output-dir` → đọc raw, ghi `golden_testset.json` (đúng 180). Hiện `generate_golden_testset` chỉ xử lý cả thư mục một lần và ghi `golden_testset.json` — cần viết lại theo vòng lặp từng văn bản rồi từng Chương. |
 
 Ghi chú vị trí: đặt ngay ở package `evaluation/` (không phải chỉ 1 script rời trong
 `tools/`) vì Phase 2 sẽ thêm module chạy eval (`run_eval.py`/tương đương) vào **cùng**
@@ -779,7 +810,7 @@ package này — tránh phải dời code khi mở rộng.
 
 | Sự cố | Xử lý |
 | --- | --- |
-| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở**, ghi `last_failure` vào `generation_progress.json`. Đơn vị đang dở KHÔNG được lưu (không ghi KG/raw dở dang); các đơn vị đã xong trước đó giữ nguyên. Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11). |
+| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở**, ghi `last_failure` vào `generation_progress.json`. Đơn vị đang dở KHÔNG được ghi vào raw/progress (raw không bao giờ ghi dở); KG chỉ được giữ nếu đã dựng xong hoàn chỉnh (mục 4.5), còn lỗi giữa lúc dựng KG thì không có file KG; các đơn vị đã xong trước đó giữ nguyên. Retry ragas giới hạn ở lỗi tạm thời và hết quota ngày dừng ngay sau một vòng (mục 4.5). Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11). |
 | `--only` nêu tên văn bản không tồn tại trong `data/markdown/` | Raise lỗi rõ liệt kê tên hợp lệ, trước khi gọi Groq. |
 | `embeddings_adapter.py` trả response sai định dạng (khác kỳ vọng của HF API) | Raise lỗi rõ, không âm thầm trả vector rỗng — cùng nguyên tắc validate ở biên như `embedding/hf_client.py`. |
 | File `data/markdown/*.md` trống hoặc thiếu | Raise lỗi rõ trước khi gọi `TestsetGenerator` (fail fast, không lãng phí LLM call). |
@@ -788,6 +819,9 @@ package này — tránh phải dời code khi mở rộng.
 | `generate` gặp đơn vị đã có trong `generation_progress.json` mà không có `--append` | Bỏ qua đơn vị đó, log rõ "đã xong" (không gọi Groq, không ghi đè) — vừa là resume vừa bảo vệ công review tay (mục 4.5). Không bao giờ ghi đè/sắp xếp lại các dòng có sẵn trong file raw (người dùng đã sửa tay). |
 | Đơn vị đã xong nhưng `chars` trong progress khác kết quả chia hiện tại | Dừng với lỗi nêu tên đơn vị (nguồn hoặc quy tắc chia đã đổi); không tự bỏ qua/ghi đè (mục 4.5). |
 | Đơn vị có dòng trong raw nhưng chưa có trong progress (chết giữa hai bước ghi) | Coi là đã xong, ghi bổ sung vào progress và log; không sinh lại. |
+| `--append` không kèm `--only` | Lỗi đầu vào (mã thoát 2) trước khi gọi LLM; không chạy lại cả corpus (mục 4.5). |
+| Thiếu/sai `GROQ_API_KEY`…`_6` khi chạy `generate` thật | `EvalInputError` (mã thoát 2) chỉ nêu TÊN biến còn thiếu, KHÔNG in giá trị (lỗi gốc của pydantic in đầu/đuôi key). |
+| `data/markdown` thiếu/không có `.md`, hoặc file `.md`/progress/raw không phải UTF-8 | `EvalInputError` (mã thoát 2), không traceback. |
 | `generation_progress.json` hỏng/không parse được | Raise lỗi rõ; không âm thầm coi như "chưa làm gì" (sẽ đốt lại toàn bộ quota). |
 | `finalize`: sau review còn ít hơn 180 câu | Dừng với lỗi nêu rõ thiếu bao nhiêu + gợi ý `generate --only <tên> --reuse-knowledge-graph --append` (mục 4.2); không ghi `golden_testset.json` thiếu. |
 | `finalize`: `golden_testset_raw.json` không tồn tại hoặc một dòng thiếu/rỗng `user_input`/`reference`/`reference_contexts` | Raise lỗi rõ chỉ ra vị trí dòng lỗi (validate bằng `GoldenTestCase`), không âm thầm bỏ qua. |
@@ -808,9 +842,11 @@ package này — tránh phải dời code khi mở rộng.
      được câu không, không bị lỗi "tài liệu quá ngắn".
    - **Resume và tái dùng KG:** chạy lại lệnh bỏ qua đơn vị đã xong theo
      `generation_progress.json` (kể cả sau khi xoá hết dòng của một đơn vị trong raw);
-     `--reuse-knowledge-graph` không build lại đồ thị. Thử dừng giữa chừng (Ctrl+C hoặc gỡ một
-     key để ép lỗi) rồi chạy lại: đơn vị dở không nằm trong progress, `last_failure` được ghi,
-     lần sau tiếp tục đúng chỗ.
+     `--reuse-knowledge-graph` (với `--append`) không build lại đồ thị. Thử dừng giữa chừng
+     (Ctrl+C hoặc gỡ một key để ép lỗi) rồi chạy lại: đơn vị dở không nằm trong progress,
+     `last_failure` được ghi, lần sau tiếp tục đúng chỗ và, nếu KG đã dựng xong trước khi lỗi,
+     KHÔNG dựng lại KG (log "Tái dùng KG đã lưu"). Kiểm thêm: khi ép hết quota ngày, chương
+     trình dừng sau một vòng (không treo hàng chục phút) và thoát mã 1.
    - **Round-robin 6 key thật:** cả 6 key nhận tải (pilot thăm dò chỉ thấy 3 key vì code cũ).
    Chỉ chạy full khi pilot này đạt. (Đã thử dò lỗi bằng OpenRouter free: chỉ 50 request/ngày/
    tài khoản và kho chung upstream hay 429 — không đáng dùng cho việc này.)

@@ -486,6 +486,90 @@ def test_generate_append_chay_lai_don_vi_da_xong_noi_them_va_cong_don(
     assert new.llm_calls == old.llm_calls + 7
 
 
+def test_generate_don_vi_chua_xong_tu_dung_lai_kg_con_sot_don_vi_da_xong_chi_khi_co_co(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    first = FakeUnitRunner(fail_on="B.md#2")
+    with pytest.raises(tg.UnitGenerationError):
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=first)
+    # lần đầu chưa có gì đã xong -> tất cả đơn vị đều "chưa xong" -> tự cho phép dùng lại KG
+    assert first.reuse_flags == [True] * len(first.calls)
+
+    second = FakeUnitRunner()
+    tg.generate_testset(markdown_dir, output_dir, unit_runner=second)
+    assert second.calls[0] == "B.md#2"  # làm tiếp đúng đơn vị lỗi
+    assert "A.md#2" not in second.calls
+    assert all(second.reuse_flags)
+
+    appended = FakeUnitRunner()
+    tg.generate_testset(
+        markdown_dir, output_dir, only=["A.md#2"], append=True, unit_runner=appended
+    )
+    with_flag = FakeUnitRunner()
+    tg.generate_testset(
+        markdown_dir,
+        output_dir,
+        only=["A.md#2"],
+        append=True,
+        reuse_knowledge_graph=True,
+        unit_runner=with_flag,
+    )
+    assert appended.reuse_flags == [False]  # đơn vị đã xong, không cờ -> dựng lại
+    assert with_flag.reuse_flags == [True]
+
+
+def test_append_khong_kem_only_bao_loi_dau_vao_truoc_khi_dung_runner(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = FakeUnitRunner()
+
+    with pytest.raises(tg.EvalInputError, match="--only"):
+        tg.generate_testset(markdown_dir, output_dir, append=True, unit_runner=runner)
+    with pytest.raises(tg.EvalInputError, match="--only"):
+        tg.plan_generation(markdown_dir, output_dir, append=True)
+
+    assert runner.calls == []
+    assert not output_dir.exists()
+
+
+def test_cli_append_khong_kem_only_thoat_ma_2(dirs: tuple[Path, Path]):
+    from tools import generate_testset
+
+    markdown_dir, output_dir = dirs
+
+    result = CliRunner().invoke(
+        generate_testset.app,
+        [
+            "generate",
+            "--append",
+            "--markdown-dir",
+            str(markdown_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--only" in result.output
+
+
+def test_thieu_thu_muc_markdown_la_loi_dau_vao_thoat_ma_2(tmp_path: Path):
+    from tools import generate_testset
+
+    missing = tmp_path / "khong-co"
+    with pytest.raises(tg.EvalInputError, match="Không đọc được"):
+        tg.plan_generation(missing, tmp_path / "eval")
+
+    result = CliRunner().invoke(
+        generate_testset.app,
+        ["generate", "--markdown-dir", str(missing), "--output-dir", str(tmp_path)],
+    )
+    assert result.exit_code == 2
+    assert "Lỗi đầu vào" in result.output
+
+
 def test_append_raw_cases_bo_cau_trung_user_input_va_giu_nguyen_dong_cu(tmp_path: Path):
     raw_path = tmp_path / "raw.json"
     old_row = {
@@ -843,7 +927,7 @@ def test_cli_loi_dau_vao_thoat_ma_2(dirs: tuple[Path, Path]):
     assert "Hợp lệ" in result.output
 
 
-def test_cli_finalize_thieu_cau_thoat_ma_1_thanh_cong_thi_in_so_luong(tmp_path: Path):
+def test_cli_finalize_thieu_cau_thoat_ma_2_thanh_cong_thi_in_so_luong(tmp_path: Path):
     from tools import generate_testset
 
     raw_path = tmp_path / tg.RAW_TESTSET_FILENAME
@@ -860,6 +944,6 @@ def test_cli_finalize_thieu_cau_thoat_ma_1_thanh_cong_thi_in_so_luong(tmp_path: 
         generate_testset.app, ["finalize", "--output-dir", str(tmp_path)]
     )
 
-    assert short.exit_code == 1
+    assert short.exit_code == 2
     assert ok.exit_code == 0, ok.output
     assert "180/180" in ok.output

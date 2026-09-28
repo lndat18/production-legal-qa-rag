@@ -26,7 +26,10 @@ from production_legal_qa_rag.evaluation.embeddings_adapter import (
     RagasEmbeddingsAdapter,
     _coerce_embeddings,
 )
-from production_legal_qa_rag.evaluation.groq_round_robin import GroqRoundRobinChatModel
+from production_legal_qa_rag.evaluation.groq_round_robin import (
+    DailyQuotaExhaustedError,
+    GroqRoundRobinChatModel,
+)
 from production_legal_qa_rag.evaluation.models import GoldenTestCase
 
 # ==========================================================================
@@ -239,9 +242,9 @@ def _fake_response(status_code: int) -> SimpleNamespace:
     )
 
 
-def _rate_limit_error() -> RateLimitError:
+def _rate_limit_error(message: str = "rate limited") -> RateLimitError:
     return RateLimitError(
-        "rate limited",
+        message,
         response=_fake_response(429),  # type: ignore[arg-type]
         body=None,
     )
@@ -352,6 +355,69 @@ def test_call_counts_dem_ca_luot_bi_429_roi_chuyen_client():
 
     # Lượt 1: a (429) -> b; lượt 2 bắt đầu từ a (429) -> b.
     assert router.call_counts == [2, 2]
+
+
+_DAILY = "Rate limit reached ... on tokens per day (TPD): Limit 200000, Used 199990"
+_PER_MINUTE = "Rate limit reached ... on tokens per minute (TPM): Limit 8000"
+
+
+def _clients_raising(messages: list[str]) -> tuple[list[ChatOpenAI], list[int]]:
+    """Mỗi client ném 429 với thông điệp tương ứng; trả (clients, bộ đếm số lần được gọi)."""
+    clients = [_fake_client(name=str(n)) for n in range(len(messages))]
+    calls = [0] * len(messages)
+    for index, (client, message) in enumerate(zip(clients, messages, strict=True)):
+
+        def _generate(
+            _messages: object, *, _i: int = index, _m: str = message, **_kw: object
+        ) -> ChatResult:
+            calls[_i] += 1
+            raise _rate_limit_error(_m)
+
+        client._generate = _generate  # type: ignore[method-assign]
+    return clients, calls
+
+
+def test_het_quota_ngay_tren_moi_tai_khoan_thi_raise_va_tu_choi_luot_sau_khong_goi_mang():
+    clients, calls = _clients_raising([_DAILY, _DAILY, _DAILY])
+    router = GroqRoundRobinChatModel(clients=clients)
+
+    with pytest.raises(DailyQuotaExhaustedError, match="3 tài khoản"):
+        router._generate(messages=[])
+    with pytest.raises(DailyQuotaExhaustedError):
+        router._generate(messages=[])
+
+    assert calls == [1, 1, 1]  # lượt 2 bị chặn ngay, không request nào
+    assert router.call_counts == [1, 1, 1]
+
+
+def test_het_quota_ngay_khong_phai_rate_limit_error_de_ragas_khong_retry():
+    assert not issubclass(DailyQuotaExhaustedError, RateLimitError)
+    assert DailyQuotaExhaustedError.status_code == 429  # để last_failure ghi thông điệp
+
+
+def test_429_theo_phut_hoac_lan_lon_khong_kich_hoat_chan_va_van_raise_rate_limit_error():
+    clients, calls = _clients_raising([_DAILY, _PER_MINUTE])
+    router = GroqRoundRobinChatModel(clients=clients)
+
+    with pytest.raises(RateLimitError) as first:
+        router._generate(messages=[])
+    with pytest.raises(RateLimitError):
+        router._generate(messages=[])
+
+    assert not isinstance(first.value, DailyQuotaExhaustedError)
+    assert calls == [2, 2]  # chưa chặn: lượt 2 vẫn gọi lại cả hai
+
+
+def test_het_quota_ngay_o_mot_tai_khoan_thi_van_chuyen_sang_tai_khoan_con_quota():
+    clients, calls = _clients_raising([_DAILY, _DAILY])
+    healthy = _fake_client(name="ok")
+    healthy._generate = lambda messages, **kwargs: _chat_result("ok")  # type: ignore[method-assign]
+    router = GroqRoundRobinChatModel(clients=[*clients, healthy])
+
+    result = router._generate(messages=[])
+
+    assert result.generations[0].text == "ok"
+    assert calls == [1, 1]
 
 
 def test_router_bao_loi_khi_khong_co_client_nao():

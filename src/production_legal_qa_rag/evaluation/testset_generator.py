@@ -88,6 +88,7 @@ class QuestionQuota(BaseModel):
 
     @property
     def total(self) -> int:
+        """Tổng số câu của đơn vị (cả 3 loại)."""
         return self.single_hop + self.abstract + self.specific
 
 
@@ -204,14 +205,14 @@ def load_progress(path: Path) -> GenerationProgress:
     """Đọc `generation_progress.json`; chưa có file thì là tiến độ rỗng.
 
     Raises:
-        EvalInputError: File hỏng/không parse được — không coi như "chưa làm gì"
-            (sẽ đốt lại toàn bộ quota, mục 8).
+        EvalInputError: File hỏng/không parse được/không phải UTF-8 — không coi như
+            "chưa làm gì" (sẽ đốt lại toàn bộ quota, mục 8).
     """
     if not path.exists():
         return GenerationProgress()
     try:
         return GenerationProgress.model_validate_json(path.read_text(encoding="utf-8"))
-    except ValidationError as error:
+    except (ValidationError, UnicodeDecodeError) as error:
         raise EvalInputError(
             f"{path} hỏng hoặc sai định dạng; sửa/xoá tay rồi chạy lại: {error}"
         ) from error
@@ -226,13 +227,13 @@ def read_raw_rows(path: Path) -> list[dict[str, Any]]:
     """Đọc `golden_testset_raw.json` thành danh sách dict nguyên trạng (giữ mọi trường).
 
     Raises:
-        EvalInputError: File không phải JSON hợp lệ dạng danh sách các đối tượng.
+        EvalInputError: File không phải UTF-8/JSON hợp lệ dạng danh sách các đối tượng.
     """
     if not path.exists():
         return []
     try:
         rows = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise EvalInputError(f"{path} không phải JSON hợp lệ: {error}") from error
     if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
         raise EvalInputError(f"{path} phải là danh sách các đối tượng câu hỏi.")
@@ -373,8 +374,11 @@ def _new_unit_progress(
 
 
 def _load_units(markdown_dir: Path) -> list[EvalUnit]:
-    """Chia `markdown_dir` thành đơn vị; fail fast nếu có đơn vị rỗng (mục 8)."""
-    units = split_directory(markdown_dir)
+    """Chia `markdown_dir` thành đơn vị; fail fast nếu thiếu/rỗng/sai mã hoá (mục 8)."""
+    try:
+        units = split_directory(markdown_dir)
+    except (FileNotFoundError, UnicodeDecodeError) as error:
+        raise EvalInputError(f"Không đọc được văn bản nguồn: {error}") from error
     for unit in units:
         if not unit.text.strip():
             raise EvalInputError(f"File markdown trống: {unit.source_document}")
@@ -390,6 +394,15 @@ class _RunState(BaseModel):
     progress: GenerationProgress
     raw_rows: list[dict[str, Any]]
     recoverable: dict[str, list[dict[str, Any]]]
+
+
+def _require_only_with_append(only: Sequence[str], append: bool) -> None:
+    """`--append` chạy lại cả đơn vị đã xong nên phải chỉ rõ đơn vị (tránh chạy lại cả 50)."""
+    if append and not only:
+        raise EvalInputError(
+            "--append phải đi kèm --only: nó chạy lại cả đơn vị đã xong, không có --only "
+            "sẽ chạy lại mọi đơn vị và đốt quota nhiều ngày."
+        )
 
 
 def _prepare_run(
@@ -489,6 +502,7 @@ def plan_generation(
     testset_size: int | None = None,
 ) -> str:
     """Kế hoạch chạy (`generate --dry-run`): không gọi LLM, không cần key Groq, không ghi file."""
+    _require_only_with_append(only, append)
     return _render_plan(
         _prepare_run(markdown_dir, output_dir, only, testset_size), append=append
     )
@@ -597,10 +611,62 @@ def _process_unit(
 def build_unit_runner(
     settings: TestsetGeneratorSettings | None = None,
 ) -> UnitRunner:
-    """Dựng runner thật (ragas + 6 tài khoản Groq); import lười để module này không cần ragas."""
+    """Dựng runner thật (ragas + 6 tài khoản Groq); import lười để module này không cần ragas.
+
+    Raises:
+        EvalInputError: Thiếu/sai biến môi trường Groq. Thông báo chỉ nêu TÊN biến, không
+            kèm giá trị (lỗi gốc của pydantic in đầu/đuôi key).
+    """
     from production_legal_qa_rag.evaluation.ragas_runner import RagasUnitRunner
 
-    return RagasUnitRunner(settings)
+    try:
+        return RagasUnitRunner(settings)
+    except ValidationError as error:
+        names = sorted(
+            {".".join(str(part) for part in e["loc"]) for e in error.errors()}
+        )
+        raise EvalInputError(
+            "Thiếu hoặc sai cấu hình Groq trong .env (cần GROQ_API_KEY và "
+            f"GROQ_API_KEY_2 ... GROQ_API_KEY_6): {', '.join(names)}"
+        ) from None
+
+
+def _run_one_unit(
+    runner: UnitRunner,
+    unit: EvalUnit,
+    state: _RunState,
+    output_dir: Path,
+    *,
+    reuse_knowledge_graph: bool,
+) -> int:
+    """Chạy + checkpoint một đơn vị; lỗi thì ghi `last_failure` và dừng. Trả số câu mới."""
+    key = unit_key(unit)
+    progress_path = output_dir / PROGRESS_FILENAME
+    # Đơn vị chưa xong có thể còn KG hoàn chỉnh từ lần lỗi trước (lưu ngay sau khi dựng,
+    # mục 4.5): dùng lại thay vì tốn lại 30-160K token. Đơn vị đã xong (--append) chỉ dùng
+    # lại khi người dùng đòi bằng --reuse-knowledge-graph.
+    reuse = reuse_knowledge_graph or key not in state.progress.units
+    started = time.monotonic()
+    try:
+        added, llm_calls = _process_unit(
+            runner,
+            unit,
+            state.quotas[key],
+            output_dir,
+            reuse_knowledge_graph=reuse,
+        )
+    except (Exception, KeyboardInterrupt) as error:
+        description = _record_failure(progress_path, state.progress, key, error)
+        logger.error("Đơn vị %s lỗi, dừng: %s", key, description)
+        if isinstance(error, KeyboardInterrupt):
+            raise
+        raise UnitGenerationError(key, description) from error
+    _record_unit_done(
+        state.progress, unit, added, llm_calls, time.monotonic() - started
+    )
+    save_progress(progress_path, state.progress)
+    logger.info("Xong %s: +%d câu, %d lượt gọi LLM.", key, len(added), llm_calls)
+    return len(added)
 
 
 def generate_testset(
@@ -620,63 +686,51 @@ def generate_testset(
         markdown_dir: Thư mục `data/markdown/*.md`.
         output_dir: Thư mục `data/eval` (raw, progress, knowledge_graph/).
         only: Bộ lọc `<tên>[#<số>]`; rỗng = mọi đơn vị theo thứ tự nhỏ -> lớn.
-        reuse_knowledge_graph: Nạp lại KG đã lưu của đơn vị (nếu có) thay vì dựng lại.
-        append: Chạy lại cả đơn vị đã xong, nối thêm dòng và cộng dồn progress.
+        reuse_knowledge_graph: Nạp lại KG đã lưu của đơn vị ĐÃ XONG (dùng với `append`);
+            đơn vị chưa xong luôn tự dùng lại KG còn sót từ lần lỗi trước.
+        append: Chạy lại cả đơn vị đã xong, nối thêm dòng và cộng dồn progress; bắt buộc
+            đi kèm `only`.
         testset_size: Ghi đè tổng số câu (mặc định `GENERATE_SIZE`); chia cho các đơn vị đã chọn.
         unit_runner: Cài đặt thay thế cho test; `None` thì dựng runner ragas thật khi cần.
         settings: Cấu hình 6 key Groq, chỉ dùng khi `unit_runner` là `None`.
 
     Raises:
-        EvalInputError: `--only` sai, progress hỏng/lệch nguồn, file raw hỏng.
+        EvalInputError: `--only` sai, `append` thiếu `only`, thiếu key Groq, progress
+            hỏng/lệch nguồn, file raw hỏng.
         UnitGenerationError: Một đơn vị lỗi giữa chừng; `last_failure` đã được ghi,
-            đơn vị đó KHÔNG được ghi vào raw/KG/progress, các đơn vị sau không chạy.
+            đơn vị đó KHÔNG được ghi vào raw/progress (KG hoàn chỉnh nếu đã dựng xong thì
+            được giữ), các đơn vị sau không chạy.
     """
+    _require_only_with_append(only, append)
     state = _prepare_run(markdown_dir, output_dir, only, testset_size)
-    progress_path = output_dir / PROGRESS_FILENAME
-    _recover_unfinished(state, progress_path)
+    _recover_unfinished(state, output_dir / PROGRESS_FILENAME)
     pending = {unit_key(u) for u in _pending_units(state, append)}
-    report = GenerationReport(generated_units=[], skipped_units=[], new_questions=0)
     to_run = [
         u
         for u in state.selected
         if unit_key(u) in pending and state.quotas[unit_key(u)].total > 0
     ]
-    # Dựng runner (tạo client, đọc 6 key) TRƯỚC vòng lặp và ngoài `try`: thiếu key là lỗi
-    # cấu hình cần hiện nguyên văn, không phải lỗi của một đơn vị cụ thể.
-    runner = unit_runner or (build_unit_runner(settings) if to_run else None)
-
+    to_run_keys = {unit_key(u) for u in to_run}
+    report = GenerationReport(generated_units=[], skipped_units=[], new_questions=0)
     for unit in state.selected:
         key = unit_key(unit)
-        if unit not in to_run:
+        if key not in to_run_keys:
             logger.info(
                 "Bỏ qua %s (%s).", key, "quota 0 câu" if key in pending else "đã xong"
             )
             report.skipped_units.append(key)
-            continue
-        quota = state.quotas[key]
-        assert runner is not None
-        started = time.monotonic()
-        try:
-            added, llm_calls = _process_unit(
-                runner,
-                unit,
-                quota,
-                output_dir,
-                reuse_knowledge_graph=reuse_knowledge_graph,
-            )
-        except (Exception, KeyboardInterrupt) as error:
-            description = _record_failure(progress_path, state.progress, key, error)
-            logger.error("Đơn vị %s lỗi, dừng: %s", key, description)
-            if isinstance(error, KeyboardInterrupt):
-                raise
-            raise UnitGenerationError(key, description) from error
-        _record_unit_done(
-            state.progress, unit, added, llm_calls, time.monotonic() - started
+    if not to_run:
+        return report
+
+    # Dựng runner (tạo client, đọc 6 key) TRƯỚC vòng lặp và ngoài `try` của từng đơn vị:
+    # thiếu key là lỗi cấu hình, không phải lỗi của một đơn vị cụ thể.
+    runner = unit_runner or build_unit_runner(settings)
+    for unit in to_run:
+        added = _run_one_unit(
+            runner, unit, state, output_dir, reuse_knowledge_graph=reuse_knowledge_graph
         )
-        save_progress(progress_path, state.progress)
-        logger.info("Xong %s: +%d câu, %d lượt gọi LLM.", key, len(added), llm_calls)
-        report.generated_units.append(key)
-        report.new_questions += len(added)
+        report.generated_units.append(unit_key(unit))
+        report.new_questions += added
     return report
 
 
