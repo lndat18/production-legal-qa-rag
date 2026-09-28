@@ -272,19 +272,21 @@ class DatabaseSettings(BaseSettings):
 class TestsetGeneratorSettings(BaseSettings):
     """Cấu hình 6 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
 
-    Cả 6 key BẮT BUỘC (không optional/fallback như GenerationSettings/JudgeSettings) —
-    round-robin chỉ có ý nghĩa khi đủ 6 tài khoản độc lập; thiếu key nào, pydantic báo lỗi
-    rõ ràng ngay lúc khởi tạo thay vì âm thầm chạy round-robin với ít tài khoản hơn.
+    Cả 6 key BẮT BUỘC và KHÔNG được rỗng (không optional/fallback như
+    GenerationSettings/JudgeSettings) — round-robin chỉ có ý nghĩa khi đủ 6 tài khoản
+    độc lập; thiếu key nào, hoặc để trống như `GROQ_API_KEY_5=` trong `.env.example`,
+    pydantic báo lỗi rõ ràng ngay lúc khởi tạo thay vì âm thầm chạy round-robin với ít
+    tài khoản hơn.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY")
-    api_key_2: str = Field(validation_alias="GROQ_API_KEY_2")
-    api_key_3: str = Field(validation_alias="GROQ_API_KEY_3")
-    api_key_4: str = Field(validation_alias="GROQ_API_KEY_4")
-    api_key_5: str = Field(validation_alias="GROQ_API_KEY_5")
-    api_key_6: str = Field(validation_alias="GROQ_API_KEY_6")
+    api_key: str = Field(min_length=1, validation_alias="GROQ_API_KEY")
+    api_key_2: str = Field(min_length=1, validation_alias="GROQ_API_KEY_2")
+    api_key_3: str = Field(min_length=1, validation_alias="GROQ_API_KEY_3")
+    api_key_4: str = Field(min_length=1, validation_alias="GROQ_API_KEY_4")
+    api_key_5: str = Field(min_length=1, validation_alias="GROQ_API_KEY_5")
+    api_key_6: str = Field(min_length=1, validation_alias="GROQ_API_KEY_6")
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
     timeout_seconds: int = 60

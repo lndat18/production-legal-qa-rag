@@ -506,12 +506,13 @@ def test_run_unit_llm_calls_la_hieu_so_dem_cua_router(
     runner = _runner(monkeypatch)
     _patch_generation(monkeypatch, runner, samples=[_sample(1)])
     router = runner.router
-    router._next_client()  # lượt gọi từ trước (vd. adapt_prompts) không tính vào đơn vị này
+    # lượt gọi từ trước (vd. adapt_prompts) không tính vào đơn vị này
+    router._record_attempt(0)
     original_build = runner._build_knowledge_graph
 
     def _build_and_call(unit: EvalUnit) -> Any:
         for _ in range(3):
-            router._next_client()
+            router._record_attempt(0)
         return original_build(unit)
 
     monkeypatch.setattr(runner, "_build_knowledge_graph", _build_and_call)
@@ -711,6 +712,24 @@ def test_build_unit_runner_thieu_key_chi_bao_ten_bien_khong_lo_gia_tri(
     assert "gsk_BI_MAT" not in message
     assert excinfo.value.__cause__ is None
     assert excinfo.value.__suppress_context__
+
+
+def test_build_unit_runner_key_de_trong_bi_tu_choi_chi_bao_ten_bien_khong_lo_gia_tri(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.chdir(tmp_path)  # tránh đọc .env thật của repo
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_BI_MAT_KEY_1_xyz")
+    for n in (2, 3, 4, 6):
+        monkeypatch.setenv(f"GROQ_API_KEY_{n}", f"gsk_BI_MAT_KEY_{n}_xyz")
+    monkeypatch.setenv("GROQ_API_KEY_5", "")  # `GROQ_API_KEY_5=` như .env.example
+
+    with pytest.raises(testset_generator.EvalInputError) as excinfo:
+        testset_generator.build_unit_runner()
+
+    message = str(excinfo.value)
+    assert "GROQ_API_KEY_5" in message
+    assert "gsk_BI_MAT" not in message
+    assert excinfo.value.__cause__ is None
 
 
 @pytest.mark.parametrize(

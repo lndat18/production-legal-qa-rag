@@ -292,32 +292,50 @@ tải — mục đích khác hẳn, nên không tái dùng được `_SlidingWin
 `convert_chunks_concurrently` của `formatting/llm_client.py` (thiết kế cho 2 worker thread
 xử lý song song một hàng đợi job, không phải round-robin tuần tự).
 
-Thiết kế (đơn giản nhất đủ dùng cho 1 script chạy 1 lần, không over-engineer):
+Thiết kế (đơn giản nhất đủ dùng cho 1 script chạy 1 lần, nhưng ĐÚNG khi ragas gọi đồng thời):
 
 ```python
 class GroqRoundRobinChatModel(BaseChatModel):
-    """Proxy luân phiên round-robin qua N ChatOpenAI (Groq) độc lập tài khoản.
-
-    Không phải rate-limiter: chỉ đổi client theo vòng lặp cố định trước mỗi
-    lượt gọi thật, để rải tải đều qua các tài khoản độc lập.
-    """
+    """Proxy luân phiên round-robin qua N ChatOpenAI (Groq) độc lập tài khoản."""
 
     clients: list[ChatOpenAI]  # đúng 6, mỗi client gắn 1 key cố định
 
     def _generate(self, messages, ...):
-        client = self._next_client()          # itertools.cycle, state riêng instance
-        try:
-            return client._generate(messages, ...)
-        except RateLimitError:                 # bounded fallback, không vô hạn
-            for _ in range(len(self.clients) - 1):
-                client = self._next_client()
-                try:
-                    return client._generate(messages, ...)
-                except RateLimitError:
-                    continue
-            raise                               # hết vòng vẫn lỗi -> raise nguyên lỗi cuối
+        order = self._plan_attempts()            # DƯỚI LOCK: chốt điểm bắt đầu 1 lần/lượt gọi
+        errors = []
+        for index in order:                      # n client KHÁC NHAU, bounded, không vô hạn
+            self._record_attempt(index)          # dưới lock
+            try:
+                return self.clients[index]._generate(messages, ...)   # gọi mạng NGOÀI lock
+            except RateLimitError as error:      # lỗi khác 429 (400/401/403/413...) bay thẳng ra
+                errors.append(error)
+                self._mark_result(index, daily_limited=_is_daily_limit(error))
+        if all(_is_daily_limit(e) for e in errors):   # cả n client khác nhau, cùng lượt gọi
+            raise self._trip_breaker(errors) from errors[-1]
+        raise errors[-1]                         # hết vòng vẫn lỗi -> raise nguyên lỗi cuối
 ```
 
+- **Thứ tự thử client.** `_plan_attempts` lấy `start = next(cycle)` đúng MỘT lần mỗi lượt gọi rồi
+  duyệt `(start + offset) % n` cho `offset in range(n)` — mỗi lượt gọi luôn thử đúng `n` client
+  KHÁC NHAU, không phụ thuộc các luồng khác đang gọi xen kẽ (lấy `next()` mỗi lần thử như bản
+  đầu làm các luồng xen kẽ nhau nên một lượt gọi có thể thấy lặp/thiếu client). Client vừa báo
+  hết quota ngày còn trong cooldown (bên dưới) được xếp CUỐI danh sách (sắp xếp ổn định) chứ
+  không bị loại: vẫn nằm trong `n` client của lượt gọi.
+- **Điều kiện bật circuit breaker** (mục 4.5, 8): chỉ khi CẢ `n` client khác nhau đều trả 429
+  hết quota THEO NGÀY ("per day"/"(TPD)"/"(RPD)") trong CÙNG một lượt gọi (bằng chứng mới của
+  cả `n`, cooldown không thay thế bằng chứng). Một 429 theo phút, hay bất kỳ client nào trong
+  vòng trả kết quả, đều không bật breaker. Khi bật: ghi nhớ thông điệp và từ chối mọi lượt gọi
+  sau đó ngay (`DailyQuotaExhaustedError`, không request nào); mỗi lần raise là một instance
+  MỚI (không tái dùng một exception qua nhiều luồng), chỉ lần bật đầu giữ `__cause__`.
+- **Cooldown 5 phút** (`_DAILY_COOLDOWN_SECONDS = 300`): client vừa báo TPD được đánh dấu để các
+  lượt gọi sau ưu tiên tài khoản khác, tránh tốn `1 + max_retries` request 429 mỗi lượt cho
+  tài khoản đã cạn (TPD Groq là cửa sổ trượt nên hồi dần; hết cooldown, hoặc khi mọi client
+  còn lại đều lỗi, client đó được thử lại; thành công thì xoá cooldown).
+- **Ràng buộc thread-safe (bắt buộc, không còn là "rủi ro chấp nhận được"):** ragas chạy nhiều
+  worker (`max_workers=4`) và `_agenerate` mặc định chạy `_generate` trong executor, nên con
+  trỏ vòng, `call_counts`, cooldown và cờ breaker CHỈ được đọc/ghi dưới một `threading.Lock`
+  của instance; lock không giữ trong lúc gọi mạng. Cờ breaker khoá cả process, nên một lượt
+  bật oan (do luồng xen kẽ) sẽ dừng cả job nhiều giờ.
 - Chỉ cần implement `_generate` (sync) — `BaseChatModel._agenerate` mặc định fallback gọi
   `_generate` qua executor khi không override, nên round-robin vẫn đúng dù ragas gọi qua
   đường async.
@@ -325,12 +343,6 @@ class GroqRoundRobinChatModel(BaseChatModel):
   `TestsetGeneratorSettings` (mục 6); round-robin chỉ chọn client, không kiểm soát tốc độ.
 - Bounded fallback khi 429: thử tối đa `len(clients)` client cho MỘT lượt gọi rồi mới raise
   — cùng tinh thần retry giới hạn đã dùng ở `conversation/condenser.py` (retry đúng 1 lần).
-- **Rủi ro chấp nhận được, không xử lý thêm:** nếu ragas gọi `generator_llm` đồng thời
-  (concurrent, ví dụ qua `asyncio.gather` nội bộ khi build KG), `itertools.cycle` không
-  thread/async-safe tuyệt đối — có thể 2 lượt gọi cùng lúc nhận cùng 1 client thay vì luân
-  phiên hoàn hảo. Đây chỉ ảnh hưởng đến độ *đều* của việc rải tải (vẫn đúng chức năng,
-  không phải lỗi đúng/sai), chấp nhận được cho một script chạy 1 lần — không cần khoá
-  `asyncio.Lock`/`threading.Lock` chỉ để tối ưu độ đều tuyệt đối.
 - Không dùng `LoopBoundClient` (pattern ở `generation/`/`retrieval/` cho client sống suốt
   vòng đời server qua nhiều event loop) — không áp dụng ở đây vì đây là script chạy tuần
   tự trong đúng 1 process, không phải server long-running.
@@ -669,7 +681,7 @@ của `split_document`, không đổi khi sắp xếp lại; dùng số thứ t�
   tạo MỘT `RunConfig` (`max_retries=3`, `max_wait=30`, `max_workers=4`, `exception_types` = 429
   `RateLimitError`, `APIConnectionError` gồm timeout, `InternalServerError` 5xx — KHÔNG có
   400/401/403/413) và gán cho `LangchainLLMWrapper` ngay lúc khởi tạo để dựng KG,
-  `adapt_prompts` và sinh câu cùng dùng. Ngoài ra, khi MỌI tài khoản trong một vòng round-robin
+  `adapt_prompts` và sinh câu cùng dùng. Ngoài ra, khi MỌI tài khoản (đúng `n` client khác nhau, trong CÙNG một lượt gọi — mục 3.1)
   đều báo hết quota THEO NGÀY (thông điệp 429 chứa "per day"/"(TPD)"/"(RPD)"), router ném
   `DailyQuotaExhaustedError` (không kế thừa `RateLimitError` nên ragas không retry) và từ chối
   ngay mọi lượt gọi sau đó trong process: ragas không huỷ các task còn lại khi một task lỗi,
@@ -810,12 +822,12 @@ package này — tránh phải dời code khi mở rộng.
 
 | Sự cố | Xử lý |
 | --- | --- |
-| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở**, ghi `last_failure` vào `generation_progress.json`. Đơn vị đang dở KHÔNG được ghi vào raw/progress (raw không bao giờ ghi dở); KG chỉ được giữ nếu đã dựng xong hoàn chỉnh (mục 4.5), còn lỗi giữa lúc dựng KG thì không có file KG; các đơn vị đã xong trước đó giữ nguyên. Retry ragas giới hạn ở lỗi tạm thời và hết quota ngày dừng ngay sau một vòng (mục 4.5). Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11). |
+| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở**, ghi `last_failure` vào `generation_progress.json` (file được commit nên thông điệp HTTP bỏ tiền tố SDK, che mã tổ chức `org_...` và mọi chuỗi giống key `gsk_...` RỒI mới cắt 200 ký tự, để không mất phần "per day (TPD): Limit/Used"). Đơn vị đang dở KHÔNG được ghi vào raw/progress (raw không bao giờ ghi dở); KG chỉ được giữ nếu đã dựng xong hoàn chỉnh (mục 4.5), còn lỗi giữa lúc dựng KG thì không có file KG; các đơn vị đã xong trước đó giữ nguyên. Retry ragas giới hạn ở lỗi tạm thời và hết quota ngày dừng ngay sau một vòng (mục 4.5). Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11). |
 | `--only` nêu tên văn bản không tồn tại trong `data/markdown/` | Raise lỗi rõ liệt kê tên hợp lệ, trước khi gọi Groq. |
 | `embeddings_adapter.py` trả response sai định dạng (khác kỳ vọng của HF API) | Raise lỗi rõ, không âm thầm trả vector rỗng — cùng nguyên tắc validate ở biên như `embedding/hf_client.py`. |
 | File `data/markdown/*.md` trống hoặc thiếu | Raise lỗi rõ trước khi gọi `TestsetGenerator` (fail fast, không lãng phí LLM call). |
-| Một tài khoản Groq bị 429 giữa vòng round-robin (mục 3.1) | Thử ngay tài khoản kế tiếp trong vòng lặp, tối đa `len(clients)` lần cho MỘT lượt gọi; hết vòng vẫn lỗi thì raise nguyên lỗi cuối — không giữ vòng lặp vô hạn, không tự ý bỏ qua câu hỏi đó. |
-| Thiếu `GROQ_API_KEY_2`…`_6` trong `.env` | `TestsetGeneratorSettings` raise lỗi validate ngay lúc khởi tạo (fail fast) — không âm thầm chạy round-robin với ít hơn 6 tài khoản. |
+| Một tài khoản Groq bị 429 giữa vòng round-robin (mục 3.1) | Thử ngay tài khoản kế tiếp, tối đa `len(clients)` client KHÁC NHAU cho MỘT lượt gọi (điểm bắt đầu chốt một lần dưới lock); hết vòng vẫn lỗi thì raise nguyên lỗi cuối — không giữ vòng lặp vô hạn, không tự ý bỏ qua câu hỏi đó. Chỉ khi cả `n` client khác nhau đều báo hết quota ngày trong cùng lượt gọi mới bật breaker (`DailyQuotaExhaustedError`). Tài khoản vừa báo TPD được xếp cuối trong 5 phút. |
+| Thiếu hoặc để trống (`GROQ_API_KEY_5=`) bất kỳ key nào trong `GROQ_API_KEY`…`_6` trong `.env` | `TestsetGeneratorSettings` (`Field(min_length=1)`) raise lỗi validate ngay lúc khởi tạo (fail fast), thông báo chỉ nêu TÊN biến — không âm thầm chạy round-robin với ít hơn 6 tài khoản. |
 | `generate` gặp đơn vị đã có trong `generation_progress.json` mà không có `--append` | Bỏ qua đơn vị đó, log rõ "đã xong" (không gọi Groq, không ghi đè) — vừa là resume vừa bảo vệ công review tay (mục 4.5). Không bao giờ ghi đè/sắp xếp lại các dòng có sẵn trong file raw (người dùng đã sửa tay). |
 | Đơn vị đã xong nhưng `chars` trong progress khác kết quả chia hiện tại | Dừng với lỗi nêu tên đơn vị (nguồn hoặc quy tắc chia đã đổi); không tự bỏ qua/ghi đè (mục 4.5). |
 | Đơn vị có dòng trong raw nhưng chưa có trong progress (chết giữa hai bước ghi) | Coi là đã xong, ghi bổ sung vào progress và log; không sinh lại. |
@@ -901,9 +913,10 @@ package này — tránh phải dời code khi mở rộng.
    đây là tiền lệ để áp dụng lại ở nơi khác trừ khi có nhu cầu tương tự (khối lượng LLM
    call lớn, job offline không nhạy latency); `generation/`/`retrieval/`/`conversation/`
    vẫn giữ nguyên pattern 1 key cố định/bước như đã chốt trước đó.
-6. `itertools.cycle` không thread/async-safe tuyệt đối (mục 3.1) — chấp nhận rải tải không
-   hoàn toàn đều nếu ragas gọi `generator_llm` đồng thời; không ảnh hưởng tính đúng đắn của
-   testset sinh ra, chỉ ảnh hưởng độ cân bằng tải giữa 6 tài khoản.
+6. `GroqRoundRobinChatModel` được gọi đồng thời (ragas `max_workers=4`, `_agenerate` chạy
+   `_generate` trong executor) nên trạng thái dùng chung phải thread-safe (mục 3.1): chốt điểm
+   bắt đầu một lần mỗi lượt gọi dưới `threading.Lock` để breaker không bật oan. Bản đầu
+   ghi đây là "rủi ro chấp nhận được" — sai, vì cờ breaker khoá cả process.
 7. Phase 2 (chạy pipeline thật, tính metric, chọn judge LLM, ngưỡng theo dõi, tần suất
    chạy) chưa được thiết kế — brainstorm riêng sau khi có `golden_testset.json` dùng được.
    Các điểm mở đã biết cho brainstorm đó: pipeline chạy eval đi từ đâu (gọi thẳng

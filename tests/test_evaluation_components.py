@@ -353,8 +353,9 @@ def test_call_counts_dem_ca_luot_bi_429_roi_chuyen_client():
     router._generate(messages=[])
     router._generate(messages=[])
 
-    # Lượt 1: a (429) -> b; lượt 2 bắt đầu từ a (429) -> b.
-    assert router.call_counts == [2, 2]
+    # Mỗi lượt gọi chốt điểm bắt đầu một lần và tiến 1 bước: lượt 1 bắt đầu từ a
+    # (429) -> b; lượt 2 bắt đầu thẳng từ b.
+    assert router.call_counts == [1, 2]
 
 
 _DAILY = "Rate limit reached ... on tokens per day (TPD): Limit 200000, Used 199990"
@@ -483,3 +484,23 @@ def test_testset_generator_settings_bao_loi_khi_thieu_bat_ky_key_nao(
 
     with pytest.raises(ValidationError):
         TestsetGeneratorSettings()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("empty_env", _GROQ_KEY_ENVS)
+def test_testset_generator_settings_tu_choi_key_de_trong_va_chi_nem_ten_bien(
+    monkeypatch: pytest.MonkeyPatch, empty_env: str
+):
+    _set_all_groq_keys(monkeypatch)
+    monkeypatch.setenv(empty_env, "")  # như `GROQ_API_KEY_5=` trong .env.example
+    monkeypatch.setattr(
+        TestsetGeneratorSettings,
+        "model_config",
+        {**TestsetGeneratorSettings.model_config, "env_file": None},
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        TestsetGeneratorSettings()  # type: ignore[call-arg]
+
+    errors = excinfo.value.errors()
+    assert [".".join(map(str, e["loc"])) for e in errors] == [empty_env]
+    assert errors[0]["type"] == "string_too_short"

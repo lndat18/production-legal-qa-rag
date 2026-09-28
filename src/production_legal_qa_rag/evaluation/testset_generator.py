@@ -18,9 +18,10 @@ import json
 import logging
 import math
 import os
+import re
 import time
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
@@ -65,6 +66,10 @@ SYNTHESIZER_TYPES: Final = {
 }
 
 _ERROR_MESSAGE_MAX_CHARS: Final = 200
+# Tiền tố SDK openai: "Error code: 429 - {'error': {'message': '...". Mã tổ chức Groq
+# (`org_...`) và key (`gsk_...`) không được lọt vào file progress được commit.
+_SDK_PREFIX_PATTERN: Final = re.compile(r"^Error code: \d+ - ")
+_SECRET_PATTERN: Final = re.compile(r"(org|gsk)_[A-Za-z0-9]+")
 
 
 class EvalInputError(ValueError):
@@ -521,19 +526,31 @@ def summarize_progress(
 # ---------------------------------------------------------------------------
 
 
+def _http_message(error: BaseException) -> str:
+    """Dòng đầu thông điệp Groq đã bỏ tiền tố SDK và che mã tổ chức/key, rồi mới cắt độ dài."""
+    body = getattr(error, "body", None)
+    if isinstance(body, Mapping) and isinstance(body.get("message"), str):
+        message = str(body["message"])
+    else:
+        message = _SDK_PREFIX_PATTERN.sub("", str(error))
+    first_line = message.splitlines()[0] if message else ""
+    redacted = _SECRET_PATTERN.sub(lambda match: f"{match.group(1)}_***", first_line)
+    return redacted[:_ERROR_MESSAGE_MAX_CHARS]
+
+
 def _describe_error(error: BaseException) -> str:
     """Mô tả lỗi cho `last_failure`/log: chỉ kèm thông điệp khi là lỗi HTTP từ Groq.
 
     Thông điệp lỗi của ragas (parse output LLM...) có thể chứa nội dung câu hỏi/context,
-    mà chính sách log của project cấm ghi nội dung đó (mục 8).
+    mà chính sách log của project cấm ghi nội dung đó (mục 8). Thông điệp 429 của Groq
+    chứa mã tổ chức (`org_...`) và `last_failure` được commit cùng progress, nên che mã
+    đó (và mọi chuỗi giống key `gsk_...`) TRƯỚC khi cắt 200 ký tự để vẫn giữ phần
+    "per day (TPD): Limit/Used" nằm phía sau.
     """
     status = getattr(error, "status_code", None)
     if status is None:
         return type(error).__name__
-    message = (
-        str(error).splitlines()[0][:_ERROR_MESSAGE_MAX_CHARS] if str(error) else ""
-    )
-    return f"{type(error).__name__} (HTTP {status}): {message}"
+    return f"{type(error).__name__} (HTTP {status}): {_http_message(error)}"
 
 
 def _record_failure(
@@ -626,7 +643,7 @@ def build_unit_runner(
             {".".join(str(part) for part in e["loc"]) for e in error.errors()}
         )
         raise EvalInputError(
-            "Thiếu hoặc sai cấu hình Groq trong .env (cần GROQ_API_KEY và "
+            "Thiếu, để trống hoặc sai cấu hình Groq trong .env (cần GROQ_API_KEY và "
             f"GROQ_API_KEY_2 ... GROQ_API_KEY_6): {', '.join(names)}"
         ) from None
 
