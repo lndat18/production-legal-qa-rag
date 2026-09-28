@@ -615,9 +615,11 @@ def test_ca_6_client_dang_cooldown_nhung_da_hoi_lai_thi_van_duoc_thu_va_thanh_co
     result = router._generate(messages=[])
 
     assert result.generations[0].text == "ok"
-    assert scripted.calls == [1, 0, 0, 0, 0, 0]  # thử ngay client đến lượt, không bỏ cuộc
+    # thử ngay client đến lượt, không bỏ cuộc
+    assert scripted.calls == [1, 0, 0, 0, 0, 0]
     assert router._daily_quota_message is None
-    assert router._cooldown_until[0] == 0.0  # chỉ client vừa thành công được xoá cooldown
+    # chỉ client vừa thành công được xoá cooldown
+    assert router._cooldown_until[0] == 0.0
     assert all(router._cooldown_until[index] > clock.now for index in range(1, 6))
 
 
@@ -632,4 +634,5 @@ def test_ca_6_client_dang_cooldown_cung_can_bang_chung_moi_moi_bat_breaker(
     with pytest.raises(DailyQuotaExhaustedError):
         router._generate(messages=[])
 
-    assert scripted.calls == [1] * 6  # đã gọi đủ 6 để lấy bằng chứng, không suy diễn từ cooldown
+    # đã gọi đủ 6 để lấy bằng chứng, không suy diễn từ cooldown
+    assert scripted.calls == [1] * 6
