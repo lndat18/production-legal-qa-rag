@@ -53,6 +53,18 @@ dev = [
     "mypy>=1.14",
     "types-pyyaml>=6.0.12.20260906",
 ]
+eval = [
+    "langchain-community<0.4",
+    "ragas>=0.4.3",
+]
+# Nhóm không chứa package thật, chỉ ràng buộc version `openai` khi KHÔNG cài `eval`.
+# Lý do: `ragas`/`instructor` (nhóm `eval`) ép `jiter<0.15`, kéo `openai` xuống bản cũ
+# (3.3.0) nếu để `uv` resolve chung một bản cho mọi nhóm. Khai báo `production` xung
+# đột với `eval` (bên dưới) buộc `uv` tách resolve `openai` riêng cho từng nhóm, thay vì
+# hạ cấp `openai` mà `langchain-openai` dùng cho Groq thật trong production.
+production = [
+    "openai>=3.19.0",
+]
 
 [tool.ruff.lint.flake8-bugbear]
 # typer.Option()/typer.Argument() làm default value là idiom chuẩn của Typer,
@@ -70,3 +82,23 @@ plugins = ["pydantic.mypy"]
 # pyvi không phát hành type stub / py.typed marker.
 module = ["pyvi", "pyvi.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `ragas` chỉ nằm trong dependency-group `eval` (không cài khi `uv sync` mặc định,
+# xem [dependency-groups] production/eval) — `mypy src` vẫn phải chạy được trên
+# venv mặc định (không có `eval`) nên bỏ qua "import-not-found" cho module này.
+module = ["ragas", "ragas.*"]
+ignore_missing_imports = true
+
+[tool.uv]
+# `dev` vẫn dùng chung được với `eval` (chạy lint/test trên code evaluation).
+# `production` là nhóm không có package (xem comment cạnh khai báo `production` ở
+# [dependency-groups]) — mặc định bật cùng `dev` để `uv sync` không cờ vẫn giữ
+# `openai>=3.19.0`; xung đột với `eval` để bắt buộc tách resolve.
+default-groups = ["dev", "production"]
+conflicts = [
+    [
+        { group = "production" },
+        { group = "eval" },
+    ],
+]

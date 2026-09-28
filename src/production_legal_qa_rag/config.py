@@ -223,6 +223,24 @@ class DatabaseSettings(BaseSettings):
     )
 
 
+class TestsetGeneratorSettings(BaseSettings):
+    """Cấu hình 3 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
+
+    Cả 3 key BẮT BUỘC (không optional/fallback như GenerationSettings/JudgeSettings) —
+    round-robin chỉ có ý nghĩa khi đủ 3 tài khoản độc lập; thiếu key nào, pydantic báo lỗi
+    rõ ràng ngay lúc khởi tạo thay vì âm thầm chạy round-robin với 1-2 tài khoản.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    api_key_2: str = Field(validation_alias="GROQ_API_KEY_2")
+    api_key_3: str = Field(validation_alias="GROQ_API_KEY_3")
+    model_name: str = "openai/gpt-oss-120b"
+    max_retries: int = 2
+    timeout_seconds: int = 60
+
+
 class ApiSettings(BaseSettings):
     """Cấu hình lớp HTTP OpenAI-compatible (api_spec.md mục 10).
 
