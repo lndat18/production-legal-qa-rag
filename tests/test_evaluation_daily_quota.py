@@ -526,3 +526,110 @@ def test_last_failure_khi_het_quota_ngay_giu_duoc_limit_used_va_khong_lo_ma_to_c
     )
     assert "org_01k9" not in description
     assert "per day (TPD): Limit 200000, Used 199868" in description
+
+
+# ==========================================================================
+# Bổ sung vòng A lần 4: khe hở còn lại của lỗi đồng thời và thứ tự cooldown
+# ==========================================================================
+
+
+def test_nhieu_luong_5_tai_khoan_het_ngay_con_1_bao_theo_phut_khong_bao_gio_bat_breaker():
+    # Lỗi cũ: mỗi luồng có thể chỉ thấy các client đã hết ngày (bỏ sót client báo theo
+    # phút) rồi kết luận oan. Mỗi lượt gọi mới luôn thử đủ 6 nên luôn thấy client 5.
+    scripted = _ModeClients({0, 1, 2, 3, 4}, minute={5})
+    router = scripted.router()
+    threads, rounds = 8, 10
+
+    errors = _run_threads(router, threads=threads, rounds=rounds)
+
+    assert len(errors) == threads * rounds
+    assert all(type(error) is RateLimitError for error in errors)
+    assert router._daily_quota_message is None
+    assert scripted.calls == [threads * rounds] * 6
+
+
+def test_nhieu_luong_bo_dem_tung_client_khop_dung_so_request_thuc_te():
+    scripted = _ModeClients({0, 2, 4})
+    router = scripted.router()
+
+    errors = _run_threads(router, threads=8, rounds=25)
+
+    assert errors == []
+    assert router.call_counts == scripted.calls  # từng client, không chỉ tổng
+
+
+def _plan_orders(router: GroqRoundRobinChatModel, calls: int) -> list[list[int]]:
+    return [router._plan_attempts() for _ in range(calls)]
+
+
+def test_moi_client_dang_cooldown_thu_tu_thu_giu_nguyen_vong_quay_khong_bi_xao_tron(
+    clock: _Clock,
+):
+    router = _ModeClients(set()).router()
+    for index in range(6):
+        router._mark_result(index, daily_limited=True)
+
+    orders = _plan_orders(router, 3)
+
+    # Sắp xếp ổn định: khi mọi client cùng cooldown, thứ tự chính là vòng quay thuần.
+    assert orders == [
+        [0, 1, 2, 3, 4, 5],
+        [1, 2, 3, 4, 5, 0],
+        [2, 3, 4, 5, 0, 1],
+    ]
+
+
+def test_mot_so_client_cooldown_bi_day_xuong_cuoi_va_giu_thu_tu_vong_quay_trong_moi_nhom(
+    clock: _Clock,
+):
+    router = _ModeClients(set()).router()
+    router._mark_result(1, daily_limited=True)
+    router._mark_result(4, daily_limited=True)
+
+    orders = _plan_orders(router, 2)
+
+    assert orders == [[0, 2, 3, 5, 1, 4], [2, 3, 5, 0, 1, 4]]
+    assert all(sorted(order) == list(range(6)) for order in orders)  # luôn đủ 6 client
+
+
+def test_het_cooldown_thi_client_tro_lai_dung_cho_trong_vong_quay(clock: _Clock):
+    router = _ModeClients(set()).router()
+    router._mark_result(1, daily_limited=True)
+    router._plan_attempts()
+    router._plan_attempts()
+
+    clock.now += groq_round_robin._DAILY_COOLDOWN_SECONDS + 1
+
+    assert router._plan_attempts() == [2, 3, 4, 5, 0, 1]
+    assert router._plan_attempts() == [3, 4, 5, 0, 1, 2]
+
+
+def test_ca_6_client_dang_cooldown_nhung_da_hoi_lai_thi_van_duoc_thu_va_thanh_cong(
+    clock: _Clock,
+):
+    scripted = _ModeClients(set())  # cả 6 đã "khoẻ" trở lại
+    router = scripted.router()
+    for index in range(6):
+        router._mark_result(index, daily_limited=True)
+
+    result = router._generate(messages=[])
+
+    assert result.generations[0].text == "ok"
+    assert scripted.calls == [1, 0, 0, 0, 0, 0]  # thử ngay client đến lượt, không bỏ cuộc
+    assert router._daily_quota_message is None
+    assert router._cooldown_until[0] == 0.0  # chỉ client vừa thành công được xoá cooldown
+    assert all(router._cooldown_until[index] > clock.now for index in range(1, 6))
+
+
+def test_ca_6_client_dang_cooldown_cung_can_bang_chung_moi_moi_bat_breaker(
+    clock: _Clock,
+):
+    scripted = _ModeClients({0, 1, 2, 3, 4, 5})
+    router = scripted.router()
+    for index in range(6):
+        router._mark_result(index, daily_limited=True)
+
+    with pytest.raises(DailyQuotaExhaustedError):
+        router._generate(messages=[])
+
+    assert scripted.calls == [1] * 6  # đã gọi đủ 6 để lấy bằng chứng, không suy diễn từ cooldown
