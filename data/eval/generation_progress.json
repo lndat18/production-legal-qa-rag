@@ -1,0 +1,399 @@
+{
+  "units": {
+    "Văn bản hợp nhất bộ luật lao động.md#13": {
+      "title": "Chương XIV. GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG — Mục 2. THẨM QUYỀN VÀ TRÌNH TỰ GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG CÁ NHÂN",
+      "chars": 6000,
+      "estimated_tokens": 37000,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 249.39503979200526,
+      "completed_at": "2026-09-29T01:01:21.099962+07:00"
+    },
+    "Luật bảo hiểm y tế.md#6": {
+      "title": "Chương IX + Chương X",
+      "chars": 6361,
+      "estimated_tokens": 38986,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 266.49991820699506,
+      "completed_at": "2026-09-29T01:26:23.807417+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#9": {
+      "title": "Chương VII. QUỸ BẢO HIỂM XÃ HỘI",
+      "chars": 6451,
+      "estimated_tokens": 39480,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 19,
+      "seconds": 400.5982901470052,
+      "completed_at": "2026-09-29T01:33:04.408340+07:00"
+    },
+    "Luật thuế thu nhập cá nhân.md#3": {
+      "title": "Chương III + Chương IV",
+      "chars": 7254,
+      "estimated_tokens": 43897,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 254.0943493789964,
+      "completed_at": "2026-09-29T01:48:36.230025+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#11": {
+      "title": "Chương X. QUẢN LÝ NHÀ NƯỚC VỀ BẢO HIỂM XÃ HỘI",
+      "chars": 7294,
+      "estimated_tokens": 44117,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 250.84928928900626,
+      "completed_at": "2026-09-29T01:59:42.331754+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#12": {
+      "title": "Chương XI. ĐIỀU KHOẢN THI HÀNH",
+      "chars": 7485,
+      "estimated_tokens": 45168,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 19,
+      "seconds": 400.1934066890026,
+      "completed_at": "2026-09-29T02:06:22.525721+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#14": {
+      "title": "Chương XIV Mục 3 + Chương XIV Mục 4",
+      "chars": 7544,
+      "estimated_tokens": 45492,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 19,
+      "seconds": 389.5192018070011,
+      "completed_at": "2026-09-29T02:12:52.045949+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#4": {
+      "title": "Chương III Mục 4 + Chương III Mục 5",
+      "chars": 7856,
+      "estimated_tokens": 47208,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 22,
+      "seconds": 454.59058590000495,
+      "completed_at": "2026-09-29T02:20:26.637469+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#12": {
+      "title": "Chương XIV. GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG — Mục 1. NHỮNG QUY ĐỊNH CHUNG VỀ GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG",
+      "chars": 8596,
+      "estimated_tokens": 51278,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 22,
+      "seconds": 465.4481396830015,
+      "completed_at": "2026-09-29T02:28:12.086722+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#10": {
+      "title": "Chương VIII + Chương IX",
+      "chars": 8627,
+      "estimated_tokens": 51448,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 25,
+      "seconds": 522.2721196600032,
+      "completed_at": "2026-09-29T02:36:54.359962+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#9": {
+      "title": "Chương IX + Chương X",
+      "chars": 8742,
+      "estimated_tokens": 52081,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 261.9788458569965,
+      "completed_at": "2026-09-29T02:47:42.468352+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#15": {
+      "title": "Chương XIV. GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG — Mục 5. ĐÌNH CÔNG",
+      "chars": 9158,
+      "estimated_tokens": 54369,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 22,
+      "seconds": 463.7849299380032,
+      "completed_at": "2026-09-29T02:55:26.255001+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#7": {
+      "title": "Chương VII. THỜI GIỜ LÀM VIỆC, THỜI GIỜ NGHỈ NGƠI",
+      "chars": 9550,
+      "estimated_tokens": 56525,
+      "questions": {
+        "single_hop": 2,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 5,
+      "seconds": 244.1260177189979,
+      "completed_at": "2026-09-29T03:06:27.837435+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#1": {
+      "title": "Chương I. NHỮNG QUY ĐỊNH CHUNG",
+      "chars": 10553,
+      "estimated_tokens": 62042,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 27,
+      "seconds": 469.81625435000024,
+      "completed_at": "2026-09-29T03:14:17.655596+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#6": {
+      "title": "Chương VI. TIỀN LƯƠNG",
+      "chars": 10828,
+      "estimated_tokens": 63554,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 27,
+      "seconds": 543.1520057860034,
+      "completed_at": "2026-09-29T03:23:20.808572+07:00"
+    },
+    "Điều kiện lao động và quan hệ lao động.md#9": {
+      "title": "Chương X. NHỮNG QUY ĐỊNH RIÊNG ĐỐI VỚI LAO ĐỘNG LÀ NGƯỜI GIÚP VIỆC GIA ĐÌNH",
+      "chars": 10917,
+      "estimated_tokens": 64044,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 7,
+      "seconds": 304.5281341410009,
+      "completed_at": "2026-09-29T03:38:59.766301+07:00"
+    },
+    "Luật bảo hiểm y tế.md#4": {
+      "title": "Chương V + Chương VI",
+      "chars": 10928,
+      "estimated_tokens": 64104,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 28,
+      "seconds": 562.4451931160002,
+      "completed_at": "2026-09-29T03:48:22.213130+07:00"
+    },
+    "Điều kiện lao động và quan hệ lao động.md#6": {
+      "title": "Chương VII. THỜI GIỜ LÀM VIỆC, THỜI GIỜ NGHỈ NGƠI",
+      "chars": 10974,
+      "estimated_tokens": 64357,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 30,
+      "seconds": 599.8714463170036,
+      "completed_at": "2026-09-29T03:58:22.085176+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#4": {
+      "title": "Chương V. BẢO HIỂM XÃ HỘI BẮT BUỘC — Mục 1. CHẾ ĐỘ ỐM ĐAU",
+      "chars": 11006,
+      "estimated_tokens": 64533,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 7,
+      "seconds": 290.02097420398786,
+      "completed_at": "2026-09-29T04:13:08.982961+07:00"
+    },
+    "Luật bảo hiểm y tế.md#5": {
+      "title": "Chương VII + Chương VIII",
+      "chars": 11209,
+      "estimated_tokens": 65650,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 31,
+      "seconds": 622.0318316860066,
+      "completed_at": "2026-09-29T04:23:31.015800+07:00"
+    },
+    "Điều kiện lao động và quan hệ lao động.md#7": {
+      "title": "Chương VIII. KỶ LUẬT LAO ĐỘNG, TRÁCH NHIỆM VẬT CHẤT",
+      "chars": 11327,
+      "estimated_tokens": 66298,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 7,
+      "seconds": 303.4647088510101,
+      "completed_at": "2026-09-29T04:36:57.227119+07:00"
+    },
+    "Luật thuế thu nhập cá nhân.md#1": {
+      "title": "Chương I. NHỮNG QUY ĐỊNH CHUNG",
+      "chars": 11419,
+      "estimated_tokens": 66804,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 27,
+      "seconds": 539.92388914201,
+      "completed_at": "2026-09-29T04:45:57.152189+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#8": {
+      "title": "Chương VIII. KỶ LUẬT LAO ĐỘNG, TRÁCH NHIỆM VẬT CHẤT",
+      "chars": 11835,
+      "estimated_tokens": 69092,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 28,
+      "seconds": 562.8208931970003,
+      "completed_at": "2026-09-29T04:55:19.974335+07:00"
+    },
+    "Điều kiện lao động và quan hệ lao động.md#2": {
+      "title": "Chương IV Mục 1 + Chương IV Mục 2",
+      "chars": 12044,
+      "estimated_tokens": 70242,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 31,
+      "seconds": 646.0405394029949,
+      "completed_at": "2026-09-29T05:06:06.015858+07:00"
+    },
+    "Luật thuế thu nhập cá nhân.md#2": {
+      "title": "Chương II. CĂN CỨ TÍNH THUẾ ĐỐI VỚI CÁ NHÂN CƯ TRÚ",
+      "chars": 12230,
+      "estimated_tokens": 71265,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 33,
+      "seconds": 640.5031069609977,
+      "completed_at": "2026-09-29T05:16:46.519647+07:00"
+    },
+    "Luật bảo hiểm y tế.md#1": {
+      "title": "Chương I. NHỮNG QUY ĐỊNH CHUNG",
+      "chars": 12378,
+      "estimated_tokens": 72079,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 7,
+      "seconds": 290.0272926549951,
+      "completed_at": "2026-09-29T05:30:33.129685+07:00"
+    },
+    "Luật bảo hiểm xã hội.md#7": {
+      "title": "Chương V. BẢO HIỂM XÃ HỘI BẮT BUỘC — Mục 4. CHẾ ĐỘ TỬ TUẤT",
+      "chars": 12733,
+      "estimated_tokens": 74032,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 11,
+      "seconds": 317.3180532469996,
+      "completed_at": "2026-09-29T06:28:05.960732+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#11": {
+      "title": "Chương XII + Chương XIII",
+      "chars": 13035,
+      "estimated_tokens": 75692,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 46,
+      "seconds": 773.140696928007,
+      "completed_at": "2026-09-29T06:40:59.102602+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#2": {
+      "title": "Chương II + Chương III Mục 1",
+      "chars": 13195,
+      "estimated_tokens": 76572,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 9,
+      "seconds": 336.20523952599615,
+      "completed_at": "2026-09-29T08:41:10.308397+07:00"
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#16": {
+      "title": "Chương XV + Chương XVI + Chương XVII",
+      "chars": 13328,
+      "estimated_tokens": 77304,
+      "questions": {
+        "single_hop": 4,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 43,
+      "seconds": 838.5022987049888,
+      "completed_at": "2026-09-29T08:55:08.811587+07:00"
+    }
+  },
+  "last_failure": {
+    "unit": "Điều kiện lao động và quan hệ lao động.md#10",
+    "error": "DailyQuotaExhaustedError (HTTP 429): Hết quota ngày cả 6 tài khoản Groq: Rate limit reached for model `openai/gpt-oss-120b` in organization `org_***` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 199250, Requested ",
+    "at": "2026-09-29T09:14:58.177065+07:00"
+  }
+}
