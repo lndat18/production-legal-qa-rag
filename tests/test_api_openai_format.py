@@ -8,8 +8,11 @@ citations(khối "Nguồn") -> warning -> disclaimer -> done(finish_reason[,usag
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 from collections.abc import AsyncIterator
+
+import pytest
 
 from production_legal_qa_rag.api.openai_format import build_completion, sse_stream
 from production_legal_qa_rag.conversation.history import (
@@ -290,3 +293,90 @@ def test_sse_stream_truncated_warning_sets_finish_reason_length() -> None:
 
     finish_frames = [frame for frame in frames if _has_finish_reason(frame)]
     assert finish_frames[-1]["choices"][0]["finish_reason"] == "length"
+
+
+def test_sse_stream_duyet_generator_goc_trong_mot_context_duy_nhat() -> None:
+    """Token contextvar tạo/reset qua nhiều event phải cùng một context.
+
+    Mô phỏng ``with tracing.span`` (attach/detach OTel context) bao quanh
+    generator: nếu mỗi ``__anext__`` chạy trong Task riêng, ``reset`` ở event sau
+    ném ``ValueError`` (token tạo ở context khác).
+    """
+    variable: contextvars.ContextVar[str] = contextvars.ContextVar("span_stub")
+
+    async def _events_in_context() -> AsyncIterator[GenerationEvent]:
+        token = variable.set("root")
+        try:
+            yield StatusEvent(stage="guardrail")
+            await asyncio.sleep(0)
+            yield TokenEvent(text="a")
+            await asyncio.sleep(0)
+            assert variable.get() == "root"
+            yield DoneEvent()
+        finally:
+            variable.reset(token)
+
+    raw = asyncio.run(
+        _collect_sse(
+            _events_in_context(),
+            model=_MODEL,
+            include_usage=False,
+            keepalive_seconds=15,
+        )
+    )
+
+    assert _decode_data_lines(raw)[-1] == "DONE"
+
+
+def test_sse_stream_raise_lai_loi_cua_generator_goc_va_khong_gui_done() -> None:
+    async def _failing() -> AsyncIterator[GenerationEvent]:
+        yield TokenEvent(text="một phần")
+        raise RuntimeError("orchestrator hỏng")
+
+    received: list[bytes] = []
+
+    async def _run() -> None:
+        async for chunk in sse_stream(
+            _failing(), model=_MODEL, include_usage=False, keepalive_seconds=15
+        ):
+            received.append(chunk)
+
+    with pytest.raises(RuntimeError, match="orchestrator hỏng"):
+        asyncio.run(_run())
+
+    assert received  # event trước lỗi vẫn tới client
+    assert b"[DONE]" not in b"".join(received)
+
+
+def test_sse_stream_huy_consumer_truyen_cancelled_error_vao_generator_goc() -> None:
+    """Client ngắt kết nối: generator gốc nhận CancelledError và producer không rò."""
+    seen: list[str] = []
+
+    async def _hanging() -> AsyncIterator[GenerationEvent]:
+        try:
+            yield StatusEvent(stage="guardrail")
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            seen.append("cancelled")
+            raise
+
+    async def _run() -> set[asyncio.Task[object]]:
+        started = asyncio.Event()
+
+        async def _consume() -> None:
+            async for _chunk in sse_stream(
+                _hanging(), model=_MODEL, include_usage=False, keepalive_seconds=15
+            ):
+                started.set()
+
+        task = asyncio.ensure_future(_consume())
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        return {t for t in asyncio.all_tasks() if t is not asyncio.current_task()}
+
+    leaked = asyncio.run(_run())
+
+    assert seen == ["cancelled"]
+    assert leaked == set()

@@ -11,12 +11,14 @@ thuộc tính thật trên root span.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import pytest
 
 from production_legal_qa_rag.api import routes
+from production_legal_qa_rag.api.openai_format import sse_stream
 from production_legal_qa_rag.conversation.models import (
     ChatMessage,
     RequestContext,
@@ -28,6 +30,7 @@ from production_legal_qa_rag.generation.models import (
     GuardrailVerdict,
     StatusEvent,
 )
+from production_legal_qa_rag.observability import tracing
 from production_legal_qa_rag.observability.turn_trace import RuntimeVersions
 
 _VERSIONS = RuntimeVersions(prompt_version="v1", corpus_version="c1", model_name="m1")
@@ -294,7 +297,9 @@ def _capture_root_spans(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 
 
 def test_stream_chat_turn_root_trace_that_co_input_output_user_session_va_tags(
-    in_memory_langfuse: Any, monkeypatch: pytest.MonkeyPatch
+    in_memory_langfuse: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     roots = _capture_root_spans(monkeypatch)
     orchestrator = _ScriptedOrchestrator([DoneEvent()], fill=_fill_answered)
@@ -302,7 +307,7 @@ def test_stream_chat_turn_root_trace_that_co_input_output_user_session_va_tags(
     asyncio.run(_drain(_turn(orchestrator)))
 
     assert len(roots) == 1
-    attributes = dict(roots[0]._otel_span.attributes)
+    attributes = observation_attributes(roots[0])
     assert attributes["user.id"] == "user-1"
     assert attributes["session.id"] == "chat-1"
     tags = list(attributes["langfuse.trace.tags"])
@@ -317,19 +322,23 @@ def test_stream_chat_turn_root_trace_that_co_input_output_user_session_va_tags(
 
 
 def test_stream_chat_turn_root_trace_that_luot_cache_hit_co_tag_cache(
-    in_memory_langfuse: Any, monkeypatch: pytest.MonkeyPatch
+    in_memory_langfuse: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     roots = _capture_root_spans(monkeypatch)
     orchestrator = _ScriptedOrchestrator([DoneEvent()], fill=_fill_cache_hit)
 
     asyncio.run(_drain(_turn(orchestrator)))
 
-    tags = list(roots[0]._otel_span.attributes["langfuse.trace.tags"])
+    tags = list(observation_attributes(roots[0])["langfuse.trace.tags"])
     assert tags == ["outcome:answered", "cache:answer_hit"]
 
 
 def test_stream_chat_turn_root_trace_that_luot_bi_ngat_co_tag_client_disconnected(
-    in_memory_langfuse: Any, monkeypatch: pytest.MonkeyPatch
+    in_memory_langfuse: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     roots = _capture_root_spans(monkeypatch)
 
@@ -337,12 +346,14 @@ def test_stream_chat_turn_root_trace_that_luot_bi_ngat_co_tag_client_disconnecte
 
     assert isinstance(cancelled, asyncio.CancelledError)
     assert len(roots) == 1
-    tags = list(roots[0]._otel_span.attributes["langfuse.trace.tags"])
+    tags = list(observation_attributes(roots[0])["langfuse.trace.tags"])
     assert tags == ["outcome:client_disconnected", "cache:miss"]
 
 
 def test_stream_chat_turn_root_trace_that_khong_bia_session_khi_thieu_chat_id(
-    in_memory_langfuse: Any, monkeypatch: pytest.MonkeyPatch
+    in_memory_langfuse: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     roots = _capture_root_spans(monkeypatch)
     context = RequestContext(user_id="user-2", chat_id=None, request_id="req-2")
@@ -351,6 +362,63 @@ def test_stream_chat_turn_root_trace_that_khong_bia_session_khi_thieu_chat_id(
     stream = routes.stream_chat_turn(orchestrator, _MESSAGES, context, _VERSIONS)
     asyncio.run(_drain(stream))
 
-    attributes = dict(roots[0]._otel_span.attributes)
+    attributes = observation_attributes(roots[0])
     assert attributes["user.id"] == "user-2"
     assert "session.id" not in attributes
+
+
+def test_sse_stream_giu_mot_trace_duy_nhat_voi_span_con_va_tags(
+    in_memory_langfuse: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    observation_attributes: Callable[[Any], dict[str, Any]],
+) -> None:
+    """Đường stream=true: generator chạy trong một context nên trace không vỡ.
+
+    Nếu mỗi event được lấy bằng một Task riêng, root span chỉ active ở event đầu:
+    span con mất parent (khác trace_id), root mất tags và OTel log lỗi detach.
+    """
+    roots = _capture_root_spans(monkeypatch)
+    child_trace_ids: list[str] = []
+
+    class _SpanningOrchestrator:
+        def stream(
+            self, messages: list[ChatMessage], ctx: RequestContext, trace: TurnTrace
+        ) -> AsyncIterator[GenerationEvent]:
+            async def _gen() -> AsyncIterator[GenerationEvent]:
+                yield StatusEvent(stage="guardrail")
+                await asyncio.sleep(0)
+                with tracing.span("guardrail_child") as child:
+                    child_trace_ids.append(child.trace_id)
+                yield StatusEvent(stage="drafting")
+                await asyncio.sleep(0)
+                with tracing.span("generate_child") as child:
+                    child_trace_ids.append(child.trace_id)
+                _fill_answered(trace)
+                yield DoneEvent()
+
+            return _gen()
+
+    async def _run() -> list[bytes]:
+        stream = sse_stream(
+            _turn(_SpanningOrchestrator()),
+            model="legal-qa",
+            include_usage=False,
+            keepalive_seconds=15,
+        )
+        return [chunk async for chunk in stream]
+
+    with caplog.at_level(logging.ERROR):
+        raw = asyncio.run(_run())
+
+    assert raw[-1] == b"data: [DONE]\n\n"
+    assert len(roots) == 1
+    assert child_trace_ids == [roots[0].trace_id, roots[0].trace_id]
+    attributes = observation_attributes(roots[0])
+    assert attributes["user.id"] == "user-1"
+    assert attributes["session.id"] == "chat-1"
+    assert list(attributes["langfuse.trace.tags"]) == [
+        "outcome:answered",
+        "cache:miss",
+    ]
+    assert not [r for r in caplog.records if "detach" in r.getMessage().lower()]

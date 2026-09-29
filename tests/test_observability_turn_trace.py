@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -361,6 +361,7 @@ def test_update_turn_trace_khong_log_khi_thanh_cong(
 
 def test_update_turn_trace_ghi_dung_thuoc_tinh_len_root_span_that(
     in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     trace = _full_trace()
 
@@ -372,7 +373,7 @@ def test_update_turn_trace_ghi_dung_thuoc_tinh_len_root_span_that(
         session_id="chat-1",
     ) as root_span:
         update_turn_trace(root_span, trace, request_id="req-1", versions=_VERSIONS)
-        attributes = dict(root_span._otel_span.attributes)
+        attributes = observation_attributes(root_span)
 
     assert attributes["user.id"] == "user-1"
     assert attributes["session.id"] == "chat-1"
@@ -404,12 +405,13 @@ def test_update_turn_trace_ghi_dung_thuoc_tinh_len_root_span_that(
 
 def test_update_turn_trace_luot_loi_khong_co_output_va_gan_tag_outcome_error(
     in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     trace = TurnTrace(outcome="error", error_code="llm_error", cache_status="miss")
 
     with tracing.span("chat_turn", user_id="user-1") as root_span:
         update_turn_trace(root_span, trace, request_id="req-2", versions=_VERSIONS)
-        attributes = dict(root_span._otel_span.attributes)
+        attributes = observation_attributes(root_span)
 
     assert list(attributes["langfuse.trace.tags"]) == ["outcome:error", "cache:miss"]
     assert attributes.get("langfuse.observation.output", "") == ""

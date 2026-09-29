@@ -13,7 +13,7 @@ hành vi no-op khi thiếu key, singleton, và lồng span/generation không rai
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -263,11 +263,12 @@ def test_span_va_generation_disabled_khong_log_canh_bao_khi_su_dung(
 
 def test_span_that_ghi_user_id_va_session_id_len_root_va_span_con(
     in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
-        root_attributes = dict(root._otel_span.attributes)
+        root_attributes = observation_attributes(root)
         with tracing.generation("answer", model="m") as child:
-            child_attributes = dict(child._otel_span.attributes)
+            child_attributes = observation_attributes(child)
 
     assert root_attributes["user.id"] == "user-1"
     assert root_attributes["session.id"] == "chat-1"
@@ -275,9 +276,12 @@ def test_span_that_ghi_user_id_va_session_id_len_root_va_span_con(
     assert child_attributes["session.id"] == "chat-1"
 
 
-def test_span_that_khong_bia_session_id_khi_thieu(in_memory_langfuse: Any) -> None:
+def test_span_that_khong_bia_session_id_khi_thieu(
+    in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
+) -> None:
     with tracing.span("chat_turn", user_id="user-1") as root:
-        attributes = dict(root._otel_span.attributes)
+        attributes = observation_attributes(root)
 
     assert attributes["user.id"] == "user-1"
     assert "session.id" not in attributes
@@ -285,9 +289,10 @@ def test_span_that_khong_bia_session_id_khi_thieu(in_memory_langfuse: Any) -> No
 
 def test_span_that_khong_co_user_va_session_thi_khong_ghi_thuoc_tinh_trace(
     in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
 ) -> None:
     with tracing.span("cache_lookup", input="q") as observation:
-        attributes = dict(observation._otel_span.attributes)
+        attributes = observation_attributes(observation)
 
     assert "user.id" not in attributes
     assert "session.id" not in attributes

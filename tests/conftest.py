@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 import sys
 import uuid
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -97,8 +97,8 @@ def in_memory_langfuse(monkeypatch: pytest.MonkeyPatch) -> Iterator[Langfuse]:
     `public_key`), `TracerProvider` riêng (không đụng provider toàn cục của OTel) và
     `InMemorySpanExporter` thay cho OTLP exporter nên không có kết nối nào tới
     `base_url` (cổng không lắng nghe). Client được gắn vào `tracing._client` để
-    `tracing.span`/`generation` dùng nó; test đọc thuộc tính OTel qua
-    `observation._otel_span.attributes`.
+    `tracing.span`/`generation` dùng nó; test đọc thuộc tính OTel qua fixture
+    `observation_attributes`.
     """
     from langfuse import Langfuse as LangfuseClient
     from opentelemetry.sdk.trace import TracerProvider
@@ -130,3 +130,18 @@ def in_memory_langfuse(monkeypatch: pytest.MonkeyPatch) -> Iterator[Langfuse]:
     yield client
     client.shutdown()
     provider.shutdown()
+
+
+@pytest.fixture
+def observation_attributes() -> Callable[[Any], dict[str, Any]]:
+    """Đọc thuộc tính OTel của một observation Langfuse (span/generation).
+
+    Đây là NƠI DUY NHẤT test truy cập `observation._otel_span` — thuộc tính nội bộ
+    (private) của Langfuse SDK v3, không thuộc API công khai. Khi nâng phiên bản
+    `langfuse`, rà lại helper này; các test khác chỉ gọi fixture, không đụng `_otel_span`.
+    """
+
+    def read(observation: Any) -> dict[str, Any]:
+        return dict(observation._otel_span.attributes)
+
+    return read
