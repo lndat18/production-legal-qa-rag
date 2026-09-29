@@ -145,3 +145,18 @@ def observation_attributes() -> Callable[[Any], dict[str, Any]]:
         return dict(observation._otel_span.attributes)
 
     return read
+
+
+@pytest.fixture
+def observation_parent_id() -> Callable[[Any], str | None]:
+    """Trả id (hex 16 ký tự, cùng định dạng `observation.id`) của span cha, hoặc `None`.
+
+    Cùng lý do với `observation_attributes`: `_otel_span` là nội bộ của Langfuse SDK
+    nên việc đọc `parent` chỉ được làm ở đây; rà lại khi nâng phiên bản `langfuse`.
+    """
+
+    def read(observation: Any) -> str | None:
+        parent = observation._otel_span.parent
+        return None if parent is None else format(parent.span_id, "016x")
+
+    return read
