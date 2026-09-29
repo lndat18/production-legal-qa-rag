@@ -227,6 +227,35 @@ def _encode_chunk(chunk: ChatCompletionChunk) -> bytes:
     return f"data: {chunk.model_dump_json(exclude_none=True)}\n\n".encode()
 
 
+async def _pump_events(
+    events: AsyncIterator[GenerationEvent],
+    queue: asyncio.Queue[GenerationEvent | None],
+) -> None:
+    """Duyệt ``events`` trong một Task duy nhất, đẩy từng event vào ``queue``.
+
+    Toàn bộ generator (kể cả ``with tracing.span`` của ``stream_chat_turn``) chạy
+    trong đúng một Task/context: nếu mỗi ``__anext__`` chạy trong Task riêng thì
+    OTel context của root span chỉ được attach ở Task đầu và bị vỡ từ event thứ 2
+    (trace tách nhiều mảnh, mất tags, lỗi detach). Queue không giới hạn vì tổng
+    dung lượng một câu trả lời nhỏ; ``None`` (dấu hiệu kết thúc) luôn được đẩy
+    sau cùng (kể cả khi lỗi/bị hủy) bằng ``put_nowait`` để không bao giờ bị chặn.
+    """
+    try:
+        async for event in events:
+            queue.put_nowait(event)
+    finally:
+        queue.put_nowait(None)
+
+
+async def _stop_pump(pump: asyncio.Task[None]) -> None:
+    """Hủy Task duyệt event và chờ nó dọn xong (finally của generator gốc)."""
+    pump.cancel()
+    await asyncio.wait({pump})
+    if not pump.cancelled():
+        # Đã lấy exception (nếu có) để asyncio không log "never retrieved".
+        pump.exception()
+
+
 async def sse_stream(
     events: AsyncIterator[GenerationEvent],
     *,
@@ -236,11 +265,14 @@ async def sse_stream(
 ) -> AsyncIterator[bytes]:
     """Chuyển luồng ``GenerationEvent`` thành SSE OpenAI, có keep-alive.
 
-    Dùng ``asyncio.wait`` (không phải ``wait_for``) để chờ event kế tiếp: nếu
-    dùng ``wait_for``, hết giờ sẽ **hủy** coroutine ``__anext__()`` đang chạy —
-    tương đương hủy luôn generator gốc giữa chừng (mất mọi event còn lại, kể
-    cả token/citations/done thật sự sắp tới). Task chờ event được giữ nguyên
-    qua nhiều vòng keep-alive, chỉ tạo task mới sau khi đã nhận được event.
+    Generator gốc được duyệt bởi MỘT producer Task (``_pump_events``) đẩy event vào
+    queue; phía này chờ queue bằng ``asyncio.wait`` (không phải ``wait_for``): nếu
+    dùng ``wait_for``, hết giờ sẽ **hủy** lần chờ đang chạy — với generator gốc
+    đang ở giữa chừng là mất luôn mọi event còn lại (token/citations/done thật sự
+    sắp tới). Task chờ ``queue.get()`` được giữ nguyên qua nhiều vòng keep-alive,
+    chỉ tạo task mới sau khi đã nhận được event. Lỗi của generator gốc được raise
+    lại ở đây (qua ``await pump``); khi bị hủy/đóng, producer bị hủy nên
+    ``CancelledError`` vẫn truyền vào generator gốc (ngắt kết nối).
 
     Args:
         events: Luồng event của một lượt chat (từ ``routes.stream_chat_turn``).
@@ -253,8 +285,9 @@ async def sse_stream(
         ``data: [DONE]\\n\\n``.
     """
     ctx = _new_chunk_context(model)
-    iterator = events.__aiter__()
-    pending: asyncio.Task[GenerationEvent] = asyncio.ensure_future(iterator.__anext__())
+    queue: asyncio.Queue[GenerationEvent | None] = asyncio.Queue()
+    pump = asyncio.ensure_future(_pump_events(events.__aiter__(), queue))
+    pending: asyncio.Task[GenerationEvent | None] = asyncio.ensure_future(queue.get())
     try:
         while True:
             done, _pending_set = await asyncio.wait(
@@ -263,15 +296,16 @@ async def sse_stream(
             if not done:
                 yield _KEEPALIVE_COMMENT
                 continue
-            try:
-                event = pending.result()
-            except StopAsyncIteration:
+            item = pending.result()
+            if item is None:
+                await pump  # raise lại lỗi của generator gốc nếu có
                 break
-            pending = asyncio.ensure_future(iterator.__anext__())
-            for chunk in _event_to_chunks(event, ctx, include_usage=include_usage):
+            pending = asyncio.ensure_future(queue.get())
+            for chunk in _event_to_chunks(item, ctx, include_usage=include_usage):
                 yield _encode_chunk(chunk)
     finally:
         pending.cancel()
+        await _stop_pump(pump)
     yield _DONE_LINE
 
 
