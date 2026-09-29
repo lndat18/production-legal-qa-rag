@@ -142,9 +142,8 @@ def test_span_disabled_van_lan_truyen_exception_tu_body(
     """no-op không được nuốt lỗi nghiệp vụ bên trong — chỉ mất khả năng quan sát."""
     _set_keys(monkeypatch, public_key=None, secret_key=None)
 
-    with pytest.raises(ValueError, match="boom"):
-        with tracing.span("retrieve"):
-            raise ValueError("boom")
+    with pytest.raises(ValueError, match="boom"), tracing.span("retrieve"):
+        raise ValueError("boom")
 
 
 def test_generation_disabled_van_lan_truyen_exception_tu_body(
@@ -152,9 +151,11 @@ def test_generation_disabled_van_lan_truyen_exception_tu_body(
 ) -> None:
     _set_keys(monkeypatch, public_key=None, secret_key=None)
 
-    with pytest.raises(RuntimeError, match="groq lỗi"):
-        with tracing.generation("hyde", model="hyde-model"):
-            raise RuntimeError("groq lỗi")
+    with (
+        pytest.raises(RuntimeError, match="groq lỗi"),
+        tracing.generation("hyde", model="hyde-model"),
+    ):
+        raise RuntimeError("groq lỗi")
 
 
 def test_generation_long_trong_span_khong_raise_khi_disabled(
