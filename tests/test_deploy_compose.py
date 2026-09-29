@@ -5,9 +5,10 @@ test ở đây chỉ dùng `docker compose config` — lệnh này parse/merge/r
 KHÔNG cần daemon đang chạy (không tạo network/container, không pull image) — an toàn để
 chạy trên mọi runner có sẵn Docker CLI. Nếu CI không có `docker` binary, test tự skip.
 
-Mọi test copy `docker-compose*.yml` + `.env.example` sang thư mục tạm (`tmp_path`) trước
-khi gọi `docker compose config`, KHÔNG bao giờ tạo/đọc/xoá `deploy/.env` thật — máy dev có
-thể đã có `deploy/.env` chứa bí mật thật, tuyệt đối không được đụng tới.
+Mọi test copy `deploy/docker-compose*.yml` + `.env.example` (root) sang thư mục tạm
+(`tmp_path`, giữ đúng bố cục `deploy/` + `.env` ở cha) trước khi gọi `docker compose config`,
+KHÔNG bao giờ tạo/đọc/xoá `.env` thật ở root — máy dev đã có `.env` chứa bí mật thật, tuyệt
+đối không được đụng tới (deploy_spec.md mục 7: chỉ 1 cặp `.env`/`.env.example` ở root).
 """
 
 from __future__ import annotations
@@ -55,10 +56,11 @@ def _resolve_compose_config(
     extra_compose_files: tuple[str, ...] = (),
     profile: str | None = None,
 ) -> dict[str, Any]:
-    """Copy compose stack + `.env.example` (làm `.env`) vào `tmp_path` rồi resolve config.
+    """Copy compose stack + `.env.example` (làm `.env` ở cha) vào `tmp_path` rồi resolve config.
 
-    Dùng thư mục tạm biệt lập để `docker compose` không bao giờ chạm tới
-    `deploy/.env` thật của máy dev (mục 7: bí mật không commit, không phải test fixture).
+    Bố cục tạm: `tmp_path/deploy/docker-compose*.yml` + `tmp_path/.env`, khớp `env_file:
+    ../.env` trong compose. Dùng thư mục tạm biệt lập để `docker compose` không bao giờ chạm
+    tới `.env` thật của máy dev (mục 7: bí mật không commit, không phải test fixture).
 
     Args:
         tmp_path: Thư mục tạm do pytest cấp, biệt lập cho mỗi test.
@@ -69,14 +71,16 @@ def _resolve_compose_config(
     Returns:
         Cấu hình compose đã resolve, dạng dict (parse từ `docker compose config --format json`).
     """
-    shutil.copy(DEPLOY_DIR / "docker-compose.yml", tmp_path / "docker-compose.yml")
+    deploy_tmp = tmp_path / "deploy"
+    deploy_tmp.mkdir(exist_ok=True)
+    shutil.copy(DEPLOY_DIR / "docker-compose.yml", deploy_tmp / "docker-compose.yml")
     for name in extra_compose_files:
-        shutil.copy(DEPLOY_DIR / name, tmp_path / name)
-    # Tên file PHẢI là ".env" để compose tự nạp cho từng service khai báo `env_file: .env`
-    # (khác với biến nội suy ${VAR} trực tiếp trong YAML, cái đó `--env-file` mới ăn được).
-    shutil.copy(DEPLOY_DIR / ".env.example", tmp_path / ".env")
+        shutil.copy(DEPLOY_DIR / name, deploy_tmp / name)
+    # `env_file: ../.env` để nạp cho container; `--env-file` riêng để giãn ${VAR} trong YAML
+    # (2 cơ chế khác nhau, deploy_spec.md mục 7).
+    shutil.copy(REPO_ROOT / ".env.example", tmp_path / ".env")
 
-    cmd = ["docker", "compose", "-f", "docker-compose.yml"]
+    cmd = ["docker", "compose", "--env-file", "../.env", "-f", "docker-compose.yml"]
     for name in extra_compose_files:
         cmd += ["-f", name]
     if profile is not None:
@@ -84,7 +88,7 @@ def _resolve_compose_config(
     cmd += ["config", "--format", "json"]
 
     result = subprocess.run(
-        cmd, cwd=tmp_path, capture_output=True, text=True, timeout=30, check=False
+        cmd, cwd=deploy_tmp, capture_output=True, text=True, timeout=30, check=False
     )
     assert result.returncode == 0, (
         f"`docker compose config` thất bại (spec mục 4):\n"
@@ -226,13 +230,13 @@ def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
         "REDIS_PASSWORD",
         "REDIS_URL",
         "CHATLOG_DATABASE_URL",
-        "POSTGRES_USER",
-        "POSTGRES_PASSWORD",
+        "DEPLOY_POSTGRES_USER",
+        "DEPLOY_POSTGRES_PASSWORD",
         "WEBUI_SECRET_KEY",
         "WEBUI_URL",
         "TUNNEL_TOKEN",
     }
-    env_vars = _parse_env_file(DEPLOY_DIR / ".env.example")
+    env_vars = _parse_env_file(REPO_ROOT / ".env.example")
     missing = required_vars - set(env_vars)
     assert not missing, f"`.env.example` thiếu biến bắt buộc theo mục 7: {missing}"
 
@@ -246,29 +250,58 @@ def test_env_example_khong_de_lo_gia_tri_bi_mat_mau() -> None:
         "PINECONE_API_KEY",
         "CHATBOT_API_KEY",
         "REDIS_PASSWORD",
-        "POSTGRES_PASSWORD",
+        "DEPLOY_POSTGRES_PASSWORD",
         "WEBUI_SECRET_KEY",
         "TUNNEL_TOKEN",
     }
-    env_vars = _parse_env_file(DEPLOY_DIR / ".env.example")
+    env_vars = _parse_env_file(REPO_ROOT / ".env.example")
     for name in secret_vars:
         assert env_vars.get(name, "") == "", (
             f"'{name}' trong .env.example phải để trống, tìm thấy: {env_vars.get(name)!r}"
         )
 
 
-def test_env_example_bien_ghep_dung_dinh_dang_template() -> None:
-    """`REDIS_URL`/`CHATLOG_DATABASE_URL` phải là template tham chiếu biến rời (mục 7).
+def test_env_example_redis_va_chatlog_url_tro_localhost_cho_dev_tren_host() -> None:
+    """`REDIS_URL`/`CHATLOG_DATABASE_URL` trong `.env.example` là giá trị dev trên host.
 
-    `env_file` không tự giãn `${VAR}` bên trong chính `.env`; 2 biến này chỉ đúng khi
-    `docker-compose.yml` ghi đè bằng giá trị đã nội suy cho service `api` — file mẫu chỉ
-    cần giữ đúng placeholder để người điền hiểu, không phải giá trị dùng trực tiếp.
+    Container `api` production KHÔNG dùng 2 giá trị này: `docker-compose.yml` ghi đè bằng URL
+    dựng từ `REDIS_PASSWORD`/`DEPLOY_POSTGRES_*` (`environment:` thắng `env_file:`, mục 7).
     """
-    env_vars = _parse_env_file(DEPLOY_DIR / ".env.example")
-    assert env_vars["REDIS_URL"] == "redis://:${REDIS_PASSWORD}@redis:6379/0"
-    assert env_vars["CHATLOG_DATABASE_URL"] == (
-        "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/chatbot"
+    env_vars = _parse_env_file(REPO_ROOT / ".env.example")
+    assert env_vars["REDIS_URL"] == "redis://localhost:6379/0"
+    assert env_vars["CHATLOG_DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert "localhost" in env_vars["CHATLOG_DATABASE_URL"]
+
+
+@requires_docker_compose
+def test_docker_compose_ghi_de_url_redis_postgres_cho_api_production(
+    tmp_path: Path,
+) -> None:
+    """`environment:` của `api` phải ghi đè `REDIS_URL`/`CHATLOG_DATABASE_URL` từ `.env`."""
+    config = _resolve_compose_config(tmp_path)
+    env = config["services"]["api"]["environment"]
+    assert env["REDIS_URL"].endswith("@redis:6379/0")
+    assert env["CHATLOG_DATABASE_URL"].endswith("@postgres/chatbot")
+
+
+@requires_docker_compose
+def test_docker_compose_observe_override_noi_api_vao_network_observe(
+    tmp_path: Path,
+) -> None:
+    """`docker-compose.observe.yml` nối `api` vào `legal-qa-observe` + trỏ Langfuse nội bộ."""
+    config = _resolve_compose_config(
+        tmp_path, extra_compose_files=("docker-compose.observe.yml",)
     )
+    api = config["services"]["api"]
+    assert set(api["networks"]) == {"internal", "observe"}
+    assert api["environment"]["LANGFUSE_BASE_URL"] == "http://langfuse-web:3000"
+    assert api["environment"]["LANGFUSE_TRACING_ENVIRONMENT"] == "production"
+    assert config["networks"]["observe"]["name"] == "legal-qa-observe"
+    assert config["networks"]["observe"]["external"] is True
+
+    for name, service in config["services"].items():
+        if name != "api":
+            assert "observe" not in (service.get("networks") or {}), name
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:

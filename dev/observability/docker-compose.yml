@@ -4,10 +4,11 @@
 # /metrics cho Prometheus (observability_spec.md) khi có đủ LANGFUSE_PUBLIC_KEY/SECRET_KEY
 # trong `.env` gốc.
 #
-#   docker compose -f deploy/dev/observability/docker-compose.yml --env-file deploy/dev/observability/.env up -d
+#   docker compose -f dev/observability/docker-compose.yml --env-file .env up -d
+# (chạy từ repo root để --env-file trỏ đúng vào .env gốc — biến OBS_* bên dưới nằm ở đó).
 # Dừng (giữ volume): thay `up -d` bằng `down`; xoá sạch (mất trace/dashboard): `down -v`.
 #
-# Nặng nhất là ClickHouse + MinIO. Tổng mem_limit ~3.4GB — đừng bật cùng lúc với việc load
+# Nặng nhất là ClickHouse + MinIO. Tổng mem_limit ~5.4GB — đừng bật cùng lúc với việc load
 # model embedding/rerank nếu máy yếu (deploy_spec.md mục 10).
 name: legal-qa-observability
 
@@ -26,28 +27,30 @@ x-langfuse-depends-on: &langfuse-depends-on
     condition: service_started
 
 x-langfuse-env: &langfuse-env
-  DATABASE_URL: postgresql://${POSTGRES_USER:-langfuse}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-langfuse}
-  SALT: ${SALT:?SALT bắt buộc, xem .env.example}
-  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY bắt buộc (hex 64 ký tự), xem .env.example}
-  TELEMETRY_ENABLED: ${TELEMETRY_ENABLED:-false}
+  DATABASE_URL: postgresql://${OBS_POSTGRES_USER:-langfuse}:${OBS_POSTGRES_PASSWORD:?}@postgres:5432/${OBS_POSTGRES_DB:-langfuse}
+  SALT: ${OBS_SALT:?OBS_SALT bắt buộc, xem .env.example}
+  ENCRYPTION_KEY: ${OBS_ENCRYPTION_KEY:?OBS_ENCRYPTION_KEY bắt buộc (hex 64 ký tự), xem .env.example}
+  TELEMETRY_ENABLED: ${OBS_TELEMETRY_ENABLED:-false}
   CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
   CLICKHOUSE_URL: http://clickhouse:8123
-  CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
-  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
+  CLICKHOUSE_USER: ${OBS_CLICKHOUSE_USER:-clickhouse}
+  CLICKHOUSE_PASSWORD: ${OBS_CLICKHOUSE_PASSWORD:?}
+  # ClickHouse local là một node đơn lẻ, không có ZooKeeper/Keeper.
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
   REDIS_HOST: redis
   REDIS_PORT: 6379
-  REDIS_AUTH: ${REDIS_AUTH:?}
+  REDIS_AUTH: ${OBS_REDIS_AUTH:?}
   LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
   LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
-  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
-  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${OBS_MINIO_ROOT_USER:-minio}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${OBS_MINIO_ROOT_PASSWORD:?}
   LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
   LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
   LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
   LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
   LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
-  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
-  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${OBS_MINIO_ROOT_USER:-minio}
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${OBS_MINIO_ROOT_PASSWORD:?}
   LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
   LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
   LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
@@ -58,15 +61,15 @@ services:
     <<: *defaults
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-langfuse}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD bắt buộc, xem .env.example}
-      POSTGRES_DB: ${POSTGRES_DB:-langfuse}
+      POSTGRES_USER: ${OBS_POSTGRES_USER:-langfuse}
+      POSTGRES_PASSWORD: ${OBS_POSTGRES_PASSWORD:?OBS_POSTGRES_PASSWORD bắt buộc, xem .env.example}
+      POSTGRES_DB: ${OBS_POSTGRES_DB:-langfuse}
       TZ: UTC
       PGTZ: UTC
     volumes:
       - langfuse_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-langfuse}"]
+      test: ["CMD-SHELL", "pg_isready -U ${OBS_POSTGRES_USER:-langfuse}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -79,12 +82,12 @@ services:
       [
         "redis-server",
         "--requirepass",
-        "${REDIS_AUTH:?REDIS_AUTH bắt buộc, xem .env.example}",
+        "${OBS_REDIS_AUTH:?OBS_REDIS_AUTH bắt buộc, xem .env.example}",
         "--maxmemory-policy",
         "noeviction",
       ]
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_AUTH:?}", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${OBS_REDIS_AUTH:?}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -95,8 +98,8 @@ services:
     image: clickhouse/clickhouse-server:25.12
     environment:
       CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-clickhouse}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD bắt buộc, xem .env.example}
+      CLICKHOUSE_USER: ${OBS_CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${OBS_CLICKHOUSE_PASSWORD:?OBS_CLICKHOUSE_PASSWORD bắt buộc, xem .env.example}
     volumes:
       - langfuse_clickhouse_data:/var/lib/clickhouse
       - langfuse_clickhouse_logs:/var/log/clickhouse-server
@@ -117,8 +120,8 @@ services:
     entrypoint: ["/bin/minio"]
     command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD bắt buộc, xem .env.example}
+      MINIO_ROOT_USER: ${OBS_MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${OBS_MINIO_ROOT_PASSWORD:?OBS_MINIO_ROOT_PASSWORD bắt buộc, xem .env.example}
     volumes:
       - langfuse_minio_data:/data
     ports:
@@ -133,7 +136,8 @@ services:
     image: docker.langfuse.com/langfuse/langfuse-worker:4
     depends_on: *langfuse-depends-on
     environment: *langfuse-env
-    mem_limit: 512m
+    # Worker Langfuse v4 cần heap Node.js lớn hơn mức 512 MB để khởi tạo.
+    mem_limit: 1g
 
   langfuse-web:
     <<: *defaults
@@ -142,11 +146,13 @@ services:
     environment:
       <<: *langfuse-env
       NEXTAUTH_URL: http://localhost:3001
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET bắt buộc, xem .env.example}
+      NEXTAUTH_SECRET: ${OBS_NEXTAUTH_SECRET:?OBS_NEXTAUTH_SECRET bắt buộc, xem .env.example}
       # Media: server đọc qua tên service nội bộ, nhưng trình duyệt nhận URL trực tiếp nên
       # phải dùng cổng host đã publish — hai endpoint khác nhau có chủ đích.
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
       LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+    # `observe`: để api production (deploy/docker-compose.observe.yml) gọi được langfuse-web.
+    networks: [default, observe]
     ports:
       - "127.0.0.1:3001:3000" # 3000 dành cho open-webui (deploy_spec.md mục 4)
     healthcheck:
@@ -155,16 +161,15 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
-    mem_limit: 768m
+    # Next.js/Langfuse v4 cần heap Node.js >512 MB khi khởi tạo.
+    mem_limit: 2g
 
-  # --- Prometheus + Grafana (scrape `api` chạy trên host, xem prometheus.yml) ---
+  # --- Prometheus + Grafana (scrape `api` production, xem prometheus.yml) ---
   prometheus:
     <<: *defaults
     image: prom/prometheus:v2.53.0
-    # `api` dev chạy trên host (không dockerize), nên cần host.docker.internal thay vì
-    # join network với 1 service `api` không tồn tại trong deploy/dev/docker-compose.yml.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    # `observe`: scrape api:8000 của production qua network chung.
+    networks: [default, observe]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - langfuse_prometheus_data:/prometheus
@@ -183,8 +188,8 @@ services:
     depends_on:
       - prometheus
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD bắt buộc, xem .env.example}
+      GF_SECURITY_ADMIN_USER: ${OBS_GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${OBS_GRAFANA_ADMIN_PASSWORD:?OBS_GRAFANA_ADMIN_PASSWORD bắt buộc, xem .env.example}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - langfuse_grafana_data:/var/lib/grafana
@@ -196,6 +201,11 @@ services:
       timeout: 5s
       retries: 10
     mem_limit: 256m
+
+# Network chung với deploy/docker-compose.observe.yml (khai external ở đó). Tên cố định.
+networks:
+  observe:
+    name: legal-qa-observe
 
 volumes:
   langfuse_postgres_data:

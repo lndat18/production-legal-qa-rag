@@ -30,7 +30,7 @@ router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
   còn trong nhóm này — chạy in-process trong `api`, không host tách rời qua
   LightningAI/ngrok nữa (`retrieval_spec.md` mục 6.1, xem mục 4.1 dưới đây).
 
-**Tiêu chí quan trọng nhất:** clone repo + điền `deploy/.env` + `docker compose up -d` →
+**Tiêu chí quan trọng nhất:** clone repo + điền `.env` (root) + `docker compose up -d` →
 người dùng bên ngoài mở URL, đăng ký, hỏi đáp nhiều lượt được; ngoài Cloudflare Tunnel
 không có cổng nào của hệ thống lộ ra ngoài; bí mật không nằm trong image hay git.
 
@@ -66,8 +66,8 @@ Hai chế độ, cùng một service `cloudflared`:
 - Quick tunnel: `cloudflared tunnel --no-autoupdate --url http://open-webui:8080`. URL in ra
   log của service (`docker compose logs cloudflared`); Cloudflare không cam kết uptime cho
   chế độ này.
-- Named tunnel: `cloudflared tunnel --no-autoupdate run` với `TUNNEL_TOKEN` (trong
-  `deploy/.env`); trỏ hostname tới `http://open-webui:8080` trong dashboard Cloudflare.
+- Named tunnel: `cloudflared tunnel --no-autoupdate run` với `TUNNEL_TOKEN` (trong `.env`
+  root); trỏ hostname tới `http://open-webui:8080` trong dashboard Cloudflare.
   Chuyển từ quick sang named **chỉ đổi cấu hình compose/biến**, không đổi code. Chọn qua
   compose profile: `quick` (mặc định) và `named`.
 - HTTPS/TLS do Cloudflare đảm nhiệm (kết thúc TLS ở edge); trong mạng compose dùng HTTP.
@@ -84,7 +84,7 @@ trên máy tác giả: mở thử UI, gọi API bằng `curl`/Swagger `/docs` �
 | ------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
 | `cloudflared` | `cloudflare/cloudflared:<tag ghim>`          | Phụ thuộc `open-webui` healthy; xem mục 3                               |
 | `open-webui`  | `ghcr.io/open-webui/open-webui:<tag ghim>`   | Cấu hình `api_spec.md` mục 9 + mục 5 dưới đây; volume `openwebui_data` (cache/ảnh; dữ liệu chính ở Postgres) |
-| `api`         | build từ `deploy/Dockerfile`                 | Mount `data/bm25/` (read-only) + volume `hf_cache` (cache model reranker); `env_file: .env`; xem mục 4.1, 6 |
+| `api`         | build từ `deploy/Dockerfile`                 | Mount `data/bm25/` (read-only) + volume `hf_cache` (cache model reranker); `env_file: ../.env`; xem mục 4.1, 6 |
 | `redis`       | `redis:7-alpine`                             | `--requirepass`, `--appendonly yes`, `--maxmemory 256mb --maxmemory-policy allkeys-lru`; volume `redis_data` |
 | `postgres`    | `postgres:17-alpine`                         | Mount `deploy/initdb/` (chạy 1 lần lúc tạo volume); volume `postgres_data` |
 
@@ -206,18 +206,27 @@ không crash service.
   `uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`.
   Chạy migration ở đây an toàn vì chỉ có 1 worker/1 container.
 - **1 worker**: semaphore của admission là in-process (`conversation_spec.md` mục 8).
-- `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, `deploy/.env`, cache của
-  mypy/ruff/pytest.
+- `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, cache của mypy/ruff/pytest.
 
-## 7. Biến môi trường & bí mật (`deploy/.env`, không commit)
+## 7. Biến môi trường & bí mật (`.env` ở repo root, không commit)
 
-`deploy/.env.example` liệt kê đủ tên biến, chia nhóm; giá trị bí mật để trống:
+**Chỉ 1 cặp file `.env`/`.env.example` cho toàn bộ project, ở repo root** (không còn
+`deploy/.env` riêng) — chốt lại 2026-09-29 để tránh rải rác nhiều `.env` khó kiểm soát.
+`api` container đọc nguyên file này qua `env_file: ../.env` (`docker-compose.yml`), cùng
+file mà `config.py` đọc khi chạy trên host. Root `.env.example` chia 3 block bằng comment:
+**APP** (dùng chung cho cả dev-trên-host lẫn container `api`), **DEPLOY** (chỉ container
+production dùng), **OBSERVABILITY** (chỉ stack Langfuse/Prometheus/Grafana dev — mục 10,
+`observability_spec.md`).
+
+Biến của block DEPLOY, prefix `DEPLOY_` chỉ áp dụng cho `POSTGRES_USER`/`POSTGRES_PASSWORD`
+(Postgres RIÊNG cho production, khác Postgres riêng của OBSERVABILITY — trùng tên nếu không
+prefix):
 
 | Nhóm        | Biến                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------- |
-| LLM/dịch vụ | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME` |
-| Backend     | `CHATBOT_API_KEY` (sinh ngẫu nhiên ≥ 32 ký tự), `REDIS_PASSWORD`, `REDIS_URL` (`redis://:${REDIS_PASSWORD}@redis:6379/0`), `CHATLOG_DATABASE_URL` (`postgresql+asyncpg://…@postgres/chatbot`) |
-| Postgres    | `POSTGRES_USER`, `POSTGRES_PASSWORD`                                                              |
+| LLM/dịch vụ (dùng chung block APP) | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3`, `GROQ_API_KEY_4`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY` |
+| Backend     | `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL`/`CHATLOG_DATABASE_URL` cho container `api` do `docker-compose.yml` tự dựng từ `DEPLOY_POSTGRES_*`/`REDIS_PASSWORD`, không đọc trực tiếp từ `.env`) |
+| Postgres (production) | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`                                                              |
 | OpenWebUI   | `WEBUI_SECRET_KEY` (cố định, để phiên đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn) |
 | Tunnel      | `TUNNEL_TOKEN` (chỉ khi dùng named tunnel)                                                        |
 
@@ -229,10 +238,10 @@ không crash service.
 
 - **Khởi động / dừng:** `./deploy/up.sh` (tự dò GPU, build đúng biến thể, `up -d`, rồi tự in
   URL quick tunnel ra terminal — mục 4.1) / `docker compose down` (không có `-v`, để giữ
-  volume; chạy trong `deploy/`). Lần chạy đầu chưa có `deploy/.env`: script tự
-  `cp .env.example .env` rồi dừng, điền giá trị thật vào `deploy/.env` rồi chạy lại
-  `./deploy/up.sh`. Named tunnel: script không dò URL (đã cố định theo `WEBUI_URL`); cần
-  xem log tay dùng `docker compose logs cloudflared-named`.
+  volume; chạy trong `deploy/`). Lần chạy đầu chưa có `.env` ở root: script tự
+  `cp ../.env.example ../.env` rồi dừng, điền giá trị thật rồi chạy lại `./deploy/up.sh`.
+  Named tunnel: script không dò URL (đã cố định theo `WEBUI_URL`); cần xem log tay dùng
+  `docker compose logs cloudflared-named`.
 - **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
   khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
 - **Backup:** `deploy/scripts/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)
@@ -246,8 +255,8 @@ không crash service.
 
 ## 9. Nghiệm thu thủ công
 
-1. Máy sạch (không có volume, không có `deploy/.env`): `./deploy/up.sh` → tự tạo
-   `deploy/.env` từ mẫu rồi dừng; điền giá trị thật; chạy lại `./deploy/up.sh` → mọi
+1. Máy sạch (không có volume, không có `.env` ở root): `./deploy/up.sh` → tự tạo
+   `.env` từ mẫu rồi dừng; điền giá trị thật; chạy lại `./deploy/up.sh` → mọi
    service `healthy`, không có cổng nào lắng nghe ngoài `127.0.0.1` (kiểm tra `docker
    compose ps`, `ss -ltn`). Kiểm tra log script in đúng nhánh CPU/GPU khớp với máy đang
    chạy (mục 4.1).

@@ -12,7 +12,8 @@ tools/                         CLI (Typer) chạy từng bước pipeline độc
 alembic/                       Migration schema Postgres (chatlog, ...)
 data/                          raw -> markdown -> chunks -> embeddings, bm25/ cho sparse index
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
-deploy/                        Docker compose production + docs (deploy/deploy_spec.md); dev/ (compose dev + observability), scripts/ (backup, reset cache); không phải code import được
+deploy/                        Docker compose production (chỉ phục vụ end-user) + docs (deploy/deploy_spec.md), scripts/ (backup, reset cache); không phải code import được
+dev/                           observability/ (Langfuse/Prometheus/Grafana compose, dev only) — tách khỏi deploy/ (2026-09-29) vì không phục vụ end-user
 docs/                          Tài liệu tổng quan hệ thống (vd. online_flow.md — activity diagram 1 câu hỏi)
 .claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
@@ -57,7 +58,8 @@ key — key chỉ tách được ngân sách thật nếu lấy từ tài khoả
 - **`deploy/` tổ chức lại** (#57): compose dev + `observability/` chuyển vào `deploy/dev/`
   (`deploy/dev/docker-compose.yml` vẫn phục vụ dev cục bộ: Redis + Postgres), `backup.sh` +
   `reset_cache.sh` vào `deploy/scripts/`. Dockerfile, compose và 2 file `.env.example` đã rút
-  gọn; hướng dẫn cấu hình chi tiết nằm trong `README.md`.
+  gọn; hướng dẫn cấu hình chi tiết nằm trong `README.md`. (Đảo ngược lại 2026-09-29, xem
+  dưới — `deploy/dev/` tách hẳn khỏi `deploy/`.)
 - **Chính sách model + key LLM để tránh rate limit** (`conversation_spec.md` mục 12.1; đã
   implement, chờ tester/reviewer): generation giữ `gpt-oss-120b` xoay vòng `GROQ_API_KEY_3` ⇄
   `_4`; condense/HyDE/Judge dùng `gpt-oss-20b` trên key 1, 2 (Judge riêng key 2, fallback
@@ -67,6 +69,25 @@ key — key chỉ tách được ngân sách thật nếu lấy từ tài khoả
 - **Evaluation Phase 1 đã merge** (#55): `evaluation/` + `tools/generate_testset.py` sinh
   golden testset (RAGAS, round-robin 3 tài khoản Groq). Chưa ghi nhận đã chạy sinh testset
   và duyệt tay; Phase 2 (chạy pipeline thật, tính metric) chưa làm.
+
+**Cập nhật 2026-09-29:**
+
+- **Observability (Langfuse tracing + Prometheus/Grafana metrics) đã merge** (PR #61,
+  `src/production_legal_qa_rag/observability/observability_spec.md`): package mới
+  `observability/`, trace 1 span cây/lượt hỏi trên Langfuse self-host, `/metrics` cho `api`.
+  Nghiệm thu thủ công (chạy stack, xem trace/metrics thật) **chưa làm** — đang hoãn lại để
+  ưu tiên dọn hạ tầng trước.
+- **Gộp toàn bộ `.env`/`.env.example` về đúng 1 cặp ở repo root** (trước đó có thêm
+  `deploy/.env` riêng): chia 3 block bằng comment (APP/DEPLOY/OBSERVABILITY), prefix
+  `DEPLOY_`/`OBS_` chỉ cho 2 biến `POSTGRES_USER`/`POSTGRES_PASSWORD` (trùng tên giữa 2
+  domain). `deploy/up.sh` bỏ hẳn cơ chế đồng bộ 2 file cũ. Xem `deploy_spec.md` mục 7,
+  `README.md`.
+- **`deploy/dev/` tách hẳn thành `dev/` ở root repo** (đảo ngược quyết định #57 ở trên):
+  `deploy/` giờ **chỉ chứa thứ phục vụ end-user** (compose production, `up.sh`, `scripts/`,
+  `initdb/`) — Redis+Postgres cho code trên host và stack Langfuse/Prometheus/Grafana (dev
+  only) không còn nằm trong `deploy/` vì không phải hạ tầng production.
+- Xoá `dev/docker-compose.yml` (Redis+Postgres cho code trên host) — không còn dùng; `dev/` chỉ còn `observability/`.
+- Vá `.gitignore`: dòng `.env` trước đó bị comment nhầm (không thực sự ignore) — đã bật lại.
 
 Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
 
@@ -79,7 +100,7 @@ Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược tr�
    Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
    (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
    việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
-   để tính sau, chưa chốt. `deploy/dev/observability/` đã có compose khung cho
+   để tính sau, chưa chốt. `dev/observability/` đã có compose khung cho
    Prometheus/Grafana.
 
 Giữ nguyên quyết định: `chatlog` (Postgres tự host) vẫn là nguồn dữ liệu chính chủ, không

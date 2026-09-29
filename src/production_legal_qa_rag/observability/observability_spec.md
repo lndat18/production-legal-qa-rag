@@ -9,7 +9,7 @@ Actions build/push image) brainstorm ở spec riêng sau, không thuộc phạm 
 
 Hai công cụ, hai câu hỏi khác nhau, không chồng chéo:
 
-- **Langfuse** (đã có khung compose ở `deploy/dev/observability/`) — trả lời "1 lượt hỏi cụ
+- **Langfuse** (đã có khung compose ở `dev/observability/`) — trả lời "1 lượt hỏi cụ
   thể đã chạy qua những bước nào, bước nào chậm/lỗi, model nào dùng key nào, tốn bao nhiêu
   token" → trace chi tiết, xem trên UI Langfuse.
 - **Prometheus/Grafana** — trả lời "hệ thống đang khoẻ không ngay lúc này" → vài chỉ số thô
@@ -20,14 +20,15 @@ Hai công cụ, hai câu hỏi khác nhau, không chồng chéo:
 - Trace 1 lượt hỏi (`chat_turn`) trên Langfuse: 1 trace/lượt, span/generation con cho từng
   bước chính (guardrail, condense, retrieve [gồm HyDE], admission, generate [gồm Judge]) —
   mục 4.
-- `langfuse_trace_id` lưu vào `chat_turns` (chatlog) để đối chiếu qua lại Postgres ↔
-  Langfuse UI — mục 4.4.
+- **Gỡ hẳn package `chatlog/`** (chốt 2026-09-29): Langfuse trở thành nơi duy nhất lưu nhật
+  ký từng lượt hỏi-đáp thay cho bảng `chat_turns` — trace phải mang đủ các trường chatlog từng
+  lưu (mục 4.5). Không còn cột/migration `langfuse_trace_id`.
 - `GET /metrics` (Prometheus) ở `api`: mặc định của `prometheus-fastapi-instrumentator`
   (HTTP) + 2 custom metric ở mức lượt hỏi (`chat_turns_total`, `turn_latency_seconds`,
   `time_to_first_token_seconds`) — mục 5.
 - Wiring dev: join network để Prometheus scrape được `api`, bật scrape target trong
   `prometheus.yml` (đã có sẵn khung, đang comment) — mục 7.
-- Migration Alembic thêm cột `langfuse_trace_id`.
+- Gỡ toàn bộ hạ tầng chatlog (package, bảng, Alembic, CLI, DB `chatbot`) — mục 4.5.
 
 **Ngoài phạm vi (chốt rõ để không lấn sang CD):**
 
@@ -57,7 +58,7 @@ này không đổi logic nghiệp vụ, chỉ bọc thêm span/generation quanh 
 
 - Trace cây trên Langfuse UI (`http://localhost:3001`, dev) cho mỗi lượt hỏi.
 - `GET /metrics` (Prometheus text format) trên `api`.
-- Cột `langfuse_trace_id` (text, null nếu Langfuse disabled) trong `chat_turns`.
+- Mỗi trace `chat_turn` chứa đủ dữ liệu nhật ký của lượt hỏi (mục 4.5) — thay `chat_turns`.
 
 ## 3. Công cụ & công nghệ
 
@@ -152,35 +153,85 @@ tạo thêm Prometheus metric trùng lặp cho việc này (mục 5 chỉ giữ 
 `span`/`generation` cập nhật `output`/`metadata` tối thiểu: `verdict` (guardrail),
 `standalone_query` (condense), `num_chunks` + `chunk_ids` + `top_rerank_score` (retrieve),
 `usage` (answer, judge — Langfuse tự tính cost nếu model có bảng giá, không bắt buộc).
-Không log nội dung nhạy cảm nào ngoài những gì `chatlog` đã lưu (self-host, cùng mức riêng
-tư — mục 1 "Ngoài phạm vi").
+Nội dung lưu chỉ gồm những gì chatlog từng lưu (câu hỏi/trả lời/chunk id; self-host, cùng
+mức riêng tư — mục 1 "Ngoài phạm vi").
 
-### 4.4 Root trace & liên kết chatlog (`api/routes.py`)
+### 4.4 Root trace (`api/routes.py`)
 
-Root span bọc quanh đúng đoạn code đang bọc chatlog hiện tại (`api_spec.md` mục 7/12):
+Root span bọc quanh đúng đoạn stream 1 lượt hỏi (`api_spec.md` mục 7/12):
 
 ```python
 with tracing.span(
     "chat_turn",
     input=window.query,
-    metadata={
-        "user_id": ctx.user_id,
-        "chat_id": ctx.chat_id,
-        "request_id": ctx.request_id,
-    },
+    metadata={"request_id": ctx.request_id},
+    user_id=ctx.user_id,
+    session_id=ctx.chat_id,
 ):
-    trace.langfuse_trace_id = tracing.current_trace_id()
     async for event in orchestrator.stream(messages, ctx, trace):
         yield event
-    # cập nhật output/metadata cuối cùng trước khi span đóng, dùng trace đã điền đầy đủ
+    # cập nhật output/metadata cuối cùng (mục 4.5) trước khi span đóng, dùng `trace` đã điền đủ
 ```
 
-- `TurnTrace` (`conversation/models.py`) thêm field `langfuse_trace_id: str | None = None`.
-- `TurnRecord`/builder (`chatlog/models.py`) copy field này; `chat_turns` thêm cột cùng tên
-  (migration Alembic mới, nullable).
+- `user_id` / `session_id` (= `chat_id` của OpenWebUI) đặt ở cấp trace để Langfuse UI lọc
+  theo người dùng và gom các lượt cùng cuộc hội thoại (dùng thuộc tính chuẩn của Langfuse,
+  không phải metadata tự chế). `chat_id`/`user_id` thiếu thì bỏ trống, không bịa giá trị.
+- Trường `TurnTrace.langfuse_trace_id` và `tracing.current_trace_id()` **không còn cần** (không
+  còn bảng nào để đối chiếu) — xoá nếu không còn nơi dùng.
 - Lifespan (`api/app.py`) gọi `get_langfuse_client().flush()` lúc shutdown (chặn tối đa vài
-  giây) để không mất trace của các lượt hỏi cuối cùng trước khi container dừng — cùng chỗ
-  với việc chờ task ghi `chatlog` (`chatlog_spec.md` mục 4).
+  giây) để không mất trace của các lượt hỏi cuối cùng trước khi container dừng.
+
+### 4.5 Gỡ `chatlog/`: trace thay bảng `chat_turns` (chốt 2026-09-29)
+
+> **Trạng thái: đã chốt thiết kế, CHƯA implement** — làm ở lượt `/develop-cycle` kế tiếp. Trước
+> đó code vẫn còn `chatlog/` và mục 4.4 (mã minh hoạ root span) mô tả trạng thái đích, không phải
+> code hiện tại.
+
+Lý do: chỉ giữ 1 nơi lưu nhật ký (Langfuse), tránh 2 nguồn trùng nội dung; dữ liệu hỏi-đáp
+thật để chấm RAGAS phase 2 lấy từ Langfuse (API/export) thay vì query SQL `chat_turns`.
+
+**Cập nhật cuối lượt trên root span `chat_turn`** (đúng điểm `finally` cũ ghi chatlog, dùng
+`TurnTrace` đã điền đủ) — mọi trường chatlog từng có phải còn truy cập được trên trace:
+
+| Trường chatlog cũ | Vị trí trên Langfuse |
+| --- | --- |
+| `raw_query` | `input` của trace |
+| `answer_text` | `output` của trace (rỗng nếu từ chối/lỗi) |
+| `user_id`, `chat_id` | `user_id`, `session_id` của trace |
+| `request_id` | metadata |
+| `standalone_query`, `verdict`, `chunk_ids` | đã có ở span con (mục 4.3), lặp thêm vào metadata root để lọc |
+| `outcome` (`answered`/`refused`/`error`/`client_disconnected`), `error_code`, `cache_status`, `citations`, `warnings` | metadata root |
+| `usage` (token) | có ở generation con; tổng lượt thì metadata root nếu có sẵn trên `TurnTrace` |
+| `time_to_first_token_ms`, `latency_ms` | metadata root (latency còn có sẵn từ span) |
+| `prompt_version`, `corpus_version`, `model_name` | metadata root — để so trước/sau khi đổi cấu hình |
+| Lượt lỗi / từ chối / cache hit / ngắt kết nối | vẫn phải có đúng 1 trace (không được mất vì đi nhánh sớm) — `outcome` trong metadata phân biệt |
+
+Đặt `tags` trên trace (`outcome:<x>`, `cache:<y>`) để lọc nhanh trên UI Langfuse.
+
+**Gỡ khỏi repo (developer làm, tester cập nhật test):**
+
+- Package `src/production_legal_qa_rag/chatlog/` (models, tables, repository, `chatlog_spec.md`).
+- `ChatLogTaskManager` + `ChatLogRepository` protocol trong `api/routes.py`; engine/repo trong
+  lifespan `api/app.py` (giữ `flush()` Langfuse); `metrics.record_turn` giữ, gọi ở chỗ cũ.
+- `alembic/` toàn bộ (thư mục `alembic/`, cả `0001`, `0002`) và `alembic.ini` nếu có; dependency
+  `alembic`, `sqlalchemy[asyncio]`, `asyncpg` trong `pyproject.toml` (+ `uv lock`).
+- `tools/chatlog.py`, `tools/purge_chatlog.py`; biến `CHATLOG_DATABASE_URL`, `CHATLOG_RETENTION_DAYS`
+  và `DatabaseSettings` trong `config.py`, `.env.example`, README.
+- Compose production: `api` không còn dùng Postgres — bỏ `CHATLOG_DATABASE_URL` và
+  `depends_on: postgres` khỏi service `api`; `deploy/initdb/001_create_databases.sh` chỉ tạo
+  `openwebui`. Postgres vẫn giữ cho OpenWebUI. (DB `chatbot` cũ trong volume đã có không tự
+  biến mất — người dùng drop tay, ngoài phạm vi code.)
+- Test `tests/test_chatlog.py`; các test khác phụ thuộc chatlog (`test_api_routes.py`,
+  `test_deploy_compose.py`, `test_deploy_migration.py`, `test_observability_metrics.py`) sửa
+  hoặc xoá phần liên quan chatlog.
+- Doc: `api_spec.md`, `conversation_spec.md`, `cache_spec.md`, `evaluation_spec.md`,
+  `deploy_spec.md`, `README.md`, `CLAUDE.md` (bảng package, roadmap: RAGAS lấy mẫu từ Langfuse),
+  `docs/online_flow.md` (bỏ nhánh "Ghi chatlog Postgres", thay bằng "Gửi trace Langfuse" — và
+  sửa luôn dòng "quota ngày" không tồn tại trong code).
+
+**Ràng buộc còn nguyên:** ghi trace không bao giờ chặn/làm hỏng câu trả lời (mục 1). Khác
+chatlog: Langfuse không chạy thì **mất** nhật ký lượt đó (không có hàng đợi bền) — chấp nhận
+được cho dự án cá nhân, và là lý do stack observe nên luôn chạy cùng production.
 
 ## 5. Metrics Prometheus (`observability/metrics.py`)
 
@@ -235,8 +286,8 @@ def instrument_app(app: FastAPI) -> None:
 ```
 
 `instrument_app(app)` gọi 1 lần trong `create_app()` (`api/app.py`). `record_turn(trace)`
-gọi ở đúng chỗ `finally` đã ghi `chatlog` trong `api/routes.py` (mục 4 `chatlog_spec.md`) —
-cùng nguồn `TurnTrace`, không tính toán lại.
+gọi ở đúng chỗ `finally` cuối lượt trong `api/routes.py` — cùng nguồn `TurnTrace` với
+việc cập nhật trace (mục 4.5), không tính toán lại.
 
 **Lưu ý route SSE:** `POST /v1/chat/completions` stream lâu (chờ token) — histogram HTTP
 mặc định của instrumentator sẽ đo cả thời gian đó vào `http_request_duration_seconds`, số
@@ -267,23 +318,30 @@ class LangfuseSettings(BaseSettings):
 
 `api/`, `conversation/`, `generation/`, `retrieval/` không đọc `LangfuseSettings` trực
 tiếp — package `observability/` tự đọc khi khởi tạo client (giống cách `RerankerSettings`
-chỉ được đọc trong `retrieval/`). Cập nhật `.env.example` (root) và `deploy/dev/.env.example`
-(3 biến `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_BASE_URL`, để trống mặc định).
+chỉ được đọc trong `retrieval/`). 3 biến `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/
+`LANGFUSE_BASE_URL` nằm trong `.env.example` (root, block APP — duy nhất 1 cặp `.env`/
+`.env.example` cho toàn project, chốt 2026-09-29, xem `deploy_spec.md` mục 7), để trống
+mặc định.
 
-## 7. Triển khai dev (`deploy/dev/`, ngoài package)
+## 7. Triển khai (`dev/observability/` + `deploy/docker-compose.observe.yml`, ngoài package)
 
-- `deploy/dev/docker-compose.yml`: service `api` khai báo thêm network ngoài
-  `legal-qa-observability` (`external: true`, tên do `deploy/dev/observability/docker-compose.yml`
-  tạo ra qua `name:`), để Prometheus scrape được `api:8000/metrics` và `api` gọi được
-  `langfuse-web:3000`.
-- `deploy/dev/observability/prometheus.yml`: bỏ comment khối mẫu `legal-qa-api` đã có sẵn
-  (targets: `["api:8000"]`).
-- `deploy/dev/.env`: thêm `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` (tạo tay qua Langfuse
-  UI sau khi `docker compose ... up -d` lần đầu — project/API key trong Langfuse không tạo
-  được trước khi web UI chạy, đây là bước thủ công 1 lần khi setup, giống tạo tài khoản
-  admin OpenWebUI).
-- Production (`deploy/docker-compose.yml`, `deploy/.env.example`): **không đổi** — để trống
-  `LANGFUSE_*` là đủ (mục 4.1).
+Mục tiêu (chốt 2026-09-29): quan sát **traffic end-user thật** trên `api` production. Stack
+observe (Langfuse/Prometheus/Grafana) là compose riêng ở `dev/observability/`, tách khỏi
+`deploy/` (không phục vụ end-user); `api` production nối vào bằng 1 network chung:
+
+- Network `legal-qa-observe` (tên cố định) do `dev/observability/docker-compose.yml` tạo,
+  `langfuse-web` và `prometheus` join. `deploy/docker-compose.observe.yml` (override, cùng
+  kiểu `docker-compose.gpu.yml`) khai network này `external` và thêm `api` vào, đồng thời
+  ghi đè `LANGFUSE_BASE_URL=http://langfuse-web:3000` và
+  `LANGFUSE_TRACING_ENVIRONMENT=production`. `deploy/up.sh` tự ghép override khi network
+  đã tồn tại (stack observe đang chạy); chưa chạy thì bỏ qua, production dựng như cũ.
+- `dev/observability/prometheus.yml`: scrape `api:8000` (label `env=production`). Không còn
+  target cho `api` chạy trên host.
+- `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`: điền vào `.env` root (không phải file riêng)
+  — tạo tay qua Langfuse UI sau khi `docker compose -f dev/observability/docker-compose.yml
+  up -d` lần đầu (cần symlink `dev/observability/.env` → `../../.env` để không gõ
+  `--env-file`); bước thủ công 1 lần khi setup. Điền xong chạy lại `./deploy/up.sh`.
+- Stack observe chạy trên cùng máy với production (chưa chốt tách VM riêng).
 
 ## 8. Module (`src/production_legal_qa_rag/observability/`)
 
@@ -296,21 +354,21 @@ Nơi khác trong repo được sửa (không phải package mới, liệt kê đ
 
 | File | Thay đổi |
 | --- | --- |
-| `conversation/models.py` | `TurnTrace.langfuse_trace_id: str \| None = None` |
+| `conversation/models.py` | Bỏ `TurnTrace.langfuse_trace_id` (mục 4.4); docstring `TurnTrace` không còn nhắc chatlog |
 | `conversation/orchestrator.py` | Bọc `cache_lookup`/`admission`/`retrieve`/`generate` bằng `tracing.span` |
 | `generation/guardrail.py` | Bọc lời gọi LLM trong `check_input` bằng `tracing.generation("guardrail", ...)` |
 | `conversation/condenser.py` | Bọc lời gọi LLM trong `condense` bằng `tracing.generation("condense", ...)` |
 | `retrieval/hyde.py` | Bọc lời gọi LLM trong `HydeGenerator` bằng `tracing.generation("hyde", ...)` |
 | `generation/generator.py` | Bọc lời gọi LLM chính bằng `tracing.generation("answer", ...)` |
 | `generation/judge.py` | Bọc `EvidenceJudge.judge` bằng `tracing.generation("judge", ...)` |
-| `api/routes.py` | Root span `chat_turn`, gán `trace.langfuse_trace_id`, gọi `metrics.record_turn(trace)` cùng chỗ ghi chatlog |
-| `api/app.py` | `metrics.instrument_app(app)` lúc tạo app; `get_langfuse_client().flush()` lúc lifespan shutdown |
-| `chatlog/models.py`, `chatlog/tables.py`, `alembic/versions/` | Cột `langfuse_trace_id`, migration mới |
-| `pyproject.toml`, `.env.example`, `deploy/dev/.env.example` | Dependency + biến môi trường mới |
+| `api/routes.py` | Root span `chat_turn` (+ `user_id`/`session_id`, cập nhật output/metadata/tags cuối lượt theo mục 4.5), gọi `metrics.record_turn(trace)`; bỏ `ChatLogTaskManager` |
+| `api/app.py` | `metrics.instrument_app(app)` lúc tạo app; `get_langfuse_client().flush()` lúc lifespan shutdown; bỏ engine/repository chatlog |
+| `chatlog/`, `alembic/`, `tools/chatlog.py`, `tools/purge_chatlog.py` | **Xoá** (mục 4.5) |
+| `pyproject.toml`, `.env.example` (root) | Dependency + biến môi trường mới |
 
 ## 9. Nghiệm thu thủ công
 
-1. `docker compose -f deploy/dev/docker-compose.yml -f deploy/dev/observability/docker-compose.yml up -d`
+1. `docker compose -f dev/observability/docker-compose.yml up -d`
    (network join theo mục 7) → hỏi vài câu qua OpenWebUI/`tools/conversation.py`.
 2. Mở Langfuse UI (`localhost:3001`) → mỗi lượt hỏi có đúng 1 trace `chat_turn`, cây span
    khớp mục 4.3 (đúng span nào chạy tuỳ nhánh cache hit/miss/refused/error).
@@ -319,14 +377,15 @@ Nơi khác trong repo được sửa (không phải package mới, liệt kê đ
 4. `curl` nội bộ `api:8000/metrics` → thấy `chat_turns_total`, `turn_latency_seconds`,
    `http_requests_total`. Prometheus (`localhost:9092/targets`) báo target `legal-qa-api`
    là `UP`.
-5. So 1 dòng `chat_turns.langfuse_trace_id` (Postgres) khớp đúng trace ID trên Langfuse UI
-   cho cùng lượt hỏi đó.
+5. Trace của 1 lượt hỏi có đủ dữ liệu nhật ký (mục 4.5): `input` = câu hỏi, `output` = câu
+   trả lời, `user_id`/`session_id` đúng, metadata `outcome`/`cache_status`/`chunk_ids`…; các
+   lượt từ chối, lỗi, cache hit đều vẫn có trace riêng với `outcome` tương ứng. Lọc theo
+   `session_id` gom đúng các lượt cùng cuộc hội thoại.
 6. Bỏ trống `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` (hoặc tắt hẳn stack observability)
-   → chatbot vẫn trả lời bình thường, không lỗi, không log warning lặp lại; `langfuse_trace_id`
-   ghi `NULL`.
+   → chatbot vẫn trả lời bình thường, không lỗi, không log warning lặp lại.
 7. Tắt Langfuse container giữa chừng (không tắt `api`) → chatbot vẫn trả lời (SDK tự buffer/
    retry rồi bỏ qua khi hết hạn, không chặn response).
-8. Tổng `mem_limit` khi bật cả `deploy/dev/docker-compose.yml` + observability stack + load
+8. Tổng `mem_limit` khi bật observability stack + load
    model rerank không làm máy OOM (bài học đã ghi `deploy_spec.md`; observability compose đã
    tự ghi chú ClickHouse+MinIO ~3.4GB).
 9. Tắt server (`docker compose down`) → không có trace nào của các lượt hỏi cuối bị mất
