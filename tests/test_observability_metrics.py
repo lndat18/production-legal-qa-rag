@@ -9,6 +9,9 @@ tiến trình.
 
 from __future__ import annotations
 
+import logging
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
@@ -66,6 +69,37 @@ def test_record_turn_quan_sat_time_to_first_token_khi_co_gia_tri() -> None:
 
     assert _sample("time_to_first_token_seconds_count") == before + 1.0
     assert _sample("time_to_first_token_seconds_sum") == sum_before + 0.8
+
+
+def test_record_turn_khong_lam_lan_loi_ra_ngoai_khi_metric_that_bai(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """observability_spec.md mục 1: lỗi Prometheus không bao giờ ảnh hưởng
+    response path — tương tự `test_failed_background_record_warning_has_no_turn_content`
+    (chatlog) nhưng cho `record_turn`."""
+    raw_query = "PRIVATE_QUERY_DO_NOT_LOG"
+    answer_text = "PRIVATE_ANSWER_DO_NOT_LOG"
+
+    def _boom(*_: object, **__: object) -> None:
+        raise RuntimeError(f"bad label: {raw_query} / {answer_text}")
+
+    monkeypatch.setattr(metrics.CHAT_TURNS_TOTAL, "labels", _boom)
+
+    caplog.set_level(
+        logging.WARNING, logger="production_legal_qa_rag.observability.metrics"
+    )
+    metrics.record_turn(
+        TurnTrace(
+            outcome="answered",
+            cache_status="miss",
+            raw_query=raw_query,
+            answer_text=answer_text,
+        )
+    )
+
+    assert "Không thể ghi metrics" in caplog.text
+    assert raw_query not in caplog.text
+    assert answer_text not in caplog.text
 
 
 # --------------------------------------------------------------- instrument_app

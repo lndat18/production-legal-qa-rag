@@ -213,12 +213,19 @@ TIME_TO_FIRST_TOKEN_SECONDS = Histogram(
 
 
 def record_turn(trace: TurnTrace) -> None:
-    CHAT_TURNS_TOTAL.labels(
-        outcome=trace.outcome, cache_status=trace.cache_status
-    ).inc()
-    TURN_LATENCY_SECONDS.labels(outcome=trace.outcome).observe(trace.latency_ms / 1000)
-    if trace.time_to_first_token_ms is not None:
-        TIME_TO_FIRST_TOKEN_SECONDS.observe(trace.time_to_first_token_ms / 1000)
+    """Bọc try/except ngay trong hàm — lỗi ghi metric không bao giờ lan ra
+    ngoài (cùng tinh thần `ChatLogTaskManager.schedule`, chỉ log warning)."""
+    try:
+        CHAT_TURNS_TOTAL.labels(
+            outcome=trace.outcome, cache_status=trace.cache_status
+        ).inc()
+        TURN_LATENCY_SECONDS.labels(outcome=trace.outcome).observe(
+            trace.latency_ms / 1000
+        )
+        if trace.time_to_first_token_ms is not None:
+            TIME_TO_FIRST_TOKEN_SECONDS.observe(trace.time_to_first_token_ms / 1000)
+    except Exception:
+        _logger.warning("Không thể ghi metrics cho lượt hỏi")
 
 
 def instrument_app(app: FastAPI) -> None:
@@ -243,8 +250,10 @@ class LangfuseSettings(BaseSettings):
     """Kết nối Langfuse self-host (observability_spec.md mục 4).
 
     Để trống public_key/secret_key -> SDK tự chuyển sang chế độ disabled
-    (mục 4.1), không cần cờ bật/tắt riêng. base_url mặc định trỏ vào service
-    `langfuse-web` cùng network dev compose.
+    (mục 4.1), không cần cờ bật/tắt riêng. `api` khi dev luôn chạy trực tiếp
+    trên host (`uv run uvicorn`), không nằm cùng network Docker với
+    `langfuse-web` — base_url mặc định trỏ vào cổng `langfuse-web` publish ra
+    host (`127.0.0.1:3001:3000`), không phải tên service nội bộ Docker.
     """
 
     model_config = SettingsConfigDict(
@@ -253,7 +262,7 @@ class LangfuseSettings(BaseSettings):
 
     public_key: SecretStr | None = None
     secret_key: SecretStr | None = None
-    base_url: str = "http://langfuse-web:3000"
+    base_url: str = "http://localhost:3001"
 ```
 
 `api/`, `conversation/`, `generation/`, `retrieval/` không đọc `LangfuseSettings` trực

@@ -505,7 +505,7 @@ def test_langfuse_settings_mac_dinh_disabled_khi_thieu_ca_hai_key(
 
     assert settings.public_key is None
     assert settings.secret_key is None
-    assert settings.base_url == "http://langfuse-web:3000"
+    assert settings.base_url == "http://localhost:3001"
 
 
 def test_langfuse_settings_doc_key_tu_env(monkeypatch: pytest.MonkeyPatch) -> None:

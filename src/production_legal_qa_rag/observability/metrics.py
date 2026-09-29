@@ -10,11 +10,15 @@ lời tốt hơn (per-model/key token, per-step latency chi tiết):
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 from prometheus_client import Counter, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from production_legal_qa_rag.conversation.models import TurnTrace
+
+_logger = logging.getLogger(__name__)
 
 CHAT_TURNS_TOTAL = Counter(
     "chat_turns_total", "Tổng lượt hỏi", ["outcome", "cache_status"]
@@ -35,15 +39,25 @@ TIME_TO_FIRST_TOKEN_SECONDS = Histogram(
 def record_turn(trace: TurnTrace) -> None:
     """Cập nhật các metric mức lượt hỏi từ một `TurnTrace` đã hoàn tất.
 
+    Không bao giờ để lỗi ghi metric lan ra ngoài (observability_spec.md mục 1,
+    "thiếu/lỗi ... Prometheus thì chatbot vẫn chạy bình thường") — cùng tinh
+    thần với `ChatLogTaskManager.schedule` (`api/routes.py`): bắt mọi lỗi tại
+    đây, chỉ log warning không kèm nội dung câu hỏi/câu trả lời, không raise.
+
     Args:
         trace: Vết lượt hỏi đã điền đầy đủ, cùng nguồn dữ liệu với `chatlog`.
     """
-    CHAT_TURNS_TOTAL.labels(
-        outcome=trace.outcome, cache_status=trace.cache_status
-    ).inc()
-    TURN_LATENCY_SECONDS.labels(outcome=trace.outcome).observe(trace.latency_ms / 1000)
-    if trace.time_to_first_token_ms is not None:
-        TIME_TO_FIRST_TOKEN_SECONDS.observe(trace.time_to_first_token_ms / 1000)
+    try:
+        CHAT_TURNS_TOTAL.labels(
+            outcome=trace.outcome, cache_status=trace.cache_status
+        ).inc()
+        TURN_LATENCY_SECONDS.labels(outcome=trace.outcome).observe(
+            trace.latency_ms / 1000
+        )
+        if trace.time_to_first_token_ms is not None:
+            TIME_TO_FIRST_TOKEN_SECONDS.observe(trace.time_to_first_token_ms / 1000)
+    except Exception:  # noqa: BLE001 - metrics failures cannot affect the response path.
+        _logger.warning("Không thể ghi metrics cho lượt hỏi")
 
 
 def instrument_app(app: FastAPI) -> None:
