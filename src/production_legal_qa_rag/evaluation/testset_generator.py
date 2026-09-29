@@ -20,6 +20,7 @@ import math
 import os
 import re
 import time
+import traceback
 import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -564,6 +565,26 @@ def _record_failure(
     return description
 
 
+def _describe_traceback(error: BaseException) -> str:
+    """Chuỗi `Loại @ file:dòng:hàm -> ...` của traceback, KHÔNG chứa thông điệp exception.
+
+    Cố ý không dùng `exc_info=True`/`logger.exception`: chúng in cả `str(error)`, mà
+    thông điệp lỗi LLM có thể chứa nội dung câu hỏi/ngữ cảnh (evaluation_spec.md mục 8).
+    Chỉ ghi tên loại lỗi và vị trí frame để vẫn debug được.
+
+    Args:
+        error: Exception vừa bắt được.
+
+    Returns:
+        Tên loại lỗi, theo sau là các frame từ ngoài vào trong.
+    """
+    frames = " -> ".join(
+        f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
+        for frame in traceback.extract_tb(error.__traceback__)
+    )
+    return f"{type(error).__name__} @ {frames}" if frames else type(error).__name__
+
+
 def _recover_unfinished(state: _RunState, progress_path: Path) -> None:
     """Ghi bổ sung progress cho đơn vị đã có dòng trong raw mà chưa được ghi nhận."""
     by_key = {unit_key(u): u for u in state.all_units}
@@ -674,7 +695,12 @@ def _run_one_unit(
         )
     except (Exception, KeyboardInterrupt) as error:
         description = _record_failure(progress_path, state.progress, key, error)
-        logger.exception("Đơn vị %s lỗi, dừng: %s", key, description)
+        logger.error(
+            "Đơn vị %s lỗi, dừng: %s | traceback: %s",
+            key,
+            description,
+            _describe_traceback(error),
+        )
         if isinstance(error, KeyboardInterrupt):
             raise
         raise UnitGenerationError(key, description) from error
