@@ -18,7 +18,7 @@ tên với Postgres riêng của block dưới), **OBSERVABILITY** (chỉ stack 
 Grafana dev — mọi biến có prefix `OBS_`). Không commit `.env` (chứa key thật) — đã nằm
 trong `.gitignore`.
 
-Chạy `api`/tools trên host cần Redis + Postgres cục bộ (`REDIS_URL`, `CHATLOG_DATABASE_URL` mặc định trỏ `localhost`) — tự dựng, repo không kèm compose cho việc này.
+Chạy `api`/tools trên host cần Redis cục bộ (`REDIS_URL` mặc định trỏ `localhost`) — tự dựng, repo không kèm compose cho việc này.
 
 ### Key dịch vụ ngoài `[BẮT BUỘC]`
 
@@ -66,8 +66,6 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 | `REDIS_URL`                                                  | `redis://localhost:6379/0`                                     | Cache câu trả lời/retrieval và rate limit API. Redis dev chạy không mật khẩu, chỉ nghe localhost              |
 | `CACHE_CORPUS_VERSION`                                       | Tự tính từ `data/bm25/bm25_params.json`                        | Hiếm khi cần; muốn ghi đè thì bỏ dấu `#` ở dòng trong `.env.example`                                          |
 | `RERANKER_MODEL_NAME`, `RERANKER_MAX_LENGTH`, `RERANKER_BATCH_SIZE` | `AITeamVN/Vietnamese_Reranker`, `512`, `16`             | Reranker chạy in-process                                                                                      |
-| `CHATLOG_DATABASE_URL`                                       | `postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot` | Khớp user/password của Postgres cục bộ bạn dựng. Driver PHẢI là `postgresql+asyncpg`                          |
-| `CHATLOG_RETENTION_DAYS`                                     | `90`                                                           | Số ngày `tools/purge_chatlog.py` giữ chatlog                                                                  |
 | `RATE_LIMIT_PER_MINUTE`, `KEEPALIVE_SECONDS`                 | `5`, `15`                                                      | Request/phút/user; giây giữa các keep-alive SSE khi đang chờ LLM                                              |
 
 ### Kiểm tra `.env` khớp `.env.example`
@@ -110,11 +108,11 @@ thật (biến DEPLOY_* + các biến dùng chung đã điền ở phần trên 
 | Biến                                                | Ghi chú                                                                                                     |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `REDIS_PASSWORD`                                     | Mật khẩu cho Redis container production do compose tạo mới                                                  |
-| `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`  | Tự đặt tuỳ ý; compose tạo Postgres mới, dùng chung cho 2 database `openwebui` và `chatbot`. Prefix `DEPLOY_` vì Postgres của stack observability (dưới) dùng cùng tên biến gốc |
+| `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`  | Tự đặt tuỳ ý; compose tạo Postgres mới, chỉ phục vụ OpenWebUI (database `openwebui`). Prefix `DEPLOY_` vì Postgres của stack observability (dưới) dùng cùng tên biến gốc |
 | `WEBUI_SECRET_KEY`                                   | Key ký session OpenWebUI. Điền 1 lần rồi giữ nguyên — đổi sau khi đã có người đăng nhập sẽ đăng xuất tất cả |
 
-`docker-compose.yml` tự dựng `REDIS_URL`/`CHATLOG_DATABASE_URL` thật cho container `api` từ
-`REDIS_PASSWORD`/`DEPLOY_POSTGRES_USER`/`DEPLOY_POSTGRES_PASSWORD` — không cần tự điền.
+`docker-compose.yml` tự dựng `REDIS_URL` thật cho container `api` từ
+`REDIS_PASSWORD` — không cần tự điền.
 
 **`[TÙY CHỌN]`:** `WEBUI_URL` (URL cố định của named tunnel, vd. `https://chat.tenban.com`) và
 `TUNNEL_TOKEN` (lấy từ Cloudflare Zero Trust dashboard) chỉ cần với named tunnel; quick tunnel

@@ -12,7 +12,8 @@ router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
 - `deploy/` (ngoài `src/`, vì không phải code import được): Dockerfile, compose, mẫu biến
   môi trường, script khởi tạo DB, script backup, script khởi động tự dò GPU
   (`deploy/up.sh`, mục 4.1).
-- 5 service: `cloudflared`, `open-webui`, `api`, `redis`, `postgres`.
+- 5 service: `cloudflared`, `open-webui`, `api`, `redis`, `postgres` (Postgres chỉ phục vụ
+  OpenWebUI, `api` không dùng Postgres).
 - Hai use case dùng chung một entrypoint (`deploy/up.sh`): (1) tác giả tự chạy trên máy
   laptop cá nhân (thường có GPU) rồi public URL qua Cloudflare Tunnel cho người khác dùng
   thử; (2) người khác tự `git clone` rồi tự chạy trên máy của họ (thường CPU-only). Cả hai
@@ -25,7 +26,10 @@ router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
   replica/worker, không HA.
 - Không CI/CD tự deploy (CI hiện có chỉ chạy test/lint); deploy là thao tác tay.
 - Không monitoring/alert (Prometheus, Grafana, Langfuse) — thuộc phase cuối sau RAGAS
-  (tracing, tracking & CI); tạm thời theo dõi qua bảng `chatlog` và `docker compose logs`.
+  (tracing, tracking & CI); stack observe là compose riêng ở `dev/observability/`
+  (`observability_spec.md` mục 7). Nhật ký từng lượt hỏi-đáp nằm ở trace Langfuse
+  (`observability_spec.md` mục 4.5) khi stack đó chạy; nếu không thì chỉ còn
+  `docker compose logs`.
 - Không tự host LLM/Pinecone: vẫn dùng dịch vụ ngoài như hiện nay. Reranker **không**
   còn trong nhóm này — chạy in-process trong `api`, không host tách rời qua
   LightningAI/ngrok nữa (`retrieval_spec.md` mục 6.1, xem mục 4.1 dưới đây).
@@ -43,7 +47,7 @@ Internet ─HTTPS─► Cloudflare ◄─(kết nối ra do cloudflared tự m�
                                                                   open-webui ──► postgres (DB openwebui)
                                                                        │
                                                                        ▼  Bearer CHATBOT_API_KEY
-                                                                      api ─────► postgres (DB chatbot)
+                                                                      api
                                                                        │  ├────► redis
                                                                        │  └────► reranker (in-process, GPU khuyến nghị/CPU fallback)
                                                                        ▼
@@ -95,7 +99,8 @@ Quy tắc chung:
 - Healthcheck: `postgres` (`pg_isready`), `redis` (`redis-cli ping` có mật khẩu), `api`
   (`GET /readyz` bằng `python -c "urllib…"`, không cần curl), `open-webui` (endpoint
   health của nó). `depends_on: condition: service_healthy` theo chuỗi
-  `postgres,redis → api → open-webui → cloudflared`.
+  `redis → api → open-webui → cloudflared` (và `postgres → open-webui`; `api` không phụ thuộc
+  `postgres`).
 - Giới hạn tài nguyên: `mem_limit` cho từng service (`api` 3g — đo thật 2026-09-27: 1.5g bị
   kernel OOM-killer giết ngay lượt hỏi retrieval+rerank đầu tiên, reranker model + torch
   CUDA context + tải checkpoint qua hf-xet cộng dồn chạm ~1.53GB; `open-webui` 1g,
@@ -190,7 +195,7 @@ không crash service.
 
 - Base `python:3.14-slim`; cài `uv` (copy từ `ghcr.io/astral-sh/uv`); tầng dependency riêng:
   copy `pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev --no-install-project`,
-  rồi copy `src/`, `alembic/`, `alembic.ini` → cài project (tận dụng cache tầng Docker).
+  rồi copy `src/`, `README.md` → cài project (tận dụng cache tầng Docker).
 - `torch`: cài theo build arg `TORCH_VARIANT` (mặc định `cpu`) — xem mục 4.1 để build
   bản GPU (`cu126` trở lên — `cu121`/`cu124` không có wheel cho Python 3.14). Mặc định
   `cpu` để image build được trên mọi máy không cần driver GPU và nhẹ hơn cho người không
@@ -202,9 +207,9 @@ không crash service.
 - Chạy bằng user không phải root.
 - `data/bm25/` **không** đóng gói vào image (file sinh ra, đã `.gitignore`); mount từ host
   read-only. Thiếu file → `api` lỗi rõ ràng lúc khởi động, không chạy nửa vời.
-- Lệnh chạy: `alembic upgrade head` rồi
-  `uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`.
-  Chạy migration ở đây an toàn vì chỉ có 1 worker/1 container.
+- Lệnh chạy:
+  `uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`
+  (không còn migration: chatlog/Alembic đã gỡ 2026-09-29).
 - **1 worker**: semaphore của admission là in-process (`conversation_spec.md` mục 8).
 - `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, cache của mypy/ruff/pytest.
 
@@ -225,7 +230,7 @@ prefix):
 | Nhóm        | Biến                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------- |
 | LLM/dịch vụ (dùng chung block APP) | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3`, `GROQ_API_KEY_4`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY` |
-| Backend     | `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL`/`CHATLOG_DATABASE_URL` cho container `api` do `docker-compose.yml` tự dựng từ `DEPLOY_POSTGRES_*`/`REDIS_PASSWORD`, không đọc trực tiếp từ `.env`) |
+| Backend     | `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL` cho container `api` do `docker-compose.yml` tự dựng từ `REDIS_PASSWORD`, không đọc trực tiếp từ `.env`) |
 | Postgres (production) | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`                                                              |
 | OpenWebUI   | `WEBUI_SECRET_KEY` (cố định, để phiên đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn) |
 | Tunnel      | `TUNNEL_TOKEN` (chỉ khi dùng named tunnel)                                                        |
@@ -244,14 +249,14 @@ prefix):
   `docker compose logs cloudflared-named`.
 - **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
   khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
-- **Backup:** `deploy/scripts/backup.sh` chạy `pg_dump` cho cả 2 database (`openwebui`, `chatbot`)
+- **Backup:** `deploy/scripts/backup.sh` chạy `pg_dump` cho database `openwebui`
   ra `deploy/backups/<ngày>/` (thư mục này vào `.gitignore`), giữ 7 bản gần nhất; chạy tay
   hoặc bằng cron/Task Scheduler. Redis không cần backup (dữ liệu tính lại được).
 - **Cập nhật:** `git pull` → `./deploy/up.sh` (tự build lại đúng biến thể + `up -d`). Đổi
   phiên bản OpenWebUI: sửa tag, nghiệm thu lại mục 9 trước khi dùng.
-- **Xem nhật ký:** `docker compose logs -f api`; phân tích lượt hỏi qua bảng `chat_turns`.
-- **Dọn dữ liệu quá hạn:** `docker compose exec api python tools/purge_chatlog.py`
-  (`chatlog_spec.md` mục 5) — cần `tools/` có trong image hoặc chạy từ host.
+- **Xem nhật ký:** `docker compose logs -f api`; phân tích từng lượt hỏi qua trace Langfuse
+  (`observability_spec.md` mục 4.5). DB `chatbot` cũ (nếu volume `postgres_data` đã có từ
+  trước 2026-09-29) không tự biến mất — drop tay: `DROP DATABASE chatbot;`.
 
 ## 9. Nghiệm thu thủ công
 
@@ -265,11 +270,11 @@ prefix):
 3. Từ ngoài mạng, không truy cập được `api`, `redis`, `postgres` (chỉ có URL của
    OpenWebUI).
 4. `docker compose down && docker compose up -d` → tài khoản, lịch sử chat, dòng
-   `chat_turns`, cache đều còn (volume giữ dữ liệu); phiên đăng nhập không bị đăng xuất
+   cache đều còn (volume giữ dữ liệu); phiên đăng nhập không bị đăng xuất
    (`WEBUI_SECRET_KEY` cố định).
 5. `deploy/scripts/backup.sh` tạo file dump khôi phục được vào Postgres tạm.
-6. Tắt Redis rồi Postgres (từng cái) → chat vẫn trả lời, `/readyz` báo 503 (khớp
-   `api_spec.md` mục 13).
+6. Tắt Redis → chat vẫn trả lời, `/readyz` báo 503 (khớp `api_spec.md` mục 13). Tắt Postgres →
+   OpenWebUI mất DB (không đăng nhập/lưu lịch sử được), `api` không bị ảnh hưởng.
 7. Kiểm tra image: `docker history` / `grep` không thấy bí mật; chạy bằng user không root.
 8. (Chỉ khi máy chạy thử có GPU NVIDIA, để `deploy/up.sh` tự chọn nhánh GPU theo mục 4.1)
    `docker compose exec api python -c "import torch; print(torch.cuda.is_available())"`
@@ -285,8 +290,8 @@ prefix):
    toàn cục bảo vệ hạn mức (mục 5). Nếu vẫn bị lạm dụng: đóng đăng ký (mục 5) hoặc thêm
    Cloudflare Turnstile/Access phía trước — chưa làm.
 3. Máy cá nhân chứa dữ liệu hội thoại của người dùng khác: mã hoá đĩa (BitLocker) và cập
-   nhật hệ điều hành là trách nhiệm của tác giả; banner thông báo lưu 90 ngày
-   (`chatlog_spec.md` mục 5).
+   nhật hệ điều hành là trách nhiệm của tác giả; nội dung câu hỏi/trả lời còn nằm trong trace Langfuse
+   (chưa có cơ chế xoá tự động — `observability_spec.md` mục 4.5).
 4. Reranker giờ chạy in-process trong `api` (mục 4.1): image mặc định chỉ cài `torch` CPU,
    nên nếu máy không có GPU (hoặc thiếu Container Toolkit), rerank chậm hơn GPU nhưng
    không phụ thuộc dịch vụ ngoài nào còn ngừng bất kỳ lúc nào như bản LightningAI/ngrok cũ.

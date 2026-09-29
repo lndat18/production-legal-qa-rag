@@ -32,7 +32,7 @@ services:
     environment:
       POSTGRES_USER: ${DEPLOY_POSTGRES_USER}
       POSTGRES_PASSWORD: ${DEPLOY_POSTGRES_PASSWORD}
-      # 2 DB thật (openwebui, chatbot) do deploy/initdb/ tạo khi volume khởi tạo lần đầu.
+      # DB thật (openwebui) do deploy/initdb/ tạo khi volume khởi tạo lần đầu.
       POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -76,9 +76,8 @@ services:
     env_file:
       - ../.env
     environment:
-      # env_file không giãn ${VAR} bên trong chính nó nên 2 URL này dựng ở đây (mục 7).
+      # env_file không giãn ${VAR} bên trong chính nó nên URL này dựng ở đây (mục 7).
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      CHATLOG_DATABASE_URL: postgresql+asyncpg://${DEPLOY_POSTGRES_USER}:${DEPLOY_POSTGRES_PASSWORD}@postgres/chatbot
     volumes:
       - ../data/bm25:/app/data/bm25:ro
       - hf_cache:/home/appuser/.cache/huggingface
@@ -87,8 +86,6 @@ services:
       - ../tools:/app/tools:ro
     networks: [internal]
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:

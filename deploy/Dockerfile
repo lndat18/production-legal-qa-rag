@@ -41,8 +41,7 @@ RUN uv pip install --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT
 
 # Cài chính project
 COPY --chown=appuser:appuser src/ ./src/
-COPY --chown=appuser:appuser alembic/ ./alembic/
-COPY --chown=appuser:appuser alembic.ini README.md ./
+COPY --chown=appuser:appuser README.md ./
 # Dùng `uv pip install`, KHÔNG dùng lại `uv sync`: sync sẽ gỡ bản torch vừa cài đúng biến thể.
 RUN uv pip install --no-deps .
 
@@ -50,6 +49,6 @@ RUN uv pip install --no-deps .
 
 EXPOSE 8000
 
-# Chạy migration rồi mới phục vụ; an toàn vì chỉ 1 worker/1 container (admission in-process).
+# Chỉ 1 worker/1 container (admission in-process).
 # `exec` để uvicorn nhận SIGTERM từ `docker stop`.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1"]
+CMD ["sh", "-c", "exec uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1"]
