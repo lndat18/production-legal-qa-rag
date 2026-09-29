@@ -1,0 +1,16 @@
+# `api` production (FastAPI) expose /metrics (observability_spec.md mục 5). Container `api`
+# join network chung `legal-qa-observe` (deploy/docker-compose.observe.yml, ./deploy/up.sh tự
+# ghép khi stack observe đang chạy) nên Prometheus scrape thẳng `api:8000`.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: legal-qa-api
+    static_configs:
+      - targets: ["api:8000"]
+        labels: {env: production}

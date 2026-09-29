@@ -18,6 +18,7 @@ from production_legal_qa_rag.config import (
     GuardrailSettings,
     HydeSettings,
     JudgeSettings,
+    LangfuseSettings,
     LLMSettings,
     RerankerSettings,
     ThrottleSettings,
@@ -472,3 +473,64 @@ def test_reranker_settings_doc_env_va_validate_gia_tri_duong(
     monkeypatch.setenv("RERANKER_BATCH_SIZE", "-1")
     with pytest.raises(ValidationError):
         RerankerSettings()  # type: ignore[call-arg]
+
+
+# ==========================================================================
+# LangfuseSettings (observability_spec.md mục 6)
+# ==========================================================================
+
+
+def _khong_doc_dotenv_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bỏ qua `.env` thật của máy dev — chỉ dùng biến môi trường test set tường
+    minh (đối chiếu docstring đầu file: env var luôn ưu tiên hơn `.env`, nhưng ở
+    đây cần cả trường hợp "hoàn toàn không set" nên phải tắt hẳn nguồn dotenv).
+    """
+    monkeypatch.setattr(
+        LangfuseSettings,
+        "model_config",
+        {**LangfuseSettings.model_config, "env_file": None},
+    )
+
+
+def test_langfuse_settings_mac_dinh_disabled_khi_thieu_ca_hai_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mục 4.1: thiếu public_key/secret_key -> SDK tự chuyển sang chế độ
+    disabled, không cần cờ bật/tắt riêng."""
+    _khong_doc_dotenv_langfuse(monkeypatch)
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+    settings = LangfuseSettings()
+
+    assert settings.public_key is None
+    assert settings.secret_key is None
+    assert settings.base_url == "http://localhost:3001"
+
+
+def test_langfuse_settings_doc_key_tu_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    _khong_doc_dotenv_langfuse(monkeypatch)
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "http://localhost:3001")
+
+    settings = LangfuseSettings()
+
+    assert settings.public_key is not None
+    assert settings.public_key.get_secret_value() == "pk-test"
+    assert settings.secret_key is not None
+    assert settings.secret_key.get_secret_value() == "sk-test"
+    assert settings.base_url == "http://localhost:3001"
+
+
+def test_langfuse_settings_bo_qua_gia_tri_rong(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`env_ignore_empty=True`: chuỗi rỗng (vd `.env.example` để trống mặc định)
+    không được coi là đã cấu hình key thật."""
+    _khong_doc_dotenv_langfuse(monkeypatch)
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
+
+    settings = LangfuseSettings()
+
+    assert settings.public_key is None
+    assert settings.secret_key is None

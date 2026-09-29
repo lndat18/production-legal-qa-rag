@@ -12,9 +12,11 @@ from typing import Final
 from groq import AsyncGroq
 
 from production_legal_qa_rag.config import HydeSettings, ThrottleSettings
+from production_legal_qa_rag.observability import tracing
 from production_legal_qa_rag.retrieval.llm_throttle import (
     ThrottleTimeout,
     TokenWindowThrottle,
+    describe_bucket,
     estimate_tokens,
     get_throttle,
     read_total_tokens,
@@ -124,27 +126,39 @@ class HydeGenerator:
         except ThrottleTimeout:
             logger.warning("Throttle HyDE quá hạn chờ, bỏ nhánh A.")
             return None
-        try:
-            response = await self._client.get().chat.completions.create(
-                model=self._settings.model_name,
-                messages=[
-                    {"role": "system", "content": HYDE_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": HYDE_USER_TEMPLATE.format(query=query),
-                    },
-                ],
-                reasoning_effort=_REASONING_EFFORT,
-                temperature=_TEMPERATURE,
-                max_completion_tokens=_MAX_COMPLETION_TOKENS,
-            )
-        except Exception:
-            logger.warning("Groq HyDE lỗi, bỏ nhánh A.", exc_info=True)
-            return None
+        with tracing.generation(
+            "hyde",
+            model=self._settings.model_name,
+            metadata={
+                "key_bucket": describe_bucket(
+                    self._settings.model_name, self._settings.api_key
+                )
+            },
+        ) as observation:
+            try:
+                response = await self._client.get().chat.completions.create(
+                    model=self._settings.model_name,
+                    messages=[
+                        {"role": "system", "content": HYDE_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": HYDE_USER_TEMPLATE.format(query=query),
+                        },
+                    ],
+                    reasoning_effort=_REASONING_EFFORT,
+                    temperature=_TEMPERATURE,
+                    max_completion_tokens=_MAX_COMPLETION_TOKENS,
+                )
+            except Exception:
+                logger.warning("Groq HyDE lỗi, bỏ nhánh A.", exc_info=True)
+                observation.update(output={"used": False})
+                return None
 
-        throttle.settle(reservation, read_total_tokens(response))
-        content = (response.choices[0].message.content or "").strip()
-        if not content:
-            logger.warning("Groq HyDE trả về rỗng, bỏ nhánh A.")
-            return None
-        return content
+            throttle.settle(reservation, read_total_tokens(response))
+            content = (response.choices[0].message.content or "").strip()
+            if not content:
+                logger.warning("Groq HyDE trả về rỗng, bỏ nhánh A.")
+                observation.update(output={"used": False})
+                return None
+            observation.update(output={"used": True})
+            return content

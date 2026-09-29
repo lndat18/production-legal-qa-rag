@@ -52,6 +52,8 @@ chat_turns = Table(
     Column("prompt_version", Text, nullable=False, server_default="''"),  # type: ignore[call-arg]
     Column("corpus_version", Text, nullable=False, server_default="''"),  # type: ignore[call-arg]
     Column("model_name", Text, nullable=False, server_default="''"),  # type: ignore[call-arg]
+    # observability_spec.md mục 4.4: NULL khi Langfuse disabled (thiếu key).
+    Column("langfuse_trace_id", Text, nullable=True),
 )
 
 # Index cho các query phổ biến (mục 8 spec: thống kê, retention).

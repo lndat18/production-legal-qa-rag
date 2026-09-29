@@ -1,0 +1,19 @@
+# Override nối `api` production vào stack observability dev (dev/observability/), để trace
+# Langfuse + metrics Prometheus lấy được từ traffic end-user thật (observability_spec.md).
+# ./deploy/up.sh tự ghép file này khi network `legal-qa-observe` đã tồn tại (tức stack
+# observe đang chạy); chưa chạy stack thì bỏ qua, production dựng bình thường không trace.
+#   docker compose -f docker-compose.yml -f docker-compose.observe.yml up -d
+services:
+  api:
+    networks: [internal, observe]
+    environment:
+      # Ghi đè LANGFUSE_BASE_URL trong .env (đó là địa chỉ cho api chạy trên host, localhost
+      # trong container là chính nó): trong network chung gọi thẳng service langfuse-web.
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      # Tách trace production khỏi trace dev (api chạy trên host) ngay trong Langfuse UI.
+      LANGFUSE_TRACING_ENVIRONMENT: production
+
+networks:
+  observe:
+    name: legal-qa-observe
+    external: true

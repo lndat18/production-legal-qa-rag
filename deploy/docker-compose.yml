@@ -30,8 +30,8 @@ services:
     <<: *defaults
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${DEPLOY_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${DEPLOY_POSTGRES_PASSWORD}
       # 2 DB thật (openwebui, chatbot) do deploy/initdb/ tạo khi volume khởi tạo lần đầu.
       POSTGRES_DB: postgres
     volumes:
@@ -71,13 +71,14 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         TORCH_VARIANT: cpu
-    # Chỉ `api` nhận các bí mật LLM/backend (tên biến khớp 1:1 với config.py).
+    # Chỉ `api` nhận các bí mật LLM/backend (tên biến khớp 1:1 với config.py). File .env ở
+    # root, dùng chung với dev/app (deploy_spec.md mục 7).
     env_file:
-      - .env
+      - ../.env
     environment:
       # env_file không giãn ${VAR} bên trong chính nó nên 2 URL này dựng ở đây (mục 7).
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      CHATLOG_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/chatbot
+      CHATLOG_DATABASE_URL: postgresql+asyncpg://${DEPLOY_POSTGRES_USER}:${DEPLOY_POSTGRES_PASSWORD}@postgres/chatbot
     volumes:
       - ../data/bm25:/app/data/bm25:ro
       - hf_cache:/home/appuser/.cache/huggingface
@@ -105,7 +106,7 @@ services:
     <<: *defaults
     image: ghcr.io/open-webui/open-webui:v0.11.4-slim
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/openwebui
+      DATABASE_URL: postgresql://${DEPLOY_POSTGRES_USER}:${DEPLOY_POSTGRES_PASSWORD}@postgres:5432/openwebui
       # Trỏ tới `api` (api_spec.md mục 9): 1 model duy nhất "legal-qa".
       OPENAI_API_BASE_URL: http://api:8000/v1
       OPENAI_API_KEY: ${CHATBOT_API_KEY}

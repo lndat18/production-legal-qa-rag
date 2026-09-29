@@ -119,6 +119,7 @@ class ChatLogRepository:
                     prompt_version=turn.prompt_version,
                     corpus_version=turn.corpus_version,
                     model_name=turn.model_name,
+                    langfuse_trace_id=turn.langfuse_trace_id,
                 )
             )
             await session.commit()

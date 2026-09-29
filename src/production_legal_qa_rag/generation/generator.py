@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 from production_legal_qa_rag.config import GenerationSettings
 from production_legal_qa_rag.generation.models import Usage, VerificationIssue
+from production_legal_qa_rag.observability import tracing
+from production_legal_qa_rag.retrieval.llm_throttle import describe_bucket
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
@@ -291,6 +293,7 @@ class AnswerGenerator:
         self._settings = settings
         self._fixed_client = client
         self._clients: list[LoopBoundClient[ChatOpenAI]] | None = None
+        self._keys: list[str] | None = None
         self._next_client_index = 0
 
     def _get_clients(self) -> list[LoopBoundClient[ChatOpenAI]]:
@@ -300,6 +303,7 @@ class AnswerGenerator:
             keys = [settings.api_key]
             if settings.round_robin_api_key:
                 keys.append(settings.round_robin_api_key)
+            self._keys = keys
             self._clients = [
                 LoopBoundClient(
                     functools.partial(self._create_client, key),
@@ -309,18 +313,24 @@ class AnswerGenerator:
             ]
         return self._clients
 
-    def _next_client(self) -> ChatOpenAI:
+    def _next_client(self) -> tuple[ChatOpenAI, str]:
         """Xoay vòng client theo lượt gọi — round-robin thật khi có key thứ 2.
 
         Không round-robin trong 1 turn (repair vẫn dùng cùng key với draft): xoay
         theo LƯỢT GỌI (mỗi lần draft/repair riêng biệt trên toàn bộ tiến trình), nên
         TPD được giãn đều ra nhiều tài khoản Groq theo thời gian mà không cần state
         phức tạp — key thứ 2 chỉ tồn tại khi có ``GROQ_API_KEY_3``.
+
+        Returns:
+            Client đã chọn cùng api key tương ứng (dùng gắn ``key_bucket`` cho
+            tracing, observability_spec.md mục 4.3).
         """
         clients = self._get_clients()
-        client = clients[self._next_client_index % len(clients)].get()
+        index = self._next_client_index % len(clients)
+        client = clients[index].get()
+        api_key = (self._keys or [self._get_settings().api_key])[index]
         self._next_client_index += 1
-        return client
+        return client, api_key
 
     def _create_client(self, api_key: str) -> ChatOpenAI:
         settings = self._get_settings()
@@ -416,12 +426,24 @@ class AnswerGenerator:
         self, messages: list[dict[str, str]]
     ) -> AsyncIterator[GenerationDelta]:
         """Gọi Groq stream với message đã được dựng bởi draft hoặc repair."""
-        async for chunk in self._next_client().astream(messages):
-            yield GenerationDelta(
-                text=chunk.content if isinstance(chunk.content, str) else "",
-                finish_reason=chunk.response_metadata.get("finish_reason"),
-                usage=_to_usage(chunk.usage_metadata),
-            )
+        client, api_key = self._next_client()
+        settings = self._get_settings()
+        with tracing.generation(
+            "answer",
+            model=settings.model_name,
+            metadata={"key_bucket": describe_bucket(settings.model_name, api_key)},
+        ) as observation:
+            usage: Usage | None = None
+            async for chunk in client.astream(messages):
+                delta = GenerationDelta(
+                    text=chunk.content if isinstance(chunk.content, str) else "",
+                    finish_reason=chunk.response_metadata.get("finish_reason"),
+                    usage=_to_usage(chunk.usage_metadata),
+                )
+                usage = delta.usage or usage
+                yield delta
+            if usage is not None:
+                observation.update(usage_details=usage.model_dump(exclude_none=True))
 
     async def _buffer(self, stream: AsyncIterator[GenerationDelta]) -> GeneratedAnswer:
         """Tiêu thụ stream nội bộ để draft không được phát trước verification."""

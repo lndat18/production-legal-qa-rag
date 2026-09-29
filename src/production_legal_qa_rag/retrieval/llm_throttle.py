@@ -192,6 +192,25 @@ def read_total_tokens(response: object) -> int | None:
     return total if isinstance(total, int) else None
 
 
+def describe_bucket(model: str, api_key: str) -> str:
+    """Định danh bucket ``(model, key)`` không lộ key thật, dùng gắn metadata.
+
+    Cùng cách băm với :func:`get_throttle` nên áp dụng được cho MỌI bước gọi
+    LLM (kể cả bước không qua throttle này, ví dụ generation/guardrail —
+    observability_spec.md mục 4.3) để Langfuse hiển thị đúng model/key nào
+    đang được dùng, không phải chỉ 3 bước có throttle chung.
+
+    Args:
+        model: Tên model Groq.
+        api_key: API key của bucket.
+
+    Returns:
+        Chuỗi ``"{model}:{fingerprint}"`` ổn định cho cùng một cặp.
+    """
+    fingerprint = hashlib.sha256(api_key.encode()).hexdigest()[:_KEY_FINGERPRINT_LENGTH]
+    return f"{model}:{fingerprint}"
+
+
 def get_throttle(model: str, api_key: str) -> TokenWindowThrottle:
     """Lấy instance throttle duy nhất của bucket ``(model, api_key)``.
 

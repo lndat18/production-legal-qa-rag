@@ -25,6 +25,7 @@ from production_legal_qa_rag.retrieval.llm_throttle import (
     Reservation,
     ThrottleTimeout,
     TokenWindowThrottle,
+    describe_bucket,
     estimate_tokens,
     get_throttle,
     read_total_tokens,
@@ -387,6 +388,48 @@ def test_read_total_tokens_doc_usage_total_tokens() -> None:
 )
 def test_read_total_tokens_tra_none_khi_thieu_hoac_sai_kieu(response: Any) -> None:
     assert read_total_tokens(response) is None
+
+
+# ---------------------------------------------------------------- describe_bucket
+
+
+def test_describe_bucket_khong_lo_key_that() -> None:
+    """observability_spec.md mục 4.3: key_bucket gắn vào Langfuse không được chứa
+    key thật, chỉ fingerprint sha256 rút gọn.
+    """
+    secret = "gsk_secret_value_123456"
+
+    bucket = describe_bucket("openai/gpt-oss-20b", secret)
+
+    assert secret not in bucket
+    fingerprint = hashlib.sha256(secret.encode()).hexdigest()[:8]
+    assert bucket == f"openai/gpt-oss-20b:{fingerprint}"
+
+
+def test_describe_bucket_on_dinh_cho_cung_cap_model_key() -> None:
+    assert describe_bucket("m", "k") == describe_bucket("m", "k")
+
+
+def test_describe_bucket_khac_key_khac_bucket() -> None:
+    assert describe_bucket("m", "key-a") != describe_bucket("m", "key-b")
+
+
+def test_describe_bucket_khac_model_khac_bucket() -> None:
+    assert describe_bucket("m1", "key-a") != describe_bucket("m2", "key-a")
+
+
+def test_describe_bucket_dung_chung_cach_bam_voi_get_throttle() -> None:
+    """Cùng cách băm dùng cho MỌI bước gọi LLM (kể cả bước không qua throttle
+    chung, vd generation/guardrail) — fingerprint phải khớp với bucket của
+    ``get_throttle`` cho cùng (model, key).
+    """
+    model, key = "openai/gpt-oss-20b", "gsk_xyz"
+
+    bucket = describe_bucket(model, key)
+
+    fingerprint = hashlib.sha256(key.encode()).hexdigest()[:8]
+    assert bucket == f"{model}:{fingerprint}"
+    assert get_throttle(model, key) is get_throttle(model, key)
 
 
 # ---------------------------------------------------------------- get_throttle

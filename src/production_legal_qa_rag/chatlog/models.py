@@ -43,6 +43,8 @@ class TurnRecord(BaseModel):
         prompt_version: Phiên bản prompt đang dùng.
         corpus_version: Phiên bản corpus đang dùng.
         model_name: Tên model LLM.
+        langfuse_trace_id: Trace Langfuse tương ứng; `None` nếu Langfuse disabled
+            (observability_spec.md mục 4.4).
     """
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -66,6 +68,7 @@ class TurnRecord(BaseModel):
     prompt_version: str = Field(min_length=1)
     corpus_version: str = Field(min_length=1)
     model_name: str = Field(min_length=1)
+    langfuse_trace_id: str | None = None
 
     @field_validator("created_at")
     @classmethod
@@ -133,4 +136,5 @@ def from_trace(
         prompt_version=metadata.prompt_version,
         corpus_version=metadata.corpus_version,
         model_name=metadata.model_name,
+        langfuse_trace_id=trace.langfuse_trace_id,
     )

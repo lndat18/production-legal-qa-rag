@@ -292,6 +292,26 @@ class TestsetGeneratorSettings(BaseSettings):
     timeout_seconds: int = 60
 
 
+class LangfuseSettings(BaseSettings):
+    """Kết nối Langfuse self-host (observability_spec.md mục 4).
+
+    Để trống public_key/secret_key -> SDK tự chuyển sang chế độ disabled
+    (mục 4.1), không cần cờ bật/tắt riêng. `api` khi dev luôn chạy trực tiếp
+    trên host (`uv run uvicorn`), không nằm cùng network Docker với
+    `langfuse-web` — base_url mặc định trỏ vào cổng `langfuse-web` publish ra
+    host (`dev/observability/docker-compose.yml`: `127.0.0.1:3001:3000`),
+    không phải tên service nội bộ Docker.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="LANGFUSE_", extra="ignore", env_ignore_empty=True
+    )
+
+    public_key: SecretStr | None = None
+    secret_key: SecretStr | None = None
+    base_url: str = "http://localhost:3001"
+
+
 class ApiSettings(BaseSettings):
     """Cấu hình lớp HTTP OpenAI-compatible (api_spec.md mục 10).
 

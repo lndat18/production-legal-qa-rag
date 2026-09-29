@@ -7,28 +7,12 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-if [[ ! -f .env ]]; then
-    cp .env.example .env
-
-    # Root `.env` (dev cục bộ, .env.example ở repo root) và `deploy/.env` là 2 file tách
-    # riêng có chủ đích (deploy_spec.md mục 7 — cách ly bí mật production khỏi key dev cá
-    # nhân), nhưng vài key trùng tên/giá trị (LLM + CHATBOT_API_KEY). Tự điền sẵn từ root
-    # .env nếu có, để không phải gõ lại — chỉ copy nguyên dòng chữ (không source/eval), an
-    # toàn với ký tự đặc biệt trong giá trị, cùng cách né rủi ro parse .env bằng bash như
-    # backup.sh đã áp dụng.
-    root_env="../.env"
-    if [[ -f "${root_env}" ]]; then
-        shared_keys=(GROQ_API_KEY GROQ_API_KEY_2 GROQ_API_KEY_3 GROQ_API_KEY_4 HF_TOKEN PINECONE_API_KEY PINECONE_INDEX_NAME PINECONE_SPARSE_INDEX_NAME CHATBOT_API_KEY)
-        for key in "${shared_keys[@]}"; do
-            line="$(grep -E "^${key}=.+" "${root_env}" || true)"
-            [[ -n "${line}" ]] || continue
-            grep -v -E "^${key}=" .env > .env.tmp && mv .env.tmp .env
-            printf '%s\n' "${line}" >> .env
-        done
-        echo "Đã điền sẵn vào deploy/.env các key trùng root .env (GROQ_API_KEY*, HF_TOKEN, PINECONE_*, CHATBOT_API_KEY nếu có giá trị)." >&2
-    fi
-
-    echo "Chưa có deploy/.env — đã tạo từ .env.example. Điền các giá trị deploy-only còn thiếu (POSTGRES_USER/PASSWORD, REDIS_PASSWORD, WEBUI_SECRET_KEY, ...) vào deploy/.env rồi chạy lại ./deploy/up.sh" >&2
+# Đúng 1 file .env ở root cho cả app/deploy/observability (deploy_spec.md mục 7) — không
+# còn deploy/.env riêng.
+env_file="../.env"
+if [[ ! -f "${env_file}" ]]; then
+    cp ../.env.example "${env_file}"
+    echo "Chưa có .env ở repo root — đã tạo từ .env.example. Điền giá trị thật (GROQ_API_KEY*, DEPLOY_POSTGRES_USER/PASSWORD, REDIS_PASSWORD, WEBUI_SECRET_KEY, ...) rồi chạy lại ./deploy/up.sh" >&2
     exit 1
 fi
 
@@ -49,16 +33,25 @@ else
     echo "Không phát hiện GPU NVIDIA sẵn dùng cho Docker — build/chạy bản CPU."
 fi
 
+# Stack observability dev (dev/observability/) đang chạy thì nối `api` vào để trace/track
+# traffic end-user thật; chưa chạy thì bỏ qua, production vẫn dựng bình thường.
+if docker network inspect legal-qa-observe >/dev/null 2>&1; then
+    echo "Phát hiện stack observability đang chạy — nối api vào để trace/metrics (docker-compose.observe.yml)."
+    compose_files+=(-f docker-compose.observe.yml)
+else
+    echo "Stack observability chưa chạy — api chạy không trace (bật: docker compose -f dev/observability/docker-compose.yml up -d rồi chạy lại ./deploy/up.sh)."
+fi
+
 # Chỉ định rõ --env-file thay vì để Compose tự dò .env theo cwd — tránh phụ thuộc hành vi
 # auto-detect (có thể khác nhau giữa các phiên bản Compose).
-docker compose --env-file .env "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
-docker compose --env-file .env "${compose_files[@]}" up -d
+docker compose --env-file "${env_file}" "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
+docker compose --env-file "${env_file}" "${compose_files[@]}" up -d
 
 # Chỉ quick tunnel mới cần in URL (URL ngẫu nhiên, đổi mỗi khi container restart — mục 3);
 # named tunnel dùng domain cố định đã cấu hình sẵn trong WEBUI_URL, không cần dò. Đọc thẳng
 # giá trị (không source/eval, cùng cách né parse .env bằng bash như trên) — không set thì
 # coi như mặc định "quick" (khớp docker-compose.yml).
-compose_profile="$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2- || true)"
+compose_profile="$(grep -E '^COMPOSE_PROFILES=' "${env_file}" | cut -d= -f2- || true)"
 compose_profile="${compose_profile:-quick}"
 
 if [[ "${compose_profile}" == "quick" ]]; then
@@ -68,7 +61,7 @@ if [[ "${compose_profile}" == "quick" ]]; then
         # `|| true` bắt buộc: grep không khớp gì (bình thường ở vài vòng đầu, log chưa kịp
         # có URL) trả exit code 1, cộng `pipefail` sẽ làm cả pipeline coi như lỗi và `set -e`
         # giết luôn script ngay vòng đầu tiên nếu không chặn lại.
-        tunnel_url="$(docker compose --env-file .env "${compose_files[@]}" logs cloudflared-quick 2>/dev/null \
+        tunnel_url="$(docker compose --env-file "${env_file}" "${compose_files[@]}" logs cloudflared-quick 2>/dev/null \
             | grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' | tail -1 || true)"
         [[ -n "${tunnel_url}" ]] && break
         sleep 2
