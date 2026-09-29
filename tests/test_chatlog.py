@@ -277,9 +277,7 @@ class TestRepositoryAndSchema:
 
         module.downgrade()
 
-        module.op.drop_column.assert_called_once_with(
-            "chat_turns", "langfuse_trace_id"
-        )
+        module.op.drop_column.assert_called_once_with("chat_turns", "langfuse_trace_id")
 
 
 class _Repository:
