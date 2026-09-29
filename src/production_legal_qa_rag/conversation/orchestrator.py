@@ -50,6 +50,7 @@ from production_legal_qa_rag.generation.models import (
     WarningEvent,
 )
 from production_legal_qa_rag.generation.pipeline import GenerationPipeline
+from production_legal_qa_rag.observability import tracing
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 from production_legal_qa_rag.retrieval.pipeline import retrieve as default_retrieve
 from production_legal_qa_rag.retrieval.relevance import (
@@ -230,7 +231,8 @@ class ChatOrchestrator:
     async def _cached_answer(self, standalone: str) -> CachedAnswer | None:
         if self._answer_cache is None:
             return None
-        return await self._answer_cache.get(standalone)
+        with tracing.span("cache_lookup"):
+            return await self._answer_cache.get(standalone)
 
     def _replay_hit(self, hit: CachedAnswer) -> AsyncIterator[GenerationEvent]:
         if self._replay is None:
@@ -242,9 +244,10 @@ class ChatOrchestrator:
     ) -> AsyncIterator[GenerationEvent]:
         """Cache miss: xin slot admission rồi retrieval + generation."""
         try:
-            async with self._admission.slot(ctx.user_id):
-                async for event in self._retrieve_and_generate(standalone, trace):
-                    yield event
+            with tracing.span("admission"):
+                async with self._admission.slot(ctx.user_id):
+                    async for event in self._retrieve_and_generate(standalone, trace):
+                        yield event
         except AdmissionDenied as denied:
             yield _denial_event(denied)
             yield DoneEvent()
@@ -253,16 +256,20 @@ class ChatOrchestrator:
         self, standalone: str, trace: TurnTrace
     ) -> AsyncIterator[GenerationEvent]:
         yield StatusEvent(stage="retrieval")
-        chunks, failure = await self._load_chunks(standalone, trace)
+        with tracing.span("retrieve") as retrieve_span:
+            chunks, failure = await self._load_chunks(standalone, trace)
+            if failure is None:
+                retrieve_span.update(output=_retrieve_output(chunks))
         if failure is not None:
             yield failure
             yield DoneEvent()
             return
         trace.chunk_ids = [chunk.chunk_id for chunk in chunks]
-        async for event in self._generation.generate(standalone, chunks):
-            if isinstance(event, DoneEvent):
-                await self._store_answer(standalone, trace)
-            yield event
+        with tracing.span("generate"):
+            async for event in self._generation.generate(standalone, chunks):
+                if isinstance(event, DoneEvent):
+                    await self._store_answer(standalone, trace)
+                yield event
 
     async def _load_chunks(
         self, standalone: str, trace: TurnTrace
@@ -342,6 +349,16 @@ def _record_event(event: GenerationEvent, trace: TurnTrace, started: float) -> N
                 trace.outcome = "error" if trace.error_code else "answered"
         case _:
             pass
+
+
+def _retrieve_output(chunks: list[RetrievedChunk]) -> dict[str, object]:
+    """Output tối thiểu cho span ``retrieve`` (observability_spec.md mục 4.3)."""
+    scores = [c.rerank_score for c in chunks if c.rerank_score is not None]
+    return {
+        "num_chunks": len(chunks),
+        "chunk_ids": [chunk.chunk_id for chunk in chunks],
+        "top_rerank_score": max(scores) if scores else None,
+    }
 
 
 def _elapsed_ms(started: float) -> int:

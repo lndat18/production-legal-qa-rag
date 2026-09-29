@@ -14,8 +14,10 @@ from langchain_openai import ChatOpenAI
 from production_legal_qa_rag.config import JudgeSettings, ThrottleSettings
 from production_legal_qa_rag.generation.generator import build_context
 from production_legal_qa_rag.generation.models import Citation, JudgeVerdict
+from production_legal_qa_rag.observability import tracing
 from production_legal_qa_rag.retrieval.llm_throttle import (
     TokenWindowThrottle,
+    describe_bucket,
     estimate_tokens,
     get_throttle,
 )
@@ -140,17 +142,28 @@ class EvidenceJudge:
                 ),
                 float(self._get_settings().timeout_seconds),
             )
-            structured_client = self._client.get().with_structured_output(
-                JudgeVerdict, method="json_mode"
-            )
-            verdict = await structured_client.ainvoke(
-                [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ]
-            )
-            if not isinstance(verdict, JudgeVerdict):
-                raise TypeError("Judge trả về kết quả không đúng schema JudgeVerdict")
+            settings = self._get_settings()
+            with tracing.generation(
+                "judge",
+                model=settings.model_name,
+                metadata={
+                    "key_bucket": describe_bucket(settings.model_name, settings.api_key)
+                },
+            ) as observation:
+                structured_client = self._client.get().with_structured_output(
+                    JudgeVerdict, method="json_mode"
+                )
+                verdict = await structured_client.ainvoke(
+                    [
+                        {"role": "system", "content": _SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ]
+                )
+                if not isinstance(verdict, JudgeVerdict):
+                    raise TypeError(
+                        "Judge trả về kết quả không đúng schema JudgeVerdict"
+                    )
+                observation.update(output=verdict.model_dump())
             return verdict
         except Exception as error:
             raise JudgeError("Không thể xác minh evidence của câu trả lời.") from error

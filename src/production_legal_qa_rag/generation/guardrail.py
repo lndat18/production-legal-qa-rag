@@ -10,6 +10,8 @@ from langchain_openai import ChatOpenAI
 
 from production_legal_qa_rag.config import GuardrailSettings
 from production_legal_qa_rag.generation.models import GuardrailVerdict
+from production_legal_qa_rag.observability import tracing
+from production_legal_qa_rag.retrieval.llm_throttle import describe_bucket
 from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 
 logger = logging.getLogger(__name__)
@@ -88,22 +90,31 @@ class InputGuardrail:
             Verdict đã parse, hoặc verdict ``allow`` khi không thể kiểm tra.
         """
         try:
-            structured_client = self._client.get().with_structured_output(
-                GuardrailVerdict, method="json_mode"
-            )
-            verdict = await structured_client.ainvoke(
-                [
-                    {"role": "system", "content": GUARDRAIL_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": _build_user_message(query, recent_user_turns),
-                    },
-                ]
-            )
-            if not isinstance(verdict, GuardrailVerdict):
-                raise TypeError(
-                    "Guardrail trả về kết quả không đúng schema GuardrailVerdict"
+            settings = self._get_settings()
+            with tracing.generation(
+                "guardrail",
+                model=settings.model_name,
+                metadata={
+                    "key_bucket": describe_bucket(settings.model_name, settings.api_key)
+                },
+            ) as observation:
+                structured_client = self._client.get().with_structured_output(
+                    GuardrailVerdict, method="json_mode"
                 )
+                verdict = await structured_client.ainvoke(
+                    [
+                        {"role": "system", "content": GUARDRAIL_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": _build_user_message(query, recent_user_turns),
+                        },
+                    ]
+                )
+                if not isinstance(verdict, GuardrailVerdict):
+                    raise TypeError(
+                        "Guardrail trả về kết quả không đúng schema GuardrailVerdict"
+                    )
+                observation.update(output={"verdict": verdict.verdict})
             return verdict
         except Exception:
             logger.warning(

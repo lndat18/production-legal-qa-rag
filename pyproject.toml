@@ -59,13 +59,16 @@ eval = [
     # ragas import rapidfuzz lúc dựng OverlapScoreBuilder nhưng không khai báo là dependency.
     "rapidfuzz",
 ]
-# Nhóm không chứa package thật, chỉ ràng buộc version `openai` khi KHÔNG cài `eval`.
-# Lý do: `ragas`/`instructor` (nhóm `eval`) ép `jiter<0.15`, kéo `openai` xuống bản cũ
-# (3.3.0) nếu để `uv` resolve chung một bản cho mọi nhóm. Khai báo `production` xung
-# đột với `eval` (bên dưới) buộc `uv` tách resolve `openai` riêng cho từng nhóm, thay vì
-# hạ cấp `openai` mà `langchain-openai` dùng cho Groq thật trong production.
+# Dependency thật của đường online (observability_spec.md mục 3) + ràng buộc version
+# `openai` khi KHÔNG cài `eval`. Lý do ràng buộc `openai`: `ragas`/`instructor` (nhóm
+# `eval`) ép `jiter<0.15`, kéo `openai` xuống bản cũ (3.3.0) nếu để `uv` resolve chung
+# một bản cho mọi nhóm. Khai báo `production` xung đột với `eval` (bên dưới) buộc `uv`
+# tách resolve `openai` riêng cho từng nhóm, thay vì hạ cấp `openai` mà `langchain-openai`
+# dùng cho Groq thật trong production.
 production = [
+    "langfuse>=4.15.6",
     "openai>=3.19.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
 ]
 
 [tool.ruff.lint.flake8-bugbear]
@@ -94,9 +97,10 @@ ignore_missing_imports = true
 
 [tool.uv]
 # `dev` vẫn dùng chung được với `eval` (chạy lint/test trên code evaluation).
-# `production` là nhóm không có package (xem comment cạnh khai báo `production` ở
-# [dependency-groups]) — mặc định bật cùng `dev` để `uv sync` không cờ vẫn giữ
-# `openai>=3.19.0`; xung đột với `eval` để bắt buộc tách resolve.
+# `production` (xem comment cạnh khai báo ở [dependency-groups]) mặc định bật cùng
+# `dev` để `uv sync` không cờ vẫn cài đủ dependency đường online (langfuse,
+# prometheus-fastapi-instrumentator) và giữ `openai>=3.19.0`; xung đột với `eval` để
+# bắt buộc tách resolve.
 default-groups = ["dev", "production"]
 conflicts = [
     [

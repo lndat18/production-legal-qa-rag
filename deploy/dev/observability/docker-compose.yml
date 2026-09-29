@@ -1,6 +1,8 @@
 # Langfuse self-host + Prometheus + Grafana — CHỈ để chạy thử/học cục bộ, ngoài phạm vi
 # deploy_spec.md (monitoring/tracing là phase cuối sau RAGAS). Tách riêng khỏi các compose
-# chính; chưa wire `api` gửi trace sang Langfuse (cần spec riêng).
+# chính. `api` (chạy trên host, xem prometheus.yml) đã gửi trace sang Langfuse và expose
+# /metrics cho Prometheus (observability_spec.md) khi có đủ LANGFUSE_PUBLIC_KEY/SECRET_KEY
+# trong `.env` gốc.
 #
 #   docker compose -f deploy/dev/observability/docker-compose.yml --env-file deploy/dev/observability/.env up -d
 # Dừng (giữ volume): thay `up -d` bằng `down`; xoá sạch (mất trace/dashboard): `down -v`.
@@ -155,10 +157,14 @@ services:
       start_period: 30s
     mem_limit: 768m
 
-  # --- Prometheus + Grafana (chưa có gì để scrape ngoài chính Prometheus, xem prometheus.yml) ---
+  # --- Prometheus + Grafana (scrape `api` chạy trên host, xem prometheus.yml) ---
   prometheus:
     <<: *defaults
     image: prom/prometheus:v2.53.0
+    # `api` dev chạy trên host (không dockerize), nên cần host.docker.internal thay vì
+    # join network với 1 service `api` không tồn tại trong deploy/dev/docker-compose.yml.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - langfuse_prometheus_data:/prometheus

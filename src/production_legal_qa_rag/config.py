@@ -292,6 +292,23 @@ class TestsetGeneratorSettings(BaseSettings):
     timeout_seconds: int = 60
 
 
+class LangfuseSettings(BaseSettings):
+    """Kết nối Langfuse self-host (observability_spec.md mục 4).
+
+    Để trống public_key/secret_key -> SDK tự chuyển sang chế độ disabled
+    (mục 4.1), không cần cờ bật/tắt riêng. base_url mặc định trỏ vào service
+    `langfuse-web` cùng network dev compose.
+    """
+
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="LANGFUSE_", extra="ignore", env_ignore_empty=True
+    )
+
+    public_key: SecretStr | None = None
+    secret_key: SecretStr | None = None
+    base_url: str = "http://langfuse-web:3000"
+
+
 class ApiSettings(BaseSettings):
     """Cấu hình lớp HTTP OpenAI-compatible (api_spec.md mục 10).
 

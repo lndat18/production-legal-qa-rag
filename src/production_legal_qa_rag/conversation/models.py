@@ -50,3 +50,5 @@ class TurnTrace(BaseModel):
     usage: Usage | None = None
     time_to_first_token_ms: int | None = None
     latency_ms: int = 0
+    # observability_spec.md mục 4.4: `None` khi Langfuse disabled (thiếu key).
+    langfuse_trace_id: str | None = None

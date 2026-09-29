@@ -59,6 +59,7 @@ from production_legal_qa_rag.conversation.models import (
     TurnTrace,
 )
 from production_legal_qa_rag.generation.models import GenerationEvent
+from production_legal_qa_rag.observability import metrics, tracing
 
 _logger = logging.getLogger(__name__)
 _SHUTDOWN_DRAIN_SECONDS = 5.0
@@ -163,6 +164,11 @@ async def stream_chat_turn(
 ) -> AsyncIterator[GenerationEvent]:
     """Phát một lượt orchestrator và luôn lên lịch ghi chatlog sau cùng.
 
+    Bọc root span Langfuse ``chat_turn`` quanh toàn bộ lượt (observability_spec.md
+    mục 4.4): mọi span/generation con tạo bên trong ``orchestrator.stream`` tự
+    lồng đúng vị trí qua OTel context. ``metrics.record_turn`` chạy cùng chỗ với
+    lịch ghi chatlog vì cùng dùng ``trace`` đã điền đầy đủ.
+
     Args:
         orchestrator: Orchestrator đã được khởi tạo một lần ở API lifespan.
         messages: Messages đã parse từ request HTTP.
@@ -173,14 +179,34 @@ async def stream_chat_turn(
         Các event generation từ orchestrator.
     """
     trace = TurnTrace()
+    root_query = messages[-1].content if messages else ""
     try:
-        async for event in orchestrator.stream(messages, context, trace):
-            yield event
+        with tracing.span(
+            "chat_turn",
+            input=root_query,
+            metadata={
+                "user_id": context.user_id,
+                "chat_id": context.chat_id,
+                "request_id": context.request_id,
+            },
+        ) as root_span:
+            trace.langfuse_trace_id = tracing.current_trace_id()
+            async for event in orchestrator.stream(messages, context, trace):
+                yield event
+            root_span.update(
+                output=trace.answer_text,
+                metadata={
+                    "outcome": trace.outcome,
+                    "cache_status": trace.cache_status,
+                    "error_code": trace.error_code,
+                },
+            )
     except asyncio.CancelledError:
         trace.outcome = "client_disconnected"
         raise
     finally:
         chatlog_tasks.schedule(trace, context)
+        metrics.record_turn(trace)
 
 
 def _to_chat_messages(

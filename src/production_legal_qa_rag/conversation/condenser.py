@@ -16,6 +16,7 @@ from groq import AsyncGroq
 
 from production_legal_qa_rag.config import CondenseSettings, ThrottleSettings
 from production_legal_qa_rag.conversation.models import ChatMessage
+from production_legal_qa_rag.observability import tracing
 from production_legal_qa_rag.retrieval.citation import (
     extract_citation_khoans,
     extract_citation_numbers,
@@ -23,6 +24,7 @@ from production_legal_qa_rag.retrieval.citation import (
 from production_legal_qa_rag.retrieval.llm_throttle import (
     ThrottleTimeout,
     TokenWindowThrottle,
+    describe_bucket,
     estimate_tokens,
     get_throttle,
     read_total_tokens,
@@ -228,55 +230,72 @@ class QueryCondenser:
                 CondenseReason.GROQ_ERROR,
             )
             return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
-        try:
-            response = await self._client.get().chat.completions.create(
-                model=self._settings.model_name,
-                messages=[
-                    {"role": "system", "content": CONDENSE_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                reasoning_effort=_REASONING_EFFORT,
-                temperature=_TEMPERATURE,
-                max_completion_tokens=_MAX_COMPLETION_TOKENS,
-                include_reasoning=_INCLUDE_REASONING,
-            )
-        except Exception:
-            logger.warning(
-                "Groq condense lỗi, dùng câu gốc (reason=%s).",
-                CondenseReason.GROQ_ERROR,
-                exc_info=True,
-            )
-            return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
+        with tracing.generation(
+            "condense",
+            model=self._settings.model_name,
+            metadata={
+                "key_bucket": describe_bucket(
+                    self._settings.model_name, self._settings.api_key
+                )
+            },
+        ) as observation:
+            try:
+                response = await self._client.get().chat.completions.create(
+                    model=self._settings.model_name,
+                    messages=[
+                        {"role": "system", "content": CONDENSE_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                    reasoning_effort=_REASONING_EFFORT,
+                    temperature=_TEMPERATURE,
+                    max_completion_tokens=_MAX_COMPLETION_TOKENS,
+                    include_reasoning=_INCLUDE_REASONING,
+                )
+            except Exception:
+                logger.warning(
+                    "Groq condense lỗi, dùng câu gốc (reason=%s).",
+                    CondenseReason.GROQ_ERROR,
+                    exc_info=True,
+                )
+                observation.update(output={"reason": CondenseReason.GROQ_ERROR.value})
+                return CondenseOutcome(text=query, reason=CondenseReason.GROQ_ERROR)
 
-        throttle.settle(reservation, read_total_tokens(response))
-        choice = response.choices[0]
-        raw_output = choice.message.content or ""
-        finish_reason = choice.finish_reason
-        completion_tokens, reasoning_tokens = _read_usage(response)
-        candidate, reason = check_condensed(raw_output, query, history)
-        if candidate is None and not raw_output.strip() and finish_reason == "length":
-            reason = CondenseReason.FINISH_LENGTH
-        outcome = CondenseOutcome(
-            text=candidate if candidate is not None else query,
-            reason=reason,
-            raw_output=raw_output,
-            finish_reason=finish_reason,
-            completion_tokens=completion_tokens,
-            reasoning_tokens=reasoning_tokens,
-            prompt_tokens=getattr(
-                getattr(response, "usage", None), "prompt_tokens", None
-            ),
-        )
-        if candidate is None:
-            logger.warning(
-                "Đầu ra condense bị loại, dùng câu gốc: reason=%s finish_reason=%s "
-                "completion_tokens=%s reasoning_tokens=%s",
-                reason,
-                finish_reason,
-                completion_tokens,
-                reasoning_tokens,
+            throttle.settle(reservation, read_total_tokens(response))
+            choice = response.choices[0]
+            raw_output = choice.message.content or ""
+            finish_reason = choice.finish_reason
+            completion_tokens, reasoning_tokens = _read_usage(response)
+            candidate, reason = check_condensed(raw_output, query, history)
+            if (
+                candidate is None
+                and not raw_output.strip()
+                and finish_reason == "length"
+            ):
+                reason = CondenseReason.FINISH_LENGTH
+            outcome = CondenseOutcome(
+                text=candidate if candidate is not None else query,
+                reason=reason,
+                raw_output=raw_output,
+                finish_reason=finish_reason,
+                completion_tokens=completion_tokens,
+                reasoning_tokens=reasoning_tokens,
+                prompt_tokens=getattr(
+                    getattr(response, "usage", None), "prompt_tokens", None
+                ),
             )
-        return outcome
+            observation.update(
+                output={"standalone_query": outcome.text, "reason": reason.value}
+            )
+            if candidate is None:
+                logger.warning(
+                    "Đầu ra condense bị loại, dùng câu gốc: reason=%s finish_reason=%s "
+                    "completion_tokens=%s reasoning_tokens=%s",
+                    reason,
+                    finish_reason,
+                    completion_tokens,
+                    reasoning_tokens,
+                )
+            return outcome
 
 
 def _read_usage(response: object) -> tuple[int | None, int | None]:

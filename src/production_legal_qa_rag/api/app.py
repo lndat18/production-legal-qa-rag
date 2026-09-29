@@ -8,6 +8,7 @@ Không tạo lại client (Groq/HF/Pinecone/reranker) cho mỗi request.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -35,8 +36,13 @@ from production_legal_qa_rag.config import (
 from production_legal_qa_rag.conversation.admission import AdmissionController
 from production_legal_qa_rag.conversation.orchestrator import ChatOrchestrator
 from production_legal_qa_rag.generation.generator import PROMPT_VERSION
+from production_legal_qa_rag.observability import metrics
+from production_legal_qa_rag.observability.tracing import get_langfuse_client
 
 _logger = logging.getLogger(__name__)
+# observability_spec.md mục 4.4: chặn tối đa vài giây để không mất trace của
+# các lượt hỏi cuối, nhưng không giữ shutdown vô hạn nếu Langfuse không phản hồi.
+_LANGFUSE_FLUSH_TIMEOUT_SECONDS = 5.0
 
 
 @asynccontextmanager
@@ -89,8 +95,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await app.state.chatlog_tasks.drain()
+        await _flush_langfuse()
         await engine.dispose()
         await redis.aclose()
+
+
+async def _flush_langfuse() -> None:
+    """Gửi nốt trace đang chờ trước khi container dừng (observability_spec.md mục 4.4).
+
+    Không bao giờ ném ngoại lệ hay chặn shutdown quá ``_LANGFUSE_FLUSH_TIMEOUT_SECONDS``:
+    Langfuse không phản hồi (hoặc disabled) không được làm chậm việc tắt API.
+    """
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(get_langfuse_client().flush),
+            timeout=_LANGFUSE_FLUSH_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        _logger.warning("Không thể flush Langfuse khi shutdown.", exc_info=True)
 
 
 def _error_response(
@@ -152,4 +174,5 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.include_router(router)
     _register_exception_handlers(app)
+    metrics.instrument_app(app)
     return app
