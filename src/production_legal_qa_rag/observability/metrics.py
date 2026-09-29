@@ -5,7 +5,8 @@ lời tốt hơn (per-model/key token, per-step latency chi tiết):
 
 1. HTTP mặc định của `prometheus-fastapi-instrumentator` (`instrument_app`).
 2. Custom mức lượt hỏi (`record_turn`), nguồn dữ liệu là `TurnTrace` đã điền
-   đầy đủ — đúng điểm `chatlog` đã ghi, không tính toán lại.
+   đầy đủ — cùng điểm cuối lượt với việc cập nhật trace (`turn_trace.py`), không
+   tính toán lại.
 """
 
 from __future__ import annotations
@@ -41,11 +42,11 @@ def record_turn(trace: TurnTrace) -> None:
 
     Không bao giờ để lỗi ghi metric lan ra ngoài (observability_spec.md mục 1,
     "thiếu/lỗi ... Prometheus thì chatbot vẫn chạy bình thường") — cùng tinh
-    thần với `ChatLogTaskManager.schedule` (`api/routes.py`): bắt mọi lỗi tại
-    đây, chỉ log warning không kèm nội dung câu hỏi/câu trả lời, không raise.
+    thần với `update_turn_trace` (`turn_trace.py`): bắt mọi lỗi tại đây, chỉ
+    log warning không kèm nội dung câu hỏi/câu trả lời, không raise.
 
     Args:
-        trace: Vết lượt hỏi đã điền đầy đủ, cùng nguồn dữ liệu với `chatlog`.
+        trace: Vết lượt hỏi đã điền đầy đủ, cùng nguồn dữ liệu với `update_turn_trace`.
     """
     try:
         CHAT_TURNS_TOTAL.labels(

@@ -253,22 +253,6 @@ class RerankerSettings(BaseSettings):
     batch_size: int = Field(default=16, gt=0)
 
 
-class DatabaseSettings(BaseSettings):
-    """Kết nối Postgres dùng cho chatlog (chatlog_spec.md mục 6).
-
-    ``database_url`` phải có dạng ``postgresql+asyncpg://…`` vì repository
-    dùng asyncpg driver. ``CHATLOG_RETENTION_DAYS`` là tham số mặc định cho
-    ``tools/purge_chatlog.py``; không được đọc trực tiếp ở đây.
-    """
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/chatbot",
-        validation_alias="CHATLOG_DATABASE_URL",
-    )
-
-
 class TestsetGeneratorSettings(BaseSettings):
     """Cấu hình 6 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
 

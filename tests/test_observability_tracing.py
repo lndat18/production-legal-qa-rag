@@ -1,7 +1,7 @@
 """Test `observability/tracing.py` (observability_spec.md mục 4).
 
 Trọng tâm: cơ chế fail-safe khi thiếu `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`
-(mục 4.1) — `span`/`generation`/`current_trace_id` phải no-op, không raise, không
+(mục 4.1) — `span`/`generation` phải no-op, không raise, không
 phụ thuộc `.env` thật của máy dev (đối chiếu quy ước `tests/test_config.py`: luôn
 disable `env_file` + set biến môi trường tường minh cho quyết định).
 
@@ -51,10 +51,8 @@ def _reset_singleton() -> Iterator[None]:
     khác trong cùng phiên pytest (test khác trong repo cũng gọi tới `tracing.*`).
     """
     tracing._client = None
-    tracing._client_enabled = False
     yield
     tracing._client = None
-    tracing._client_enabled = False
 
 
 # --------------------------------------------------------------- get_langfuse_client
@@ -66,45 +64,6 @@ def test_get_langfuse_client_la_singleton_trong_1_process(
     _set_keys(monkeypatch, public_key=None, secret_key=None)
 
     assert tracing.get_langfuse_client() is tracing.get_langfuse_client()
-
-
-# --------------------------------------------------------------- current_trace_id
-
-
-def test_current_trace_id_none_khi_thieu_ca_hai_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _set_keys(monkeypatch, public_key=None, secret_key=None)
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_none_khi_chi_co_public_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Thiếu secret_key vẫn phải disabled — không đủ 1 nửa cặp key."""
-    _set_keys(monkeypatch, public_key="pk-fake", secret_key=None)
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_none_khi_chi_co_secret_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _set_keys(monkeypatch, public_key=None, secret_key="sk-fake")
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_khong_raise_khi_goi_lap_lai_luc_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Gọi nhiều lần liên tiếp (giống mỗi lượt hỏi) không được tích luỹ lỗi/log rác."""
-    _set_keys(monkeypatch, public_key=None, secret_key=None)
-
-    results = [tracing.current_trace_id() for _ in range(5)]
-
-    assert results == [None] * 5
 
 
 # --------------------------------------------------------------- span / generation
