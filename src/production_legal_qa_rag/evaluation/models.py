@@ -7,6 +7,7 @@ Chỉ phục vụ Phase 1 (sinh testset); không lẫn với contract của `ret
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -42,15 +43,33 @@ class GoldenTestCase(BaseModel):
 
 
 class UnitProgress(BaseModel):
-    """Kết quả của một đơn vị đã sinh xong (evaluation_spec.md mục 4.5)."""
+    """Tiến độ của một đơn vị: đã sinh xong (`done`) hoặc dừng dở giữa chừng (`partial`).
+
+    Các trường thêm sau (`status`, `skipped_samples`, `tokens`, `reasoning_tokens`) đều có
+    mặc định để đọc được `generation_progress.json` của các đơn vị ghi từ trước
+    (evaluation_spec.md mục 3.2 B, 3.3, 4.5).
+    """
 
     title: str
     chars: int  # để phát hiện văn bản/quy tắc chia đã đổi so với lúc sinh
     estimated_tokens: int
-    questions: dict[str, int]  # single_hop / abstract / specific, cộng dồn khi --append
+    # single_hop / abstract / specific; cộng dồn khi --append và khi chạy tiếp đơn vị partial
+    questions: dict[str, int]
     llm_calls: int
     seconds: float
+    # `done`: lúc xong. `partial`: lúc dừng gần nhất (không phải lúc xong); đổi thành lúc xong khi
+    # đơn vị chạy tiếp và chuyển `done`.
     completed_at: datetime
+    # `partial`: đã có một phần câu trong raw nhưng dừng giữa chừng (hết quota ngày...), đơn vị
+    # nằm trong danh sách chờ và chỉ sinh phần còn thiếu (mục 3.3).
+    status: Literal["done", "partial"] = "done"
+    skipped_samples: int = (
+        0  # sample lỗi không phải hết quota (parse...) bị bỏ, cộng dồn
+    )
+    # Token thật từ `usage` của Groq (prompt + completion; reasoning là phần con của completion).
+    # `None` = không có số đo (đơn vị ghi trước khi có tính năng đếm token).
+    tokens: int | None = None
+    reasoning_tokens: int | None = None
 
 
 class UnitFailure(BaseModel):

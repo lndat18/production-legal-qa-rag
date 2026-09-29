@@ -8,6 +8,10 @@ Chữ ký ragas đã đọc trực tiếp trên `ragas==0.4.3` cài thật: cả
 của multi-hop nhận `(nodes, combinations, personas, persona_item_mapping,
 property_name)`) đều trả `list[dict]` có khoá `"styles"` — nên một hàm ép
 `PERFECT_GRAMMAR` dùng chung, bọc bằng `*args, **kwargs`, đúng cho cả ba.
+
+Bước sinh câu KHÔNG gọi `TestsetGenerator.generate` (huỷ cả lô khi một sample lỗi, mà
+`raise_exceptions=False` làm ragas 0.4.3 crash trên `NaN`) mà tự lặp theo API công khai của
+synthesizer để giữ phần đã sinh khi lỗi giữa đơn vị (evaluation_spec.md mục 3.3).
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
@@ -24,12 +28,11 @@ from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, InternalServerError, RateLimitError
 from pydantic import ValidationError
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from ragas.executor import Executor
 from ragas.llms import LangchainLLMWrapper
 from ragas.run_config import RunConfig
-from ragas.testset import TestsetGenerator
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType
-from ragas.testset.synthesizers.base import BaseSynthesizer, QueryStyle
+from ragas.testset.persona import Persona, generate_personas_from_kg
+from ragas.testset.synthesizers.base import BaseScenario, BaseSynthesizer, QueryStyle
 from ragas.testset.synthesizers.multi_hop import (
     MultiHopAbstractQuerySynthesizer,
     MultiHopSpecificQuerySynthesizer,
@@ -37,6 +40,7 @@ from ragas.testset.synthesizers.multi_hop import (
 from ragas.testset.synthesizers.single_hop.specific import (
     SingleHopSpecificQuerySynthesizer,
 )
+from ragas.testset.synthesizers.utils import calculate_split_values
 from ragas.testset.transforms import Parallel, apply_transforms, default_transforms
 from ragas.testset.transforms.base import LLMBasedExtractor
 
@@ -45,12 +49,16 @@ from production_legal_qa_rag.evaluation.embeddings_adapter import (
     RagasEmbeddingsAdapter,
 )
 from production_legal_qa_rag.evaluation.groq_round_robin import (
+    DailyQuotaExhaustedError,
     GroqRoundRobinChatModel,
+    TokenTotals,
 )
 from production_legal_qa_rag.evaluation.models import GoldenTestCase
 from production_legal_qa_rag.evaluation.testset_generator import (
     QuestionQuota,
+    UnitGenerationError,
     UnitResult,
+    unit_key,
 )
 from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit
 
@@ -60,6 +68,12 @@ logger = logging.getLogger(__name__)
 MAX_TOKEN_LIMIT: Final = 4_000
 MAX_WORKERS: Final = 4
 LANGUAGE: Final = "vietnamese"
+# Số persona sinh một lần cho mỗi đơn vị (giá trị mặc định của `TestsetGenerator.generate`).
+NUM_PERSONAS: Final = 3
+# Token suy luận của gpt-oss tính vào TPM/TPD; KG (summary/themes/NER/headlines) là trích xuất
+# đơn giản nên hạ xuống `low`. Sinh câu hỏi/đáp án giữ mức mặc định để chất lượng testset
+# không đổi (mục 3.2 C).
+_KG_REASONING_EFFORT: Final = "low"
 
 # Retry của ragas (mục 3.1, 8). Mặc định `RunConfig` là 10 lần với MỌI `Exception`: lỗi tất
 # định (400/401/413) bị thử lại vô ích và khi hết quota mỗi lượt gọi đốt hàng trăm request
@@ -204,27 +218,34 @@ class RagasUnitRunner:
         return self._synthesizers
 
     def _build_knowledge_graph(self, unit: EvalUnit) -> KnowledgeGraph:
-        """Dựng KG riêng cho đơn vị (không nối quan hệ chéo đơn vị, mục 1)."""
-        document = Document(
-            page_content=unit.text, metadata={"source": unit.source_document}
-        )
-        transforms = default_transforms(
-            documents=[document], llm=self.llm, embedding_model=self.embeddings
-        )
-        capped = cap_token_limit(transforms, MAX_TOKEN_LIMIT)
-        logger.info("Hạ max_token_limit=%d cho %d extractor.", MAX_TOKEN_LIMIT, capped)
-        graph = KnowledgeGraph(
-            nodes=[
-                Node(
-                    type=NodeType.DOCUMENT,
-                    properties={
-                        "page_content": document.page_content,
-                        "document_metadata": document.metadata,
-                    },
-                )
-            ]
-        )
-        apply_transforms(graph, transforms, run_config=self.run_config)
+        """Dựng KG riêng cho đơn vị (không nối quan hệ chéo đơn vị, mục 1).
+
+        Chạy trong `reasoning_effort=low` (mục 3.2 C); thoát khỏi context dù có lỗi để
+        bước sinh câu sau đó dùng lại mức mặc định.
+        """
+        with self.router.reasoning_effort(_KG_REASONING_EFFORT):
+            document = Document(
+                page_content=unit.text, metadata={"source": unit.source_document}
+            )
+            transforms = default_transforms(
+                documents=[document], llm=self.llm, embedding_model=self.embeddings
+            )
+            capped = cap_token_limit(transforms, MAX_TOKEN_LIMIT)
+            logger.info(
+                "Hạ max_token_limit=%d cho %d extractor.", MAX_TOKEN_LIMIT, capped
+            )
+            graph = KnowledgeGraph(
+                nodes=[
+                    Node(
+                        type=NodeType.DOCUMENT,
+                        properties={
+                            "page_content": document.page_content,
+                            "document_metadata": document.metadata,
+                        },
+                    )
+                ]
+            )
+            apply_transforms(graph, transforms, run_config=self.run_config)
         return graph
 
     def _query_distribution(
@@ -270,20 +291,31 @@ class RagasUnitRunner:
 
     def _generate_cases(
         self,
+        unit: EvalUnit,
         graph: KnowledgeGraph,
         distribution: list[tuple[BaseSynthesizer[Any], float]],
         total: int,
-    ) -> list[GoldenTestCase]:
-        generator = TestsetGenerator(llm=self.llm, embedding_model=self.embeddings)
-        generator.knowledge_graph = graph
-        testset = generator.generate(
-            testset_size=total,
-            query_distribution=distribution,
-            run_config=self.run_config,
+    ) -> _Generation:
+        """Sinh câu cho đơn vị, giữ phần đã xong khi lỗi giữa chừng (mục 3.3).
+
+        Thay cho `TestsetGenerator.generate`: persona một lần, rồi từng loại một
+        (scenario -> từng sample bọc try/except, đồng thời tối đa `MAX_WORKERS`).
+
+        Raises:
+            UnitGenerationError: Không sinh được câu nào mà có lỗi.
+        """
+        personas = generate_personas_from_kg(
+            kg=graph, llm=self.llm, num_personas=NUM_PERSONAS
         )
-        if isinstance(testset, Executor):
-            raise TypeError("RagasUnitRunner không hỗ trợ return_executor=True.")
-        return _to_cases(testset.to_list())
+        splits, _ = calculate_split_values(
+            [weight for _, weight in distribution], total
+        )
+        planned = [
+            (synthesizer, count)
+            for (synthesizer, _), count in zip(distribution, splits, strict=True)
+        ]
+        sampling = asyncio.run(_sample_all(planned, graph, personas))
+        return _finish_generation(unit, sampling)
 
     def run_unit(
         self,
@@ -296,14 +328,142 @@ class RagasUnitRunner:
         """Sinh câu hỏi cho `unit`; KG được lưu ngay sau khi dựng xong (trước khi sinh câu)."""
         self._get_synthesizers()  # lần đầu gọi LLM (adapt_prompts); không tính vào đơn vị
         calls_before = sum(self.router.call_counts)
-        graph = self._obtain_knowledge_graph(
-            unit, knowledge_graph_path, reuse=reuse_knowledge_graph
-        )
-        distribution, total = self._query_distribution(graph, quota)
-        cases = self._generate_cases(graph, distribution, total) if total > 0 else []
+        tokens_before = self.router.token_totals
+        try:
+            graph = self._obtain_knowledge_graph(
+                unit, knowledge_graph_path, reuse=reuse_knowledge_graph
+            )
+            distribution, total = self._query_distribution(graph, quota)
+            generation = (
+                self._generate_cases(unit, graph, distribution, total)
+                if total > 0
+                else _Generation()
+            )
+        finally:
+            # Ghi cả khi đơn vị lỗi: token đã đốt vẫn cần thấy được trong log.
+            usage = _token_delta(tokens_before, self.router.token_totals)
+            _log_token_usage(unit, usage)
         return UnitResult(
-            cases=cases, llm_calls=sum(self.router.call_counts) - calls_before
+            cases=generation.cases,
+            llm_calls=sum(self.router.call_counts) - calls_before,
+            tokens=sum(item.total_tokens for item in usage),
+            reasoning_tokens=sum(item.reasoning_tokens for item in usage),
+            skipped_samples=generation.skipped,
+            interruption=generation.interruption,
         )
+
+
+@dataclass
+class _Sampling:
+    """Tích luỹ kết quả bước sinh sample của một đơn vị (chỉ ghi từ event loop, không cần lock)."""
+
+    rows: list[dict[str, Any]] = field(default_factory=list)
+    skipped: int = 0
+    last_error: Exception | None = None
+    quota_error: DailyQuotaExhaustedError | None = None
+    interruption: Exception | None = None  # lỗi sinh scenario của một loại
+
+
+@dataclass
+class _Generation:
+    """Kết quả bước sinh câu đã chuyển thành `GoldenTestCase`."""
+
+    cases: list[GoldenTestCase] = field(default_factory=list)
+    skipped: int = 0
+    interruption: Exception | None = None
+
+
+async def _sample_one(
+    synthesizer: BaseSynthesizer[Any],
+    scenario: BaseScenario,
+    semaphore: asyncio.Semaphore,
+    sampling: _Sampling,
+) -> dict[str, Any] | None:
+    """Sinh một sample; lỗi thì bỏ (chỉ log tên loại lỗi, không log nội dung — mục 8)."""
+    async with semaphore:
+        if sampling.quota_error is not None:
+            return None  # breaker đã bật: không đưa sample mới
+        try:
+            sample = await synthesizer.generate_sample(scenario)
+        except DailyQuotaExhaustedError as error:
+            sampling.quota_error = error
+            return None
+        except Exception as error:  # noqa: BLE001 - một sample hỏng không được huỷ cả đơn vị
+            sampling.skipped += 1
+            sampling.last_error = error
+            logger.warning(
+                "Bỏ 1 sample của %s: %s.", synthesizer.name, type(error).__name__
+            )
+            return None
+    row: dict[str, Any] = sample.model_dump(exclude_none=True)
+    row["synthesizer_name"] = synthesizer.name
+    return row
+
+
+async def _sample_all(
+    planned: list[tuple[BaseSynthesizer[Any], int]],
+    graph: KnowledgeGraph,
+    personas: list[Persona],
+) -> _Sampling:
+    """Từng loại: sinh scenario rồi sinh sample đồng thời (tối đa `MAX_WORKERS`).
+
+    Dừng ngay khi breaker báo hết quota ngày (giữ sample đã xong) hoặc khi sinh scenario của
+    một loại lỗi (giữ các loại trước đó).
+    """
+    sampling = _Sampling()
+    semaphore = asyncio.Semaphore(MAX_WORKERS)
+    for synthesizer, count in planned:
+        try:
+            scenarios = await synthesizer.generate_scenarios(count, graph, personas)
+        except Exception as error:  # noqa: BLE001 - lỗi một loại không mất các loại đã xong
+            sampling.interruption = error
+            break
+        rows = await asyncio.gather(
+            *(_sample_one(synthesizer, item, semaphore, sampling) for item in scenarios)
+        )
+        sampling.rows.extend(row for row in rows if row is not None)
+        if sampling.quota_error is not None:
+            break
+    return sampling
+
+
+def _finish_generation(unit: EvalUnit, sampling: _Sampling) -> _Generation:
+    """Đổi sample thành câu; không có câu nào mà có lỗi thì raise, có câu thì trả kèm `interruption`."""
+    cases = _to_cases(sampling.rows)
+    skipped = sampling.skipped + len(sampling.rows) - len(cases)
+    interruption = sampling.quota_error or sampling.interruption
+    if not cases and (interruption is not None or skipped > 0):
+        raise UnitGenerationError(
+            unit_key(unit), f"không sinh được câu nào ({skipped} sample bị bỏ)"
+        ) from (interruption or sampling.last_error)
+    return _Generation(cases=cases, skipped=skipped, interruption=interruption)
+
+
+def _token_delta(
+    before: list[TokenTotals], after: list[TokenTotals]
+) -> list[TokenTotals]:
+    """Token của riêng đơn vị theo từng tài khoản (hiệu số sau - trước, như `llm_calls`)."""
+    return [
+        TokenTotals(
+            prompt_tokens=new.prompt_tokens - old.prompt_tokens,
+            completion_tokens=new.completion_tokens - old.completion_tokens,
+            reasoning_tokens=new.reasoning_tokens - old.reasoning_tokens,
+        )
+        for old, new in zip(before, after, strict=True)
+    ]
+
+
+def _log_token_usage(unit: EvalUnit, usage: list[TokenTotals]) -> None:
+    """Log INFO tổng token và token theo tài khoản (chỉ số thứ tự và số, không có key)."""
+    logger.info(
+        "Token %s: tổng %d (vào %d, ra %d, suy luận %d); theo tài khoản: %s.",
+        unit_key(unit),
+        sum(item.total_tokens for item in usage),
+        sum(item.prompt_tokens for item in usage),
+        sum(item.completion_tokens for item in usage),
+        sum(item.reasoning_tokens for item in usage),
+        ", ".join(f"#{n}={item.total_tokens}" for n, item in enumerate(usage, start=1)),
+    )
 
 
 def _load_matching_graph(path: Path, unit: EvalUnit) -> KnowledgeGraph | None:
