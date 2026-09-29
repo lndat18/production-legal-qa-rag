@@ -118,18 +118,18 @@ def test_vector_db_settings_bao_loi_khi_thieu_index_name(
 
 
 # ==========================================================================
-# LLMSettings -- bắt buộc GROQ_API_KEY
+# LLMSettings -- bắt buộc GROQ_API_KEY_1
 # ==========================================================================
 
 
 def test_llm_settings_doc_dung_bien_moi_truong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "test-groq-key")
     settings = LLMSettings()  # type: ignore[call-arg]
     assert settings.groq_api_key == "test-groq-key"
 
 
 def test_llm_settings_bao_loi_khi_thieu_groq_api_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
@@ -138,7 +138,7 @@ def test_llm_settings_bao_loi_khi_thieu_groq_api_key(monkeypatch: pytest.MonkeyP
 
 
 def test_llm_settings_gia_tri_mac_dinh_theo_spec(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "test-groq-key")
     settings = LLMSettings()  # type: ignore[call-arg]
     assert settings.model_name == "openai/gpt-oss-120b"
     assert settings.max_retries == 2
@@ -155,7 +155,7 @@ def test_llm_settings_gia_tri_mac_dinh_theo_spec(monkeypatch: pytest.MonkeyPatch
 
 
 def test_llm_settings_groq_api_key_2_mac_dinh_none(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "test-groq-key")
     monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
@@ -165,7 +165,7 @@ def test_llm_settings_groq_api_key_2_mac_dinh_none(monkeypatch: pytest.MonkeyPat
 
 
 def test_llm_settings_groq_api_key_2_doc_tu_env(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "test-groq-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "test-groq-key-2")
     settings = LLMSettings()  # type: ignore[call-arg]
     assert settings.groq_api_key_2 == "test-groq-key-2"
@@ -176,7 +176,7 @@ def test_llm_settings_khong_co_groq_api_key_2_khong_bao_loi(
 ):
     # groq_api_key_2 là TÙY CHỌN -- thiếu nó không được raise ValidationError
     # (khác groq_api_key, field bắt buộc).
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "test-groq-key")
     monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
@@ -192,7 +192,7 @@ def test_llm_settings_khong_co_groq_api_key_2_khong_bao_loi(
 def test_guardrail_settings_doc_key_va_default_theo_spec(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "guardrail-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "guardrail-key")
     settings = GuardrailSettings()  # type: ignore[call-arg]
 
     assert settings.api_key == "guardrail-key"
@@ -202,7 +202,7 @@ def test_guardrail_settings_doc_key_va_default_theo_spec(
 
 
 def test_guardrail_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         GuardrailSettings,
         "model_config",
@@ -216,7 +216,7 @@ def test_guardrail_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatc
 def test_generation_settings_fallback_sang_key_guardrail_khi_key_3_khong_set(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.delenv("GROQ_API_KEY_3", raising=False)
     monkeypatch.setattr(
         GenerationSettings,
@@ -233,7 +233,7 @@ def test_generation_settings_fallback_sang_key_guardrail_khi_key_3_khong_set(
 
 
 def test_generation_settings_uu_tien_key_3(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
     monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
     monkeypatch.setattr(
@@ -249,7 +249,7 @@ def test_generation_settings_khong_dung_key_2_cua_nhom_nhe(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Key 2 thuộc nhóm bước nhẹ (mục 12.1): generation không được lấy nó."""
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
     monkeypatch.delenv("GROQ_API_KEY_3", raising=False)
     monkeypatch.setattr(
@@ -262,7 +262,7 @@ def test_generation_settings_khong_dung_key_2_cua_nhom_nhe(
 
 
 def test_generation_settings_doc_key_4_cho_round_robin(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
     monkeypatch.delenv("GROQ_API_KEY_4", raising=False)
     monkeypatch.setattr(
@@ -281,7 +281,7 @@ def test_generation_settings_doc_key_4_cho_round_robin(monkeypatch: pytest.Monke
 def test_judge_settings_uses_key_2_and_independent_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
     monkeypatch.setenv("GROQ_API_KEY_3", "org-c-key")
     # GROQ_JUDGE_API_KEY đã bỏ (mục 12.1): có đặt cũng không được ưu tiên.
@@ -304,7 +304,7 @@ def test_judge_settings_falls_back_to_groq_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setattr(
         JudgeSettings,
         "model_config",
@@ -320,7 +320,7 @@ def test_judge_settings_falls_back_to_groq_api_key(
 
 
 def test_hyde_settings_dung_key_1_va_model_20b(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "org-a-key")
+    monkeypatch.setenv("GROQ_API_KEY_1", "org-a-key")
     monkeypatch.setenv("GROQ_API_KEY_2", "org-b-key")
     monkeypatch.setattr(
         HydeSettings, "model_config", {**HydeSettings.model_config, "env_file": None}
@@ -335,7 +335,7 @@ def test_hyde_settings_dung_key_1_va_model_20b(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_hyde_settings_bao_loi_khi_thieu_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         HydeSettings, "model_config", {**HydeSettings.model_config, "env_file": None}
     )

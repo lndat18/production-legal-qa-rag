@@ -223,7 +223,7 @@ def test_docker_compose_moi_service_co_gioi_han_bo_nho(tmp_path: Path) -> None:
 def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
     """`.env.example` phải liệt kê đủ toàn bộ biến ở bảng mục 7 (không thiếu tên nào)."""
     required_vars = {
-        "GROQ_API_KEY",
+        "GROQ_API_KEY_1",
         "GROQ_API_KEY_2",
         "HF_TOKEN",
         "PINECONE_API_KEY",
@@ -246,7 +246,7 @@ def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
 def test_env_example_khong_de_lo_gia_tri_bi_mat_mau() -> None:
     """Các biến bí mật phải để trống trong `.env.example` — không commit giá trị mẫu."""
     secret_vars = {
-        "GROQ_API_KEY",
+        "GROQ_API_KEY_1",
         "GROQ_API_KEY_2",
         "HF_TOKEN",
         "PINECONE_API_KEY",

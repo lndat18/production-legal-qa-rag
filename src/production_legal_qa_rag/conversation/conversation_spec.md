@@ -469,12 +469,12 @@ phase sau): **đường ngắn nhất, chỉ cần kết quả cuối**.
 
 ## 12. Config (`config.py`)
 
-- `CondenseSettings`: `api_key` (`GROQ_API_KEY`), `model_name = "openai/gpt-oss-20b"`,
+- `CondenseSettings`: `api_key` (`GROQ_API_KEY_1`), `model_name = "openai/gpt-oss-20b"`,
   `max_retries = 1`, `timeout_seconds = 20`.
 - `AdmissionSettings` (mục 9) chỉ có `max_concurrent_answers = 2` (mỗi câu ~3–4K token
   trên TPM 8K) và `max_waiting = 6`; không có Redis hay quota theo ngày. Cache cần Redis
   thì dùng cấu hình riêng khi cache được triển khai.
-- `GenerationSettings`: `api_key` (ưu tiên `GROQ_API_KEY_3`, fallback `GROQ_API_KEY`),
+- `GenerationSettings`: `api_key` (ưu tiên `GROQ_API_KEY_3`, fallback `GROQ_API_KEY_1`),
   `round_robin_api_key` (`GROQ_API_KEY_4`), `model_name = "openai/gpt-oss-120b"` — bước
   duy nhất còn dùng 120b (mục 12.1).
 - `ThrottleSettings` (mới, mục 12.1): giới hạn của bucket 20b dùng chung.
@@ -491,10 +491,9 @@ xoay vòng key; mọi bước nhẹ dùng `gpt-oss-20b`, mỗi bước gắn **m
 xoay vòng), có giãn thời gian (throttle). Groq tính rate limit theo `(tài khoản, model)`,
 nên hai model khác nhau trên cùng một tài khoản là hai bucket độc lập.
 
-> **Đổi tên biến 2026-09-29: `GROQ_API_KEY` → `GROQ_API_KEY_1`** (đổi cứng, không giữ alias
-> cũ). Toàn bộ mục 12.1 dưới đây vẫn viết `GROQ_API_KEY` trần — đọc là `GROQ_API_KEY_1`, kể cả
-> chỗ "fallback về `GROQ_API_KEY`". Tài khoản `_5`–`_9` (thêm 2026-09-28/29) không thuộc
-> production, chỉ dùng cho `evaluation/`.
+> **Đổi tên biến 2026-09-29: `GROQ_API_KEY` → `GROQ_API_KEY_1`** (đánh số đủ `_1`…`_9`; đổi
+> cứng, không giữ alias tên cũ; đã áp dụng trong code, `.env.example`, tài liệu). Tài khoản
+> `_5`–`_9` (thêm 2026-09-28/29) không thuộc production, chỉ dùng cho `evaluation/`.
 
 Hiện có 4 tài khoản Groq cho production (A–D, tương ứng `GROQ_API_KEY_1`, `_2`, `_3`, `_4`). Sắp xếp chốt
 2026-09-28 (người dùng): **key 1, 2 cho việc nhẹ; key 3, 4 xoay vòng luân phiên cho việc
@@ -504,14 +503,14 @@ nặng.** Trong nhóm nhẹ, mỗi bước gắn một key cố định (không 
 | Bước | Package | Model | Key | Bucket |
 |---|---|---|---|---|
 | Generation (draft + repair) | `generation/` | `gpt-oss-120b` | `GROQ_API_KEY_3` ⇄ `GROQ_API_KEY_4` xoay vòng từng lượt gọi | 120b của C, D |
-| Condense | `conversation/` | `gpt-oss-20b` | `GROQ_API_KEY` | 20b của A — throttle chung với HyDE |
-| HyDE | `retrieval/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY` | 20b của A — throttle chung với Condense |
-| Evidence Judge | `generation/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY_2`, không set thì fallback `GROQ_API_KEY` | 20b của B — throttle riêng (fallback A thì dùng chung với Condense/HyDE) |
-| Guardrail | `generation/` | `gpt-oss-safeguard-20b` (không đổi) | `GROQ_API_KEY` | safeguard-20b của A — bucket riêng, không throttle |
+| Condense | `conversation/` | `gpt-oss-20b` | `GROQ_API_KEY_1` | 20b của A — throttle chung với HyDE |
+| HyDE | `retrieval/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY_1` | 20b của A — throttle chung với Condense |
+| Evidence Judge | `generation/` | `gpt-oss-20b` (đổi từ 120b) | `GROQ_API_KEY_2`, không set thì fallback `GROQ_API_KEY_1` | 20b của B — throttle riêng (fallback A thì dùng chung với Condense/HyDE) |
+| Guardrail | `generation/` | `gpt-oss-safeguard-20b` (không đổi) | `GROQ_API_KEY_1` | safeguard-20b của A — bucket riêng, không throttle |
 
 Judge tách sang key 2 vì đây là bước nặng nhất của nhóm nhẹ (prompt chứa cả context, có
 thể chạy 2 lần/lượt sau repair) và fail-closed — xem "Rủi ro đã biết" dưới. Chuỗi key:
-Judge `GROQ_API_KEY_2` → `GROQ_API_KEY`; generation `GROQ_API_KEY_3` → `GROQ_API_KEY`
+Judge `GROQ_API_KEY_2` → `GROQ_API_KEY_1`; generation `GROQ_API_KEY_3` → `GROQ_API_KEY_1`
 (key 4 là round-robin, tuỳ chọn như hiện tại). Biến `GROQ_JUDGE_API_KEY` bị bỏ. Lưu ý
 ý nghĩa cũ của `GROQ_API_KEY_2`/`_3` đổi (trước: generation xoay vòng 2 ⇄ 3): `.env` đã có
 đủ 4 key nên không hỏng, nhưng mọi chú thích và tài liệu nhắc "key 2 = generation" phải
@@ -568,10 +567,10 @@ invalidate cache câu trả lời — khoá cache chỉ chứa `GenerationSettin
 
 **Đồng bộ cấu hình khi implement (việc cho `developer`):**
 
-- `config.py`: `JudgeSettings.api_key` alias `GROQ_API_KEY_2` → `GROQ_API_KEY`,
+- `config.py`: `JudgeSettings.api_key` alias `GROQ_API_KEY_2` → `GROQ_API_KEY_1`,
   `model_name = "openai/gpt-oss-20b"`; `GenerationSettings.api_key` alias
-  `GROQ_API_KEY_3` → `GROQ_API_KEY`, `round_robin_api_key` alias `GROQ_API_KEY_4`; thêm
-  `HydeSettings` (`GROQ_API_KEY`, `gpt-oss-20b`) và `ThrottleSettings`;
+  `GROQ_API_KEY_3` → `GROQ_API_KEY_1`, `round_robin_api_key` alias `GROQ_API_KEY_4`; thêm
+  `HydeSettings` (`GROQ_API_KEY_1`, `gpt-oss-20b`) và `ThrottleSettings`;
   `tests/test_config.py` (test `GROQ_JUDGE_API_KEY`, generation `_2`/`_3`) đổi theo;
   `tests/test_generation.py` (test round-robin nhắc `GROQ_API_KEY_3`) đổi sang `_4`.
 - `.env.example` và `deploy/.env.example`: bỏ `GROQ_JUDGE_API_KEY`, thêm `GROQ_API_KEY_4`

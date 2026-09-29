@@ -1,4 +1,4 @@
-"""Round-robin 6 `ChatOpenAI` (Groq) độc lập tài khoản cho `generator_llm`.
+"""Round-robin nhiều `ChatOpenAI` (Groq) độc lập tài khoản cho `generator_llm`.
 
 Pattern MỚI trong repo (evaluation_spec.md mục 3.1), khác hẳn cách dùng nhiều
 key Groq hiện có ở `GenerationSettings`/`JudgeSettings`/`formatting/llm_client.py`
@@ -78,7 +78,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
     không thể đúng oan (evaluation_spec.md mục 3.1).
     """
 
-    # Phase 1 dùng đúng 6 client, mỗi client gắn 1 key cố định.
+    # Phase 1 dùng 9 client (theo `len(clients)`), mỗi client gắn 1 key cố định.
     clients: list[ChatOpenAI]
 
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)

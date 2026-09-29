@@ -98,7 +98,7 @@ def test_reranker_khong_nuot_cancelled_error():
 
 
 def test_hyde_khong_nuot_cancelled_error(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY_1", "k")
 
     async def create(**kwargs: Any) -> Any:
         raise asyncio.CancelledError

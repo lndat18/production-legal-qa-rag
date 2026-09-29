@@ -432,16 +432,19 @@ def test_router_llm_type_co_ten_rieng():
 
 
 # ==========================================================================
-# config.py -- TestsetGeneratorSettings (mục 6): cả 6 key BẮT BUỘC
+# config.py -- TestsetGeneratorSettings (mục 6): cả 9 key BẮT BUỘC
 # ==========================================================================
 
 _GROQ_KEY_ENVS = [
-    "GROQ_API_KEY",
+    "GROQ_API_KEY_1",
     "GROQ_API_KEY_2",
     "GROQ_API_KEY_3",
     "GROQ_API_KEY_4",
     "GROQ_API_KEY_5",
     "GROQ_API_KEY_6",
+    "GROQ_API_KEY_7",
+    "GROQ_API_KEY_8",
+    "GROQ_API_KEY_9",
 ]
 
 
@@ -450,7 +453,7 @@ def _set_all_groq_keys(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(env_name, f"key-{position}")
 
 
-def test_testset_generator_settings_doc_dung_ca_6_key_va_default(
+def test_testset_generator_settings_doc_dung_ca_9_key_va_default(
     monkeypatch: pytest.MonkeyPatch,
 ):
     _set_all_groq_keys(monkeypatch)
@@ -464,7 +467,10 @@ def test_testset_generator_settings_doc_dung_ca_6_key_va_default(
         settings.api_key_4,
         settings.api_key_5,
         settings.api_key_6,
-    ) == ("key-1", "key-2", "key-3", "key-4", "key-5", "key-6")
+        settings.api_key_7,
+        settings.api_key_8,
+        settings.api_key_9,
+    ) == tuple(f"key-{n}" for n in range(1, 10))
     assert settings.model_name == "openai/gpt-oss-120b"
     assert settings.max_retries == 2
     assert settings.timeout_seconds == 60

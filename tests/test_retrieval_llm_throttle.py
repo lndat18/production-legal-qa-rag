@@ -538,7 +538,7 @@ def _exhausted_throttle(clock: _FakeClock) -> TokenWindowThrottle:
 
 
 def _hyde(fake: _FakeGroq, throttle: Any, **kwargs: Any) -> HydeGenerator:
-    settings = HydeSettings(GROQ_API_KEY="k")
+    settings = HydeSettings(GROQ_API_KEY_1="k")
     return HydeGenerator(settings, fake, throttle=throttle, **kwargs)
 
 
@@ -602,7 +602,7 @@ def test_hyde_khong_inject_throttle_thi_dung_bucket_chung_theo_model_va_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("THROTTLE_RPM_LIMIT", "1")
-    generator = HydeGenerator(HydeSettings(GROQ_API_KEY="k"), _FakeGroq())
+    generator = HydeGenerator(HydeSettings(GROQ_API_KEY_1="k"), _FakeGroq())
 
     assert asyncio.run(generator.generate("hỏi")) == "đoạn văn"
 

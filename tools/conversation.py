@@ -621,7 +621,7 @@ def main(
 ) -> None:
     """Chạy bộ hội thoại mẫu, hoặc một câu tùy chọn (có thể kèm 1 lượt trước).
 
-    Cần ``GROQ_API_KEY`` trong ``.env``; retrieval cần ``PINECONE_API_KEY`` và
+    Cần ``GROQ_API_KEY_1`` trong ``.env``; retrieval cần ``PINECONE_API_KEY`` và
     các index Pinecone đã được nạp dữ liệu.
     """
     if query is None:

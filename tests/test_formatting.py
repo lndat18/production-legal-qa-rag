@@ -99,7 +99,7 @@ def T(text: str) -> Block:
 
 # ==========================================================================
 # Không bao giờ gọi Groq API thật trong test suite (CI không có
-# GROQ_API_KEY; máy dev có thể có key thật -- không nên phụ thuộc vào việc
+# GROQ_API_KEY_1; máy dev có thể có key thật -- không nên phụ thuộc vào việc
 # thiếu key mới an toàn, mock hẳn ở mức `llm_client.convert_chunks_concurrently`,
 # điểm gọi Groq DUY NHẤT của `pipeline.py` từ mục 1.3 trở đi).
 # ==========================================================================
@@ -1157,7 +1157,7 @@ def _fake_groq_response(content: str | None, *, total_tokens: int | None = 100):
 
 
 def test_client_groq_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     captured: dict[str, object] = {}
 
     class FakeGroq:
@@ -1178,7 +1178,7 @@ def test_client_groq_dung_tham_so_tu_settings(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_client_2_groq_dung_key_2_tu_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-1")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-1")
     monkeypatch.setenv("GROQ_API_KEY_2", "fake-key-2-rieng")
     captured: dict[str, object] = {}
 
@@ -1208,7 +1208,7 @@ def test_client_2_groq_dung_key_2_tu_settings(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_convert_one_thanh_cong_goi_dung_tham_so(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "  Kết quả markdown  "
@@ -1226,7 +1226,7 @@ def test_convert_one_thanh_cong_goi_dung_tham_so(monkeypatch: pytest.MonkeyPatch
 
 
 def test_convert_one_loi_roi_thu_lai_thanh_cong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = [
         RuntimeError("lỗi mạng giả lập"),
@@ -1241,7 +1241,7 @@ def test_convert_one_loi_roi_thu_lai_thanh_cong(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_convert_one_het_so_lan_thu_tra_ve_none(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
     limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
@@ -1255,7 +1255,7 @@ def test_convert_one_het_so_lan_thu_tra_ve_none(monkeypatch: pytest.MonkeyPatch)
 def test_convert_one_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = [
         _fake_groq_response(""),
@@ -1270,7 +1270,7 @@ def test_convert_one_ket_qua_rong_bi_coi_la_loi_va_thu_lai(
 
 
 def test_convert_one_max_retries_duoc_ton_trong(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.side_effect = RuntimeError("lỗi giả lập")
     limiter = llm_client._SlidingWindowRateLimiter(tpm_limit=8000, rpm_limit=30)
@@ -1284,11 +1284,11 @@ def test_convert_one_max_retries_duoc_ton_trong(monkeypatch: pytest.MonkeyPatch)
 def test_convert_one_thieu_groq_api_key_tra_ve_none_khong_raise(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Không có `GROQ_API_KEY` (đúng thực trạng CI) -- `LLMSettings()` raise
+    """Không có `GROQ_API_KEY_1` (đúng thực trạng CI) -- `LLMSettings()` raise
     `ValidationError` khi đọc `model_name`, `_convert_one` phải bắt và trả
     `None`, không để lộ exception, không gọi `client` (mục 5, 7 spec: lỗi
     Groq không bao giờ chặn pipeline)."""
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
@@ -1307,7 +1307,7 @@ def test_convert_one_cap_nhat_rate_limiter_bang_usage_that(
     """Sau khi gọi thành công, rate limiter phải được cập nhật bằng
     `usage.total_tokens` THẬT từ response, không phải số ước lượng heuristic
     (mục 1.2 spec)."""
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "kết quả", total_tokens=4242
@@ -1322,7 +1322,7 @@ def test_convert_one_cap_nhat_rate_limiter_bang_usage_that(
 def test_convert_one_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     fake_client = Mock()
     fake_client.chat.completions.create.return_value = _fake_groq_response(
         "kết quả", total_tokens=None
@@ -1340,7 +1340,7 @@ def test_convert_one_usage_none_dung_uoc_luong_de_cap_nhat_rate_limiter(
 
 
 def test_get_chunk_token_limit_doc_tu_settings(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("GROQ_API_KEY", "fake-key-khong-goi-thuc-te")
+    monkeypatch.setenv("GROQ_API_KEY_1", "fake-key-khong-goi-thuc-te")
     monkeypatch.setenv("CHUNK_TOKEN_LIMIT", "999")
     assert llm_client.get_chunk_token_limit() == 999
 
@@ -1348,7 +1348,7 @@ def test_get_chunk_token_limit_doc_tu_settings(monkeypatch: pytest.MonkeyPatch):
 def test_get_chunk_token_limit_fallback_khi_thieu_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
@@ -1447,7 +1447,7 @@ def test_convert_chunks_concurrently_rong_tra_ve_rong():
 def test_convert_chunks_concurrently_thieu_settings_tra_ve_none_het(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
     )
@@ -1457,7 +1457,7 @@ def test_convert_chunks_concurrently_thieu_settings_tra_ve_none_het(
 def test_convert_chunks_concurrently_khong_co_key2_chay_tuan_tu_khong_spawn_thread(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("GROQ_API_KEY", "only-key-1")
+    monkeypatch.setenv("GROQ_API_KEY_1", "only-key-1")
     monkeypatch.delenv("GROQ_API_KEY_2", raising=False)
     monkeypatch.setattr(
         LLMSettings, "model_config", {**LLMSettings.model_config, "env_file": None}
@@ -1499,7 +1499,7 @@ def test_convert_chunks_concurrently_co_key2_dung_ca_hai_client(
     # chắc chắn đã start và mỗi thread rút được >= 1 job trước khi job đầu
     # tiên của bất kỳ thread nào xử lý xong -- làm test deterministic mà
     # không cần sửa `llm_client.py` (thiết kế dispatch động vẫn giữ nguyên).
-    monkeypatch.setenv("GROQ_API_KEY", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_1", "key-1")
     monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
 
     def _slow_response(content: str):
@@ -1538,7 +1538,7 @@ def test_convert_chunks_concurrently_giu_dung_thu_tu_goc_du_hoan_thanh_khac_thu_
     hoàn thành SAU CÙNG, kết quả cuối cùng vẫn phải nằm đúng vị trí gốc (chỉ
     số 0), không bị đẩy ra sau theo thứ tự hoàn thành (mục 1.3 spec: "đúng
     thứ tự gốc -- đánh số theo chỉ số, không theo thứ tự hoàn thành")."""
-    monkeypatch.setenv("GROQ_API_KEY", "key-1")
+    monkeypatch.setenv("GROQ_API_KEY_1", "key-1")
     monkeypatch.setenv("GROQ_API_KEY_2", "key-2")
 
     prompts = ["prompt-cham-SLOW", "prompt-nhanh-1", "prompt-nhanh-2", "prompt-nhanh-3"]

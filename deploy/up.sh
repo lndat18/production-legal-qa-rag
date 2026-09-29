@@ -12,7 +12,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 env_file="../.env"
 if [[ ! -f "${env_file}" ]]; then
     cp ../.env.example "${env_file}"
-    echo "Chưa có .env ở repo root — đã tạo từ .env.example. Điền giá trị thật (GROQ_API_KEY*, DEPLOY_POSTGRES_USER/PASSWORD, REDIS_PASSWORD, WEBUI_SECRET_KEY, ...) rồi chạy lại ./deploy/up.sh" >&2
+    echo "Chưa có .env ở repo root — đã tạo từ .env.example. Điền giá trị thật (GROQ_API_KEY_1*, DEPLOY_POSTGRES_USER/PASSWORD, REDIS_PASSWORD, WEBUI_SECRET_KEY, ...) rồi chạy lại ./deploy/up.sh" >&2
     exit 1
 fi
 

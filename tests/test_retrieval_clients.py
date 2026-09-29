@@ -38,7 +38,7 @@ from production_legal_qa_rag.retrieval.sparse_index import SparseIndex, build_in
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in {
-        "GROQ_API_KEY": "g",
+        "GROQ_API_KEY_1": "g",
         "HF_TOKEN": "h",
         "PINECONE_API_KEY": "p",
         "PINECONE_INDEX_NAME": "dense",
@@ -559,7 +559,7 @@ class _FakeGroq:
 
 
 def _hyde(fake: _FakeGroq, query: str = "hỏi") -> str | None:
-    generator = HydeGenerator(HydeSettings(GROQ_API_KEY="g"), fake)  # type: ignore[arg-type]
+    generator = HydeGenerator(HydeSettings(GROQ_API_KEY_1="g"), fake)  # type: ignore[arg-type]
     return asyncio.run(generator.generate(query))
 
 

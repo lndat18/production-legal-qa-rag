@@ -285,7 +285,7 @@ cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ đ�
 | Module | Trách nhiệm duy nhất |
 | --- | --- |
 | `models.py` | Pydantic public/intermediate contracts và `RetrievalError`. |
-| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
+| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY_1`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
 | `llm_throttle.py` | `TokenWindowThrottle` dùng chung cho bucket `gpt-oss-20b` (condense, HyDE, Judge); xem `conversation_spec.md` mục 12.1. |
 | `query_embedder.py` | Query preprocessing, API batch và validate embedding. |
 | `bm25.py` | Tokenize, fit/load params, encode sparse vector. |

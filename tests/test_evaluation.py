@@ -57,12 +57,15 @@ from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit
 
 def _settings(**overrides: Any) -> TestsetGeneratorSettings:
     return TestsetGeneratorSettings(  # type: ignore[call-arg]
-        GROQ_API_KEY="key-1",
+        GROQ_API_KEY_1="key-1",
         GROQ_API_KEY_2="key-2",
         GROQ_API_KEY_3="key-3",
         GROQ_API_KEY_4="key-4",
         GROQ_API_KEY_5="key-5",
         GROQ_API_KEY_6="key-6",
+        GROQ_API_KEY_7="key-7",
+        GROQ_API_KEY_8="key-8",
+        GROQ_API_KEY_9="key-9",
         **overrides,
     )
 
@@ -109,13 +112,13 @@ def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
     assert all(client.request_timeout == 90.0 for client in clients)
 
 
-def test_runner_wire_dung_llm_round_robin_6_key_embeddings_va_max_workers(
+def test_runner_wire_dung_llm_round_robin_9_key_embeddings_va_max_workers(
     monkeypatch: pytest.MonkeyPatch,
 ):
     runner = _runner(monkeypatch)
 
     assert isinstance(runner.llm.langchain_llm, GroqRoundRobinChatModel)
-    assert len(runner.llm.langchain_llm.clients) == 6
+    assert len(runner.llm.langchain_llm.clients) == 9
     assert runner.run_config.max_workers == ragas_runner.MAX_WORKERS == 4
 
 
@@ -634,7 +637,7 @@ def test_llm_loi_tat_dinh_400_khong_bi_ragas_thu_lai_ngay_ca_khi_chua_goi_genera
     assert sum(runner.router.call_counts) == 1
 
 
-def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_6_tai_khoan(
+def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_9_tai_khoan(
     monkeypatch: pytest.MonkeyPatch,
 ):
     runner = _runner(monkeypatch)
@@ -648,7 +651,7 @@ def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_6_tai_khoa
     with pytest.raises(RateLimitError):
         _ask(runner)
 
-    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES * 6
+    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES * 9
 
 
 def test_llm_het_quota_ngay_dung_sau_mot_vong_va_tu_choi_moi_luot_sau_do(
@@ -668,8 +671,8 @@ def test_llm_het_quota_ngay_dung_sau_mot_vong_va_tu_choi_moi_luot_sau_do(
     with pytest.raises(DailyQuotaExhaustedError):
         _ask(runner)
 
-    assert after_first == 6
-    assert sum(runner.router.call_counts) == 6  # lượt sau không gửi request nào
+    assert after_first == 9
+    assert sum(runner.router.call_counts) == 9  # lượt sau không gửi request nào
 
 
 # ==========================================================================
@@ -718,9 +721,15 @@ def test_build_unit_runner_thieu_key_chi_bao_ten_bien_khong_lo_gia_tri(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.chdir(tmp_path)  # tránh đọc .env thật của repo
-    for name in ("GROQ_API_KEY_5", "GROQ_API_KEY_6"):
+    for name in (
+        "GROQ_API_KEY_5",
+        "GROQ_API_KEY_6",
+        "GROQ_API_KEY_7",
+        "GROQ_API_KEY_8",
+        "GROQ_API_KEY_9",
+    ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GROQ_API_KEY", "gsk_BI_MAT_KEY_1_xyz")
+    monkeypatch.setenv("GROQ_API_KEY_1", "gsk_BI_MAT_KEY_1_xyz")
     for n in (2, 3, 4):
         monkeypatch.setenv(f"GROQ_API_KEY_{n}", f"gsk_BI_MAT_KEY_{n}_xyz")
 
@@ -730,6 +739,7 @@ def test_build_unit_runner_thieu_key_chi_bao_ten_bien_khong_lo_gia_tri(
     message = str(excinfo.value)
     assert "GROQ_API_KEY_5" in message
     assert "GROQ_API_KEY_6" in message
+    assert "GROQ_API_KEY_9" in message
     assert "gsk_BI_MAT" not in message
     assert excinfo.value.__cause__ is None
     assert excinfo.value.__suppress_context__
@@ -739,8 +749,8 @@ def test_build_unit_runner_key_de_trong_bi_tu_choi_chi_bao_ten_bien_khong_lo_gia
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.chdir(tmp_path)  # tránh đọc .env thật của repo
-    monkeypatch.setenv("GROQ_API_KEY", "gsk_BI_MAT_KEY_1_xyz")
-    for n in (2, 3, 4, 6):
+    monkeypatch.setenv("GROQ_API_KEY_1", "gsk_BI_MAT_KEY_1_xyz")
+    for n in (2, 3, 4, 6, 7, 8, 9):
         monkeypatch.setenv(f"GROQ_API_KEY_{n}", f"gsk_BI_MAT_KEY_{n}_xyz")
     monkeypatch.setenv("GROQ_API_KEY_5", "")  # `GROQ_API_KEY_5=` như .env.example
 

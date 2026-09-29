@@ -32,7 +32,7 @@ câu hỏi/đáp án chuẩn.
   multi-hop abstract / 24 multi-hop specific — người dùng chốt 2026-09-28, mục 10.10),
   chia cho các Chương tỷ lệ theo kích thước (mục 4) — **sinh dư so với đích 180 để trừ
   hao** khi người dùng đọc lướt và xoá câu xấu (xem "Về việc chọn 240/180" bên dưới).
-- Luân phiên (round-robin) **6** tài khoản Groq độc lập (`GROQ_API_KEY`…`_6`) cho
+- Luân phiên (round-robin) **6** tài khoản Groq độc lập (`GROQ_API_KEY_1`…`_6`) cho
   `generator_llm` để rải tải gọi LLM khi build KG + sinh 240 câu (mục 3.1) — **quyết định
   có chủ đích của người dùng**. (Lịch sử: chốt ban đầu 3 tài khoản/360 câu; 2026-09-28
   người dùng có thêm `GROQ_API_KEY_4` rồi `_5`, `_6` (tổng **6 tài khoản**, tên biến
@@ -236,7 +236,7 @@ mới, đặc biệt cho 2 synthesizer multi-hop (mục 4.3).
 
 ### 3.1 Round-robin 6 tài khoản Groq (`groq_round_robin.py`) — quyết định mới
 
-> **Cập nhật 2026-09-28: 6 tài khoản** (`GROQ_API_KEY`, `_2`…`_6`). Key 5, 6 là bucket
+> **Cập nhật 2026-09-28: 6 tài khoản** (`GROQ_API_KEY_1`, `_2`…`_6`). Key 5, 6 là bucket
 > `gpt-oss-120b` **hoàn toàn rảnh** (production chỉ dùng key 1-4). Quota ngày = 6 × 200K =
 > **~1,2M token/ngày** cho `gpt-oss-120b`; các số đo "4 tài khoản/~800K/ngày" trong mục
 > 4.1 là lịch sử pilot — lập kế hoạch theo 6 tài khoản (mục 4.4, 4.5).
@@ -250,14 +250,13 @@ mới, đặc biệt cho 2 synthesizer multi-hop (mục 4.3).
 > (nếu Groq báo cùng tổ chức với key cũ thì quota không tăng — mục 4.6).
 >
 > **Đổi tên biến 2026-09-29: `GROQ_API_KEY` → `GROQ_API_KEY_1`** (đánh số đủ `_1`…`_9` cho nhất
-> quán; người dùng đã đổi trong `.env`). Đổi cứng, KHÔNG giữ alias tên cũ. Ở mọi nơi spec này
-> còn viết `GROQ_API_KEY` trần thì đọc là `GROQ_API_KEY_1`; chính sách key/model chi tiết ở
-> `conversation_spec.md` mục 12.1.
+> quán). Đổi cứng, KHÔNG giữ alias tên cũ; đã áp dụng trong code và `.env.example`. Chính sách
+> key/model chi tiết ở `conversation_spec.md` mục 12.1.
 
 Với `testset_size = 240` (`GENERATE_SIZE`), số lượt gọi `generator_llm` (build `KnowledgeGraph` + sinh câu
 hỏi) đủ lớn để 1 tài khoản Groq duy nhất dễ chạm rate limit theo phút/ngày (`CLAUDE.md`:
 Groq giới hạn theo **tài khoản**, không theo key). Người dùng có 6 tài khoản Groq riêng
-biệt (`GROQ_API_KEY`, `_2`…`_6` — 6 email khác nhau, không phải 6 key cùng 1 tài
+biệt (`GROQ_API_KEY_1`, `_2`…`_6` — 6 email khác nhau, không phải 6 key cùng 1 tài
 khoản) và muốn luân phiên cả 6 cho luồng gọi này.
 
 **Quyết định (người dùng, 2026-09-28): dùng cả 6 key cho việc sinh testset lẫn đánh giá,
@@ -364,7 +363,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
 ## 4. Workflow (`testset_generator.py`)
 
 ```text
-clients = [ChatOpenAI(key=GROQ_API_KEY), ..._2, ... , ..._6]            # 6 client, config mục 6
+clients = [ChatOpenAI(key=GROQ_API_KEY_1), ..._2, ... , ..._6]            # 6 client, config mục 6
 generator_llm = LangchainLLMWrapper(GroqRoundRobinChatModel(clients=clients))  # mục 3.1
 generator_embeddings = LangchainEmbeddingsWrapper(adapter)              # embeddings_adapter.py
 generator = TestsetGenerator(llm=generator_llm, embedding_model=generator_embeddings)
@@ -835,7 +834,9 @@ class TestsetGeneratorSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY_1")  # đổi tên từ GROQ_API_KEY, 2026-09-29
+    api_key: str = Field(
+        validation_alias="GROQ_API_KEY_1"
+    )  # đổi tên từ GROQ_API_KEY, 2026-09-29
     api_key_2: str = Field(validation_alias="GROQ_API_KEY_2")
     api_key_3: str = Field(validation_alias="GROQ_API_KEY_3")
     api_key_4: str = Field(validation_alias="GROQ_API_KEY_4")
@@ -858,7 +859,7 @@ class TestsetGeneratorSettings(BaseSettings):
   multi-hop cần khả năng tổng hợp/suy luận qua nhiều đoạn văn bản.
 - Không thêm setting riêng cho embeddings: `embeddings_adapter.py` tái dùng thẳng
   `EmbeddingSettings` đã có (`config.py`).
-- Module không đọc `.env` trực tiếp. `.env.example` mới có `GROQ_API_KEY`…`_4` — **thêm
+- Module không đọc `.env` trực tiếp. `.env.example` mới có `GROQ_API_KEY_1`…`_4` — **thêm
   `GROQ_API_KEY_5`, `GROQ_API_KEY_6`** và xoá 4 dòng `OPENROUTER_API_KEY*` (chỉ phục vụ pilot
   đã xong; 2026-09-29 thêm `GROQ_API_KEY_7`, `_8`, `_9` vào `.env.example`); bổ sung ghi chú: 9 key này cũng được dùng round-robin bởi `tools/generate_testset.py`
   (chạy khi không có traffic thật, mục 3.1).
@@ -1153,7 +1154,7 @@ class AnswerRecord(BaseModel):
     outcome: Literal["answered", "insufficient_evidence", "unable_to_verify", "error"]
     response: str | None  # ghép các TokenEvent; None nếu không answered
     citations: list[int]  # chỉ số [n] hợp lệ trong câu trả lời
-    repair_used: bool     # có StatusEvent("repairing")
+    repair_used: bool  # có StatusEvent("repairing")
     warning_codes: list[str]
     error_code: str | None  # ErrorEvent.code khi outcome == "error"
     usage: Usage | None
@@ -1200,7 +1201,7 @@ Thêm vào `src/production_legal_qa_rag/evaluation/` (Pydantic v2, docstring the
 | --- | --- |
 | `run_models.py` | `case_id()`, các record Pydantic (`HydeRecord`, `EmbeddingRecord`, `RetrievalRecord`, `AnswerRecord`, `RetrievalScore`, `AnswerScore`), `EvalConfig`. |
 | `jsonl_store.py` | Đọc/ghi nối JSONL có validate theo model, bỏ dòng cuối hỏng, tập `case_id` đã xong (resume). |
-| `key_pool.py` | Dựng 9 bộ settings/instance (HyDE, generation + Judge) mỗi bộ một key `GROQ_API_KEY`…`_9`, và gán bản ghi cho các bộ theo vòng tròn (mục 11.3). Đọc key qua `TestsetGeneratorSettings` (đã bắt buộc đủ 9 key). |
+| `key_pool.py` | Dựng 9 bộ settings/instance (HyDE, generation + Judge) mỗi bộ một key `GROQ_API_KEY_1`…`_9`, và gán bản ghi cho các bộ theo vòng tròn (mục 11.3). Đọc key qua `TestsetGeneratorSettings` (đã bắt buộc đủ 9 key). |
 | `hyde_stage.py`, `embed_stage.py`, `retrieve_stage.py`, `generate_stage.py` | Mỗi file một stage S1, S2, S3, S5; chỉ điều phối (gọi code production, ghi file). |
 | `scoring.py` | S4 và S6: dựng `EvaluationDataset`, chạy metric ragas theo lô, chuyển kết quả thành record. Tái dùng `build_unit_runner`-style wrapper LLM/`RunConfig` của `ragas_runner.py`. |
 | `report.py` | Hàm thuần tổng hợp `report.json` từ các file JSONL (không I/O mạng, dễ test). |

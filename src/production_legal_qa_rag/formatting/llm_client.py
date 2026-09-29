@@ -114,7 +114,7 @@ class _SlidingWindowRateLimiter:
 
 @lru_cache(maxsize=1)
 def _client() -> Groq:
-    """Dựng Groq client cho key 1 (``GROQ_API_KEY``), cache theo tiến trình.
+    """Dựng Groq client cho key 1 (``GROQ_API_KEY_1``), cache theo tiến trình.
 
     Vô hiệu hoá retry nội bộ của SDK (``max_retries=0``) vì ``_convert_one``
     tự quản lý vòng lặp retry riêng (mục 5 spec) -- để SDK tự retry thêm sẽ
@@ -145,7 +145,7 @@ def _client_2() -> Groq:
 
 
 # Khớp giá trị default của `LLMSettings.chunk_token_limit` -- dùng khi không
-# đọc được `LLMSettings` (vd. thiếu `GROQ_API_KEY`, xem `get_chunk_token_limit`).
+# đọc được `LLMSettings` (vd. thiếu `GROQ_API_KEY_1`, xem `get_chunk_token_limit`).
 _DEFAULT_CHUNK_TOKEN_LIMIT = 1500
 
 
@@ -155,7 +155,7 @@ def get_chunk_token_limit() -> int:
     Dùng bởi ``frontmatter.py``/``backmatter.py`` để chia block thành chunk
     (mục 1.2 spec) trước khi biết có gọi được Groq hay không -- chunking là
     bước thuần cục bộ, không phụ thuộc mạng/API key, nên không nên fail cứng
-    chỉ vì thiếu ``GROQ_API_KEY`` (cùng tinh thần fallback với
+    chỉ vì thiếu ``GROQ_API_KEY_1`` (cùng tinh thần fallback với
     ``convert_chunks_concurrently``, vd. môi trường CI không có key thật).
 
     Returns:
@@ -167,7 +167,7 @@ def get_chunk_token_limit() -> int:
     except Exception:
         logger.debug(
             "get_chunk_token_limit: không đọc được LLMSettings, dùng mặc định %d "
-            "(thiếu GROQ_API_KEY?)",
+            "(thiếu GROQ_API_KEY_1?)",
             _DEFAULT_CHUNK_TOKEN_LIMIT,
             exc_info=True,
         )
@@ -231,7 +231,7 @@ def _convert_one(
         model_name = LLMSettings().model_name
     except Exception:
         logger.warning(
-            "llm_client._convert_one: không đọc được LLMSettings (thiếu GROQ_API_KEY?)",
+            "llm_client._convert_one: không đọc được LLMSettings (thiếu GROQ_API_KEY_1?)",
             exc_info=True,
         )
         return None
@@ -319,7 +319,7 @@ def convert_chunks_concurrently(prompts: list[str]) -> list[str | None]:
     - Không có ``groq_api_key_2``: không spawn thread nào — lặp tuần tự gọi
       ``_convert_one`` bằng client key 1 cho từng prompt (y hệt hành vi trước
       khi có tính năng dispatch đồng thời).
-    - Không đọc được ``LLMSettings`` (vd. thiếu ``GROQ_API_KEY``): trả về
+    - Không đọc được ``LLMSettings`` (vd. thiếu ``GROQ_API_KEY_1``): trả về
       ``None`` cho mọi prompt, không raise.
 
     Args:
@@ -337,7 +337,7 @@ def convert_chunks_concurrently(prompts: list[str]) -> list[str | None]:
     except Exception:
         logger.warning(
             "llm_client.convert_chunks_concurrently: không đọc được LLMSettings "
-            "(thiếu GROQ_API_KEY?)",
+            "(thiếu GROQ_API_KEY_1?)",
             exc_info=True,
         )
         return [None] * len(prompts)

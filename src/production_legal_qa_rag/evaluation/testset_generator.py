@@ -48,8 +48,8 @@ GENERATE_SIZE: Final = 240
 TARGET_SIZE: Final = 180
 # Tỷ lệ loại câu 80/10/10 (mục 1, 10.10): single-hop / multi-hop abstract / multi-hop specific.
 _MULTI_HOP_SHARE: Final = 0.1
-# Quota token/ngày của 6 tài khoản Groq free x 200K (mục 3.1), chỉ để ước lượng số ngày.
-TOKENS_PER_DAY: Final = 1_200_000
+# Quota token/ngày của 9 tài khoản Groq free x 200K (mục 3.1), chỉ để ước lượng số ngày.
+TOKENS_PER_DAY: Final = 1_800_000
 
 DEFAULT_OUTPUT_DIR: Final = Path("data/eval")
 RAW_TESTSET_FILENAME: Final = "golden_testset_raw.json"
@@ -628,7 +628,7 @@ def _process_unit(
 def build_unit_runner(
     settings: TestsetGeneratorSettings | None = None,
 ) -> UnitRunner:
-    """Dựng runner thật (ragas + 6 tài khoản Groq); import lười để module này không cần ragas.
+    """Dựng runner thật (ragas + 9 tài khoản Groq); import lười để module này không cần ragas.
 
     Raises:
         EvalInputError: Thiếu/sai biến môi trường Groq. Thông báo chỉ nêu TÊN biến, không
@@ -643,8 +643,8 @@ def build_unit_runner(
             {".".join(str(part) for part in e["loc"]) for e in error.errors()}
         )
         raise EvalInputError(
-            "Thiếu, để trống hoặc sai cấu hình Groq trong .env (cần GROQ_API_KEY và "
-            f"GROQ_API_KEY_2 ... GROQ_API_KEY_6): {', '.join(names)}"
+            "Thiếu, để trống hoặc sai cấu hình Groq trong .env (cần GROQ_API_KEY_1 ... "
+            f"GROQ_API_KEY_9): {', '.join(names)}"
         ) from None
 
 
@@ -674,7 +674,7 @@ def _run_one_unit(
         )
     except (Exception, KeyboardInterrupt) as error:
         description = _record_failure(progress_path, state.progress, key, error)
-        logger.error("Đơn vị %s lỗi, dừng: %s", key, description, exc_info=True)
+        logger.exception("Đơn vị %s lỗi, dừng: %s", key, description)
         if isinstance(error, KeyboardInterrupt):
             raise
         raise UnitGenerationError(key, description) from error
@@ -709,7 +709,7 @@ def generate_testset(
             đi kèm `only`.
         testset_size: Ghi đè tổng số câu (mặc định `GENERATE_SIZE`); chia cho các đơn vị đã chọn.
         unit_runner: Cài đặt thay thế cho test; `None` thì dựng runner ragas thật khi cần.
-        settings: Cấu hình 6 key Groq, chỉ dùng khi `unit_runner` là `None`.
+        settings: Cấu hình 9 key Groq, chỉ dùng khi `unit_runner` là `None`.
 
     Raises:
         EvalInputError: `--only` sai, `append` thiếu `only`, thiếu key Groq, progress
@@ -739,7 +739,7 @@ def generate_testset(
     if not to_run:
         return report
 
-    # Dựng runner (tạo client, đọc 6 key) TRƯỚC vòng lặp và ngoài `try` của từng đơn vị:
+    # Dựng runner (tạo client, đọc 9 key) TRƯỚC vòng lặp và ngoài `try` của từng đơn vị:
     # thiếu key là lỗi cấu hình, không phải lỗi của một đơn vị cụ thể.
     runner = unit_runner or build_unit_runner(settings)
     for unit in to_run:
