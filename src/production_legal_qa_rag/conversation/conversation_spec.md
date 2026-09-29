@@ -22,7 +22,7 @@ phase này**; phase hiện tại tập trung phục vụ người dùng cuối).
 - Cửa sổ history (cắt, làm sạch) từ `messages[]` do client gửi lên (mục 4).
 - Condense: viết lại câu follow-up thành câu hỏi độc lập (mục 5).
 - Điều phối end-user `ChatOrchestrator.stream()` (mục 7): guardrail ‖ condense → cache →
-  admission → retrieve (+ gate độ liên quan) → generate, và ghi `TurnTrace` cho `chatlog/`.
+  admission → retrieve (+ gate độ liên quan) → generate, và ghi `TurnTrace` để lớp API gắn lên trace Langfuse + metrics.
 - Admission: giới hạn đồng thời + hàng đợi ngắn (mục 9); không đếm quota theo user/ngày
   hay toàn cục/ngày, dựa vào 429 thật của Groq khi hết hạn mức.
 - ~~Adapter đánh giá `run_for_evaluation()`~~ → hoãn sang phase RAGAS (mục 11 giữ làm bản
@@ -52,7 +52,7 @@ Model (pydantic v2, `conversation/models.py`):
 - `RequestContext`: `user_id: str`, `chat_id: str | None`, `request_id: str` (do lớp API
   điền từ header đã xác thực; orchestrator không biết HTTP).
 - `TurnTrace` (mutable, orchestrator điền dần; lớp API đọc sau khi stream kết thúc để
-  ghi `chatlog/`): `raw_query`, `standalone_query: str | None`, `verdict`,
+  gắn lên trace Langfuse `chat_turn` và metrics — `observability_spec.md` mục 4.5): `raw_query`, `standalone_query: str | None`, `verdict`,
   `cache_status: Literal["answer_hit", "retrieval_hit", "miss", "bypass"]`,
   `outcome: Literal["answered", "refused", "error"]` (mặc định `"error"` — luồng bị huỷ
   giữa chừng không được ghi nhầm là đã trả lời), `error_code: str | None`,
@@ -250,7 +250,7 @@ xoá nội dung injection. Chi tiết ở `generation_spec.md` mục 16.
        async for event in generation.generate(standalone, chunks): yield event   # token*, citations, warning*, done
 5.   nếu luồng sạch (không error_code, không warnings, có citations hoặc là câu "không
      tìm thấy") -> answer_cache.set(...) ngay trước khi phát `done`
-6. trace được điền xuyên suốt qua `_record_event`; lớp API ghi chatlog trong `finally`.
+6. trace được điền xuyên suốt qua `_record_event`; lớp API cập nhật trace Langfuse + metrics trong `finally`.
 ```
 
 - `status(retrieval|generation)` chỉ phát khi thực sự chạy (cache hit không phát).
@@ -461,7 +461,7 @@ phase sau): **đường ngắn nhất, chỉ cần kết quả cuối**.
   `GenerationPipeline.generate(standalone, chunks)`, gom text/citations/warnings/usage và
   trả kèm `contexts` (chính các `RetrievedChunk` — RAGAS cần nội dung chunk, event thì
   chỉ có `chunk_id`). Có `history`: thêm bước condense (đo đường multi-turn).
-- **Bỏ qua** guardrail, cache, admission, single-flight, chatlog: đánh giá chất lượng
+- **Bỏ qua** guardrail, cache, admission, single-flight, trace Langfuse: đánh giá chất lượng
   retrieval + generation trên tập câu hỏi trong miền, không đo cache hay hạn mức.
 - Dùng **cùng** `retrieve` và `generate` với đường end-user → RAGAS đo đúng hàm người
   dùng nhận. Guardrail và condense có bộ đo riêng, không nằm trong RAGAS.
@@ -603,8 +603,8 @@ invalidate cache câu trả lời — khoá cache chỉ chứa `GenerationSettin
 | Chunk rỗng hoặc `is_low_relevance`         | `error(no_context)` + `done`                                    |
 | Lỗi retrieval/generation                   | Như `generation_spec.md` mục 9 (giữ nguyên event/code)          |
 
-Không log nội dung câu hỏi/câu trả lời ra log ứng dụng (stdout). Nội dung chỉ vào bảng
-`chatlog` có kiểm soát truy cập (`chatlog_spec.md`). Log gate độ liên quan (mục 8) chỉ
+Không log nội dung câu hỏi/câu trả lời ra log ứng dụng (stdout). Nội dung chỉ vào trace Langfuse
+self-host có kiểm soát truy cập (`observability_spec.md` mục 4.5). Log gate độ liên quan (mục 8) chỉ
 gồm `max_rerank_score`, ngưỡng, số chunk — không log nội dung câu hỏi.
 
 ## 15. Nghiệm thu thủ công — bộ ca mẫu

@@ -1,11 +1,12 @@
-# API — FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres
+# API — FastAPI (OpenAI-compatible) + OpenWebUI + Redis (+ Postgres cho OpenWebUI)
 
 ## 1. Mục tiêu & phạm vi
 
 Đưa lõi RAG (`conversation/` → `generation/` → `retrieval/`) thành **chatbot pháp luật
 phục vụ nhiều người dùng qua web**, theo hướng sát production nhưng gọn (dự án cá nhân,
 public). Đây là spec tổng: mô tả kiến trúc toàn hệ thống, lớp HTTP, triển khai và thứ tự
-implement 4 spec (`conversation/`, `cache/`, `chatlog/`, `api/`).
+implement 3 spec (`conversation/`, `cache/`, `api/`). Nhật ký từng lượt hỏi-đáp nằm ở
+Langfuse (`observability/observability_spec.md` mục 4.5), không còn package `chatlog/`.
 
 **Kiến trúc:**
 
@@ -13,7 +14,7 @@ implement 4 spec (`conversation/`, `cache/`, `chatlog/`, `api/`).
 Người dùng ─HTTPS─► Cloudflare Tunnel ─► OpenWebUI (UI, đăng nhập, lịch sử) ──┐
                                    │ Postgres (DB `openwebui`)      │ /v1/chat/completions
                                    ▼                                 ▼   (mạng nội bộ, Bearer key)
-                              [Postgres]◄── chatlog ──────  FastAPI `api/`
+                                                            FastAPI `api/` ──trace──► Langfuse
                                                                │ ChatOrchestrator (conversation/)
                               [Redis] ◄── cache, quota, rl ────┤   guardrail ‖ condense → cache
                                                                │   → admission → retrieve → generate
@@ -51,7 +52,7 @@ qua mạng nội bộ có xác thực.
 | `POST /v1/chat/completions`  | Body OpenAI: `model`, `messages`, `stream`, `stream_options`; các tham số khác (temperature…) **bị bỏ qua** |
 | `GET /v1/models`             | Trả đúng 1 model: `{"id": "legal-qa", "object": "model", "owned_by": "production-legal-qa-rag"}` |
 | `GET /healthz`               | Liveness: process sống → 200                                          |
-| `GET /readyz`                | Readiness: ping Redis + Postgres; lỗi → 503 (không ping Groq/Pinecone) |
+| `GET /readyz`                | Readiness: ping Redis; lỗi → 503 (không ping Groq/Pinecone) |
 
 Schema request/response là pydantic v2 (`api/schemas.py`). Response stream là
 `text/event-stream`: mỗi chunk `data: {chat.completion.chunk JSON}`; chunk đầu có
@@ -71,13 +72,13 @@ Lỗi **sau khi stream bắt đầu** đi qua nội dung câu trả lời (mục
 | Web framework   | `fastapi` + `uvicorn[standard]`                                  |
 | SSE             | `StreamingResponse` (`text/event-stream`), không thêm thư viện   |
 | Redis           | `redis` (asyncio) — rate limit, cache, quota                     |
-| Postgres        | `sqlalchemy[asyncio]` + `asyncpg` (chatlog)                      |
+| Trace lượt hỏi  | Langfuse (`observability/`, mục 4.5 của spec observability)      |
 | UI              | Open WebUI (image Docker, **ghim phiên bản**)                    |
 | Truy cập public | Cloudflare Tunnel (`cloudflared`): HTTPS do Cloudflare lo, không mở cổng |
 | Đóng gói        | Docker + docker compose, `uv` trong Dockerfile                   |
 
-Dependency mới (`pyproject.toml`): `fastapi`, `uvicorn[standard]`, `redis`,
-`sqlalchemy[asyncio]`, `asyncpg`, `alembic`. Kiểm tra lại bằng `pip-audit`.
+Dependency mới (`pyproject.toml`): `fastapi`, `uvicorn[standard]`, `redis`. Kiểm tra lại
+bằng `pip-audit`. (`api` không còn kết nối Postgres — Postgres chỉ phục vụ OpenWebUI.)
 
 ## 4. Xác thực & danh tính (`auth.py`)
 
@@ -131,17 +132,18 @@ suy nghĩ"), nên:
   nghiệm thu.
 - **Việc ẩn** `status` phụ thuộc OpenWebUI hỗ trợ `reasoning_content`; nếu không, bỏ `status`
   (mất "đang tra cứu…" nhưng không hỏng).
-- Client ngắt kết nối: Starlette huỷ generator; `finally` ghi `chatlog` với
-  `outcome="client_disconnected"`.
+- Client ngắt kết nối: Starlette huỷ generator; `finally` cập nhật trace Langfuse với
+  `outcome="client_disconnected"` (tag `outcome:client_disconnected`).
 
 ## 7. Workflow & lifecycle (`app.py`, `routes.py`)
 
 `create_app()` (dùng `uvicorn --factory`), khởi tạo **1 lần** trong `lifespan`, đóng khi tắt:
 
-1. `Settings` (mục 10), engine Postgres, `Redis`, `corpus_version`.
+1. `Settings` (mục 10), `Redis`, `corpus_version` (cùng `PROMPT_VERSION`/`model_name` gom vào
+   `RuntimeVersions`, gắn vào metadata mỗi trace).
 2. `InputGuardrail`, `AnswerGenerator`, `QueryCondenser`, `RetrievalPipeline`
    (`GenerationPipeline` gom guardrail + generator), `AnswerCache`/`RetrievalCache`/
-   `SingleFlight`, `AdmissionController`, `ChatLogRepository`, rồi `ChatOrchestrator`.
+   `SingleFlight`, `AdmissionController`, rồi `ChatOrchestrator`.
    Lưu vào `app.state`; route lấy qua dependency.
 
 Route `POST /v1/chat/completions`:
@@ -150,8 +152,8 @@ Route `POST /v1/chat/completions`:
 1. xác thực (mục 4) → RequestContext; rate limit phút (mục 5)
 2. messages hợp lệ? (build_window, InvalidConversationError -> 422)
 3. trace = TurnTrace(...); events = orchestrator.stream(messages, ctx, trace)
-4. stream=true : StreamingResponse(openai_format(events)) ; finally -> ghi chatlog
-   stream=false: gom events -> 1 JSON ; finally -> ghi chatlog
+4. stream=true : StreamingResponse(openai_format(events)) ; finally -> cập nhật trace Langfuse + metrics
+   stream=false: gom events -> 1 JSON ; finally -> cập nhật trace Langfuse + metrics
 ```
 
 **Audit event loop (đã đo 2026-09-21):** đoạn CPU đồng bộ chạy trong process FastAPI sẽ
@@ -222,7 +224,6 @@ Thêm (cùng pattern `pydantic-settings`):
   = 5`, `keepalive_seconds = 15`.
 - `RedisSettings`: `redis_url` (`REDIS_URL`) — dùng chung với `AdmissionSettings`
   (`conversation_spec.md` mục 10) và `cache/`; gộp thành 1 class nếu trùng.
-- `DatabaseSettings`: `database_url` (`CHATLOG_DATABASE_URL`) — `chatlog_spec.md` mục 6.
 
 Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (mọi biến mới).
 
@@ -234,7 +235,7 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
 | `auth.py`          | Xác thực Bearer, dựng `RequestContext` từ header                         |
 | `rate_limit.py`    | Rate limit theo phút (Redis, fail-open)                                  |
 | `openai_format.py` | `GenerationEvent` → chunk OpenAI; khối nguồn; keep-alive; gom cho non-stream |
-| `routes.py`        | Route chat/models/health; ghi chatlog trong `finally`                    |
+| `routes.py`        | Route chat/models/health; cập nhật trace Langfuse + metrics trong `finally` |
 | `app.py`           | `create_app`, `lifespan`, exception handler trả lỗi dạng OpenAI          |
 
 ## 12. Xử lý lỗi
@@ -244,7 +245,8 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
 | Sai/thiếu Bearer key                    | 401 (OpenAI error body)                                     |
 | `messages` không hợp lệ                 | 422                                                         |
 | Vượt rate limit theo phút               | 429 + `Retry-After`                                         |
-| Redis/Postgres chết                     | `/readyz` 503; chat vẫn chạy degrade (cache/quota/log bỏ qua) |
+| Redis chết                              | `/readyz` 503; chat vẫn chạy degrade (cache/quota bỏ qua)   |
+| Langfuse chết/không cấu hình            | Chat vẫn chạy; mất nhật ký lượt đó (observability_spec.md mục 4.5) |
 | Quota ngày / quá tải / lỗi LLM          | Nằm trong luồng stream (mục 6), HTTP 200                    |
 | Ngoại lệ không lường trước trong route  | Bắt ở `app.py`: 500 body OpenAI; stream đã bắt đầu thì phát nội dung lỗi chung rồi `[DONE]`; log kèm `request_id`, không log nội dung |
 
@@ -256,15 +258,15 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
 2. Hội thoại nhiều lượt: follow-up ngắn trả đúng chủ đề (điều kiện nghiệm thu của
    `conversation_spec.md` mục 13).
 3. Không có lời gọi phụ nào từ OpenWebUI vào `/v1/chat/completions` (tạo chat mới không
-   sinh request tiêu đề/tags): kiểm tra qua `chatlog`.
+   sinh request tiêu đề/tags): kiểm tra qua trace Langfuse (mỗi lượt hỏi đúng 1 trace).
 4. `curl` thẳng vào `api` từ ngoài mạng compose → không tới được; từ trong mạng thiếu key →
    401.
 5. Tải: ~20 người dùng đồng thời (script) → không có request nào treo, phần vượt hạn mức
    nhận thông báo rõ ràng; event loop không bị chặn (độ trễ `/healthz` vẫn thấp khi đang
    tải).
-6. Client đóng tab giữa chừng → không rò slot admission/khoá; `chatlog` ghi
-   `client_disconnected`.
-7. Tắt Redis rồi Postgres → chatbot vẫn trả lời, `/readyz` 503, log warning.
+6. Client đóng tab giữa chừng → không rò slot admission/khoá; trace Langfuse có
+   `outcome:client_disconnected`.
+7. Tắt Redis → chatbot vẫn trả lời, `/readyz` 503, log warning.
 
 ## 14. Thứ tự implement & điểm mở
 
@@ -276,7 +278,7 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
    `None`). Không làm `run_for_evaluation` (phase RAGAS sau). Nghiệm thu multi-turn ngay
    ở bước này qua script.
 3. `cache/` + `AdmissionController` (Redis). CLI test thủ công: `tools/cache.py`.
-4. `chatlog/` + Alembic. CLI test thủ công: `tools/chatlog.py`.
+4. (Đã bỏ) `chatlog/` + Alembic — gỡ 2026-09-29, thay bằng trace Langfuse.
 5. `api/` + `deploy/` + cấu hình OpenWebUI, nghiệm thu mục 13 (không có script `tools/`
    riêng cho 2 bước này — nghiệm thu qua `docker compose up` + OpenWebUI + `curl`, không
    phải gọi hàm Python trực tiếp như các bước trên).
@@ -290,11 +292,11 @@ Module `api/` không đọc `.env` trực tiếp. Cập nhật `.env.example` (m
    đổi chỗ host. Chấp nhận rủi ro tunnel/Studio sleep: khi reranker lỗi, retrieval degrade
    (xen kẽ các nhánh, `rerank_score=None`, `retrieval_spec.md`) nên chatbot vẫn trả lời
    nhưng chất lượng xếp hạng giảm. `/readyz` không ping reranker; cần theo dõi tỉ lệ
-   degrade qua `chatlog`.
+   degrade qua Langfuse (lọc metadata trace).
 4. Hạn mức Groq free (30 RPM, 1K RPD, 8K TPM, **200K TPD** mỗi model/org) chỉ đủ khoảng
    50–60 câu cache-miss/ngày cho generation; quota mặc định ở `AdmissionSettings`
    (user 5/ngày, toàn cục 50/ngày) suy ra từ đó, chỉnh sau khi có số liệu `usage` từ
-   `chatlog`; cần nhiều hơn thì nâng cấp gói Groq trả phí (không cần đổi code).
+   trace Langfuse; cần nhiều hơn thì nâng cấp gói Groq trả phí (không cần đổi code).
 
 ## 15. Rủi ro
 

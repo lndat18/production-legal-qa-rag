@@ -143,7 +143,7 @@ Ngoài package: `tools/cache.py` (Typer, chạy tay các case ở mục 10 trự
 3. Đổi `PROMPT_VERSION` hoặc chạy lại fit BM25 → cache cũ không được dùng.
 4. 20 request đồng thời cùng câu hỏi khi cache trống → đúng 1 lần gọi generation.
 5. Tắt Redis → chatbot vẫn trả lời (chậm hơn, không cache), log có warning.
-6. Ghi lại tỉ lệ trúng cache qua bảng `chatlog` (`cache_status`) để biết cache có đáng giá.
+6. Ghi lại tỉ lệ trúng cache qua trace Langfuse (metadata/tag `cache_status`, `cache:<y>`) hoặc metric `chat_turns_total` để biết cache có đáng giá.
 
 ## 11. Rủi ro / điểm mở
 

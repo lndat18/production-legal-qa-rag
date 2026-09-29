@@ -42,10 +42,10 @@ Hai công cụ, hai câu hỏi khác nhau, không chồng chéo:
 - Alerting (Alertmanager, ngưỡng cảnh báo) — chưa cần khi chưa có traffic ổn định.
 - Trace cho các bước offline/batch (`formatting/`, `chunking/`, `embedding/`,
   `evaluation/`) — chỉ trace đường online (1 lượt hỏi qua `conversation/`).
-- Đổi sang Langfuse Cloud — giữ self-host, cùng lý do đã chốt với `chatlog` (riêng tư, dữ
+- Đổi sang Langfuse Cloud — giữ self-host, cùng lý do đã chốt trước đây với `chatlog` (riêng tư, dữ
   liệu là câu hỏi/trả lời pháp lý có thể chứa tình huống cá nhân, không rời khỏi máy).
 
-**Tiêu chí quan trọng nhất:** cũng như `chatlog`, instrumentation **không bao giờ** làm
+**Tiêu chí quan trọng nhất:** như nhật ký `chatlog` trước đây, instrumentation **không bao giờ** làm
 chậm hay làm hỏng câu trả lời — thiếu/lỗi Langfuse hoặc Prometheus thì chatbot vẫn chạy
 bình thường, chỉ mất khả năng quan sát.
 
@@ -92,7 +92,10 @@ không set `LANGFUSE_*` → tự động tắt, không cần đổi gì thêm �
 
 ### 4.2 Hai loại observation
 
-- **`span(name, **kwargs)`**: bước không gọi LLM (cache lookup, container bao ngoài).
+- **`span(name, *, user_id=None, session_id=None, **kwargs)`**: bước không gọi LLM (cache
+  lookup, container bao ngoài). `user_id`/`session_id` chỉ dùng cho root span (mục 4.4):
+  `span` bọc `propagate_attributes(user_id=..., session_id=...)` của SDK để đặt chúng ở cấp
+  trace và lan xuống mọi observation con.
 - **`generation(name, *, model, **kwargs)`**: bước gọi LLM — Langfuse hiển thị
   riêng model/usage/cost cho loại này, cần cho đúng các bước dùng `conversation_spec.md`
   mục 12.1 (nhiều model/key khác nhau: `gpt-oss-120b` key 3/4, `gpt-oss-20b` key 1/2,
@@ -100,26 +103,33 @@ không set `LANGFUSE_*` → tự động tắt, không cần đổi gì thêm �
 
 ```python
 @contextmanager
-def span(name: str, **kwargs: Any) -> Iterator[Any]:
-    with get_langfuse_client().start_as_current_span(name=name, **kwargs) as s:
-        yield s
+def span(
+    name: str,
+    *,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    **kwargs: Any,
+) -> Iterator[Any]:
+    with get_langfuse_client().start_as_current_observation(
+        name=name, as_type="span", **kwargs
+    ) as s:
+        if user_id is None and session_id is None:
+            yield s
+            return
+        with propagate_attributes(user_id=user_id, session_id=session_id):
+            yield s
 
 
 @contextmanager
 def generation(name: str, *, model: str, **kwargs: Any) -> Iterator[Any]:
-    with get_langfuse_client().start_as_current_generation(
-        name=name, model=model, **kwargs
+    with get_langfuse_client().start_as_current_observation(
+        name=name, as_type="generation", model=model, **kwargs
     ) as g:
         yield g
-
-
-def current_trace_id() -> str | None:
-    """None nếu không có trace đang active (client disabled)."""
-    return get_langfuse_client().get_current_trace_id()
 ```
 
 `observability/` là package hạ tầng cross-cutting (giống logging) — **được phép import
-trực tiếp** từ bất kỳ module nào gọi LLM, không đi qua tầng điều phối như `chatlog/`/
+trực tiếp** từ bất kỳ module nào gọi LLM, không đi qua tầng điều phối như
 `cache/`. OTel context tự propagate qua `await`/`asyncio.gather` (context được copy khi
 tạo `Task`), nên span/generation tạo bên trong các module dưới đây tự lồng đúng dưới span
 cha đang active — không cần truyền tay đối tượng span qua tham số hàm.
@@ -158,34 +168,50 @@ mức riêng tư — mục 1 "Ngoài phạm vi").
 
 ### 4.4 Root trace (`api/routes.py`)
 
-Root span bọc quanh đúng đoạn stream 1 lượt hỏi (`api_spec.md` mục 7/12):
+Root span bọc quanh đúng đoạn stream 1 lượt hỏi (`api_spec.md` mục 7/12), trong
+`stream_chat_turn` (`api/routes.py`):
 
 ```python
 with tracing.span(
     "chat_turn",
-    input=window.query,
-    metadata={"request_id": ctx.request_id},
-    user_id=ctx.user_id,
-    session_id=ctx.chat_id,
-):
-    async for event in orchestrator.stream(messages, ctx, trace):
-        yield event
-    # cập nhật output/metadata cuối cùng (mục 4.5) trước khi span đóng, dùng `trace` đã điền đủ
+    input=root_query,
+    metadata={"request_id": context.request_id},
+    user_id=context.user_id,
+    session_id=context.chat_id,
+) as root_span:
+    try:
+        async for event in orchestrator.stream(messages, context, trace):
+            yield event
+    except asyncio.CancelledError:
+        trace.outcome = "client_disconnected"
+        raise
+    finally:
+        update_turn_trace(root_span, trace, request_id=..., versions=...)  # mục 4.5
+# finally ngoài cùng: metrics.record_turn(trace)
 ```
 
 - `user_id` / `session_id` (= `chat_id` của OpenWebUI) đặt ở cấp trace để Langfuse UI lọc
-  theo người dùng và gom các lượt cùng cuộc hội thoại (dùng thuộc tính chuẩn của Langfuse,
-  không phải metadata tự chế). `chat_id`/`user_id` thiếu thì bỏ trống, không bịa giá trị.
-- Trường `TurnTrace.langfuse_trace_id` và `tracing.current_trace_id()` **không còn cần** (không
-  còn bảng nào để đối chiếu) — xoá nếu không còn nơi dùng.
+  theo người dùng và gom các lượt cùng cuộc hội thoại (dùng thuộc tính chuẩn của Langfuse
+  qua `langfuse.propagate_attributes`, không phải metadata tự chế). `chat_id`/`user_id`
+  thiếu thì bỏ trống, không bịa giá trị.
+- `TurnTrace.langfuse_trace_id` và `tracing.current_trace_id()` đã **xoá** (không còn bảng
+  nào để đối chiếu).
 - Lifespan (`api/app.py`) gọi `get_langfuse_client().flush()` lúc shutdown (chặn tối đa vài
   giây) để không mất trace của các lượt hỏi cuối cùng trước khi container dừng.
 
 ### 4.5 Gỡ `chatlog/`: trace thay bảng `chat_turns` (chốt 2026-09-29)
 
-> **Trạng thái: đã chốt thiết kế, CHƯA implement** — làm ở lượt `/develop-cycle` kế tiếp. Trước
-> đó code vẫn còn `chatlog/` và mục 4.4 (mã minh hoạ root span) mô tả trạng thái đích, không phải
-> code hiện tại.
+> **Trạng thái: đã implement (2026-09-29)** — `chatlog/`, `alembic/`, CLI và dependency liên
+> quan đã gỡ; `observability/turn_trace.py::update_turn_trace` gắn output/metadata/tags cuối
+> lượt lên root span. Chi tiết SDK v4 (đã kiểm tra trên bản cài 4.15.x):
+> `user_id`/`session_id` đặt bằng `propagate_attributes` (bọc trong `tracing.span`); `output`
+> và metadata là `.update(output=..., metadata=...)` trên root observation (dict được SDK
+> flatten thành `langfuse.observation.metadata.<key>`, list/dict lồng nhau serialize JSON);
+> `tags` chỉ biết cuối lượt nên đặt bằng `propagate_attributes(tags=[...])` ngay lúc root span
+> còn là span active (SDK ghi tag lên span hiện tại). `set_trace_io` bị SDK đánh dấu
+> deprecated nên không dùng — input/output của observation gốc đã là input/output của trace.
+> `prompt_version`/`corpus_version`/`model_name` do `RuntimeVersions` (`turn_trace.py`) giữ,
+> tạo 1 lần ở lifespan, lưu `app.state.runtime_versions`.
 
 Lý do: chỉ giữ 1 nơi lưu nhật ký (Langfuse), tránh 2 nguồn trùng nội dung; dữ liệu hỏi-đáp
 thật để chấm RAGAS phase 2 lấy từ Langfuse (API/export) thay vì query SQL `chat_turns`.
@@ -208,11 +234,12 @@ thật để chấm RAGAS phase 2 lấy từ Langfuse (API/export) thay vì quer
 
 Đặt `tags` trên trace (`outcome:<x>`, `cache:<y>`) để lọc nhanh trên UI Langfuse.
 
-**Gỡ khỏi repo (developer làm, tester cập nhật test):**
+**Đã gỡ khỏi repo (developer làm, tester cập nhật test):**
 
 - Package `src/production_legal_qa_rag/chatlog/` (models, tables, repository, `chatlog_spec.md`).
 - `ChatLogTaskManager` + `ChatLogRepository` protocol trong `api/routes.py`; engine/repo trong
   lifespan `api/app.py` (giữ `flush()` Langfuse); `metrics.record_turn` giữ, gọi ở chỗ cũ.
+  `GET /readyz` chỉ còn ping Redis (bỏ ping Postgres vì `api` không còn engine DB).
 - `alembic/` toàn bộ (thư mục `alembic/`, cả `0001`, `0002`) và `alembic.ini` nếu có; dependency
   `alembic`, `sqlalchemy[asyncio]`, `asyncpg` trong `pyproject.toml` (+ `uv lock`).
 - `tools/chatlog.py`, `tools/purge_chatlog.py`; biến `CHATLOG_DATABASE_URL`, `CHATLOG_RETENTION_DAYS`
@@ -224,10 +251,11 @@ thật để chấm RAGAS phase 2 lấy từ Langfuse (API/export) thay vì quer
 - Test `tests/test_chatlog.py`; các test khác phụ thuộc chatlog (`test_api_routes.py`,
   `test_deploy_compose.py`, `test_deploy_migration.py`, `test_observability_metrics.py`) sửa
   hoặc xoá phần liên quan chatlog.
-- Doc: `api_spec.md`, `conversation_spec.md`, `cache_spec.md`, `evaluation_spec.md`,
-  `deploy_spec.md`, `README.md`, `CLAUDE.md` (bảng package, roadmap: RAGAS lấy mẫu từ Langfuse),
-  `docs/online_flow.md` (bỏ nhánh "Ghi chatlog Postgres", thay bằng "Gửi trace Langfuse" — và
-  sửa luôn dòng "quota ngày" không tồn tại trong code).
+- Doc: `api_spec.md`, `conversation_spec.md`, `cache_spec.md`, `deploy_spec.md`, `README.md`
+  đã sửa. **Còn lại người dùng tự cập nhật** (file đang có thay đổi chưa commit, ngoài lượt
+  develop này): `evaluation_spec.md`, `CLAUDE.md` (bảng package, roadmap: RAGAS lấy mẫu từ
+  Langfuse), `docs/online_flow.md` (bỏ nhánh "Ghi chatlog Postgres", thay bằng "Gửi trace
+  Langfuse" — và sửa luôn dòng "quota ngày" không tồn tại trong code).
 
 **Ràng buộc còn nguyên:** ghi trace không bao giờ chặn/làm hỏng câu trả lời (mục 1). Khác
 chatlog: Langfuse không chạy thì **mất** nhật ký lượt đó (không có hàng đợi bền) — chấp nhận
@@ -241,8 +269,8 @@ không phải nơi debug 1 lượt hỏi cụ thể:
 
 1. **HTTP mặc định** của `prometheus-fastapi-instrumentator` (`http_requests_total`,
    `http_request_duration_seconds`, …) — instrument nguyên `api` app, không cấu hình thêm.
-2. **Custom, mức lượt hỏi**, nguồn dữ liệu là `TurnTrace` đã điền đầy đủ (đúng điểm chatlog
-   đã ghi — không thêm import mới vào `conversation/`/`retrieval/`):
+2. **Custom, mức lượt hỏi**, nguồn dữ liệu là `TurnTrace` đã điền đầy đủ (cùng điểm cuối lượt
+   với việc cập nhật trace — không thêm import mới vào `conversation/`/`retrieval/`):
 
 ```python
 from prometheus_client import Counter, Histogram
@@ -265,7 +293,7 @@ TIME_TO_FIRST_TOKEN_SECONDS = Histogram(
 
 def record_turn(trace: TurnTrace) -> None:
     """Bọc try/except ngay trong hàm — lỗi ghi metric không bao giờ lan ra
-    ngoài (cùng tinh thần `ChatLogTaskManager.schedule`, chỉ log warning)."""
+    ngoài (cùng tinh thần `update_turn_trace`, chỉ log warning)."""
     try:
         CHAT_TURNS_TOTAL.labels(
             outcome=trace.outcome, cache_status=trace.cache_status
@@ -347,14 +375,15 @@ observe (Langfuse/Prometheus/Grafana) là compose riêng ở `dev/observability/
 
 | Module | Trách nhiệm |
 | --- | --- |
-| `tracing.py` | `get_langfuse_client`, `span`, `generation`, `current_trace_id` |
+| `tracing.py` | `get_langfuse_client`, `span` (+ `user_id`/`session_id`), `generation` |
+| `turn_trace.py` | `RuntimeVersions`, `update_turn_trace` (output/metadata/tags cuối lượt, mục 4.5) |
 | `metrics.py` | `CHAT_TURNS_TOTAL`, `TURN_LATENCY_SECONDS`, `TIME_TO_FIRST_TOKEN_SECONDS`, `record_turn`, `instrument_app` |
 
 Nơi khác trong repo được sửa (không phải package mới, liệt kê để triển khai):
 
 | File | Thay đổi |
 | --- | --- |
-| `conversation/models.py` | Bỏ `TurnTrace.langfuse_trace_id` (mục 4.4); docstring `TurnTrace` không còn nhắc chatlog |
+| `conversation/models.py` | Đã bỏ `TurnTrace.langfuse_trace_id` (mục 4.4); docstring `TurnTrace` không còn nhắc chatlog |
 | `conversation/orchestrator.py` | Bọc `cache_lookup`/`admission`/`retrieve`/`generate` bằng `tracing.span` |
 | `generation/guardrail.py` | Bọc lời gọi LLM trong `check_input` bằng `tracing.generation("guardrail", ...)` |
 | `conversation/condenser.py` | Bọc lời gọi LLM trong `condense` bằng `tracing.generation("condense", ...)` |
