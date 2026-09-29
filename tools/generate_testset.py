@@ -144,11 +144,9 @@ def finalize(
 
 
 if __name__ == "__main__":
-    '''
+    """
     uv sync --group eval --no-group production
     uv run --group eval --no-group production tools/generate_testset.py generate --dry-run
     uv run --group eval --no-group production tools/generate_testset.py generate
-    '''
+    """
     app()
-
-
