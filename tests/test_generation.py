@@ -1092,8 +1092,12 @@ def test_answer_generator_inserts_space_before_citation_stuck_to_previous_word()
 
 async def _collect_next_clients(
     generator: AnswerGenerator, count: int
-) -> list[ChatOpenAI]:
-    """Gọi ``_next_client()`` liên tiếp trong cùng 1 event loop, giữ nguyên cache."""
+) -> list[tuple[ChatOpenAI, str]]:
+    """Gọi ``_next_client()`` liên tiếp trong cùng 1 event loop, giữ nguyên cache.
+
+    ``_next_client()`` trả ``(client, api_key)`` (observability_spec.md mục 4.3):
+    caller gắn ``key_bucket`` từ ``api_key`` đã dùng vào metadata Langfuse.
+    """
     return [generator._next_client() for _ in range(count)]
 
 
@@ -1102,7 +1106,7 @@ def test_answer_generator_round_robins_between_two_keys_when_key_4_present() -> 
     hết vào 1 tài khoản. Khi có ``GROQ_API_KEY_4`` (round_robin_api_key), mỗi lượt
     draft/repair phải xoay đều sang tài khoản khác — lượt 1 và lượt 3 (xoay hết 1
     vòng) phải quay lại đúng client cũ (cache theo LoopBoundClient), lượt 2 phải khác
-    lượt 1.
+    lượt 1. Api key trả về phải khớp đúng client tương ứng (dùng gắn key_bucket).
     """
     settings = SimpleNamespace(
         api_key="key-a",
@@ -1115,13 +1119,17 @@ def test_answer_generator_round_robins_between_two_keys_when_key_4_present() -> 
 
     first, second, third = asyncio.run(_collect_next_clients(generator, 3))
 
-    assert first is not second
-    assert first is third
+    assert first[0] is not second[0]
+    assert first[0] is third[0]
+    assert first[1] == "key-a"
+    assert second[1] == "key-b"
+    assert third[1] == "key-a"
 
 
 def test_answer_generator_uses_single_client_when_no_round_robin_key() -> None:
     """Không có GROQ_API_KEY_4 thì hành vi giữ nguyên như trước — luôn 1 client duy
-    nhất cho mọi lượt draft/repair, không round-robin.
+    nhất cho mọi lượt draft/repair, không round-robin. Api key trả về luôn là key
+    duy nhất đã cấu hình.
     """
     settings = SimpleNamespace(
         api_key="key-a",
@@ -1134,7 +1142,9 @@ def test_answer_generator_uses_single_client_when_no_round_robin_key() -> None:
 
     first, second = asyncio.run(_collect_next_clients(generator, 2))
 
-    assert first is second
+    assert first[0] is second[0]
+    assert first[1] == "key-a"
+    assert second[1] == "key-a"
 
 
 def test_evidence_judge_uses_structured_json_and_rejects_invalid_response() -> None:

@@ -15,8 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Text
 
+import production_legal_qa_rag.api.routes as api_routes
 from production_legal_qa_rag.api.routes import ChatLogTaskManager, stream_chat_turn
 from production_legal_qa_rag.cache.models import CacheStatus
 from production_legal_qa_rag.chatlog import (
@@ -114,6 +115,11 @@ class TestTurnRecord:
         with pytest.raises(ValidationError):
             ChatLogMetadata(**values)
 
+    def test_langfuse_trace_id_optional_defaults_to_none(self) -> None:
+        """observability_spec.md mục 4.4: NULL khi Langfuse disabled (thiếu key)."""
+        assert _record().langfuse_trace_id is None
+        assert _record(langfuse_trace_id="trace-abc").langfuse_trace_id == "trace-abc"
+
 
 class TestTraceMapping:
     """Validate conversion from the conversation trace."""
@@ -141,6 +147,20 @@ class TestTraceMapping:
         """A caller cannot accidentally create rows with empty version values."""
         with pytest.raises(TypeError):
             from_trace(_trace(), _context())  # type: ignore[call-arg]
+
+    def test_langfuse_trace_id_is_copied_when_present(self) -> None:
+        """observability_spec.md mục 4.4: `chat_turns.langfuse_trace_id` phải khớp
+        đúng trace ID mà `tracing.current_trace_id()` đã gán vào `TurnTrace`."""
+        trace = _trace().model_copy(update={"langfuse_trace_id": "trace-xyz"})
+
+        turn = from_trace(trace, _context(), metadata=_METADATA)
+
+        assert turn.langfuse_trace_id == "trace-xyz"
+
+    def test_langfuse_trace_id_is_none_when_langfuse_disabled(self) -> None:
+        turn = from_trace(_trace(), _context(), metadata=_METADATA)
+
+        assert turn.langfuse_trace_id is None
 
 
 class TestRepositoryAndSchema:
@@ -181,6 +201,7 @@ class TestRepositoryAndSchema:
             "prompt_version",
             "corpus_version",
             "model_name",
+            "langfuse_trace_id",
         } <= set(columns)
         assert columns["id"].primary_key
         assert columns["chat_id"].nullable
@@ -188,6 +209,9 @@ class TestRepositoryAndSchema:
         assert not columns["raw_query"].nullable
         assert isinstance(columns["created_at"].type, DateTime)
         assert columns["created_at"].type.timezone is True
+        # observability_spec.md mục 4.4: NULL khi Langfuse disabled (thiếu key).
+        assert columns["langfuse_trace_id"].nullable
+        assert isinstance(columns["langfuse_trace_id"].type, Text)
         assert {index.name for index in metadata.tables["chat_turns"].indexes} == {
             "ix_chat_turns_created_at",
             "ix_chat_turns_user_id",
@@ -213,6 +237,49 @@ class TestRepositoryAndSchema:
         )
         assert isinstance(created_at.type, DateTime)
         assert created_at.type.timezone is True
+
+    def _load_migration_0002(self) -> object:
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "alembic/versions/0002_add_langfuse_trace_id.py"
+        )
+        module_spec = importlib.util.spec_from_file_location(
+            "langfuse_trace_id_migration", path
+        )
+        assert module_spec is not None and module_spec.loader is not None
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        return module
+
+    def test_migration_0002_chains_after_0001(self) -> None:
+        """Không đứt gãy lịch sử alembic: revision mới phải nối đúng head cũ."""
+        module = self._load_migration_0002()
+
+        assert module.revision == "0002_add_langfuse_trace_id"
+        assert module.down_revision == "0001_create_chat_turns"
+
+    def test_migration_0002_adds_nullable_text_column(self) -> None:
+        """Cột mới phải nullable (NULL khi Langfuse disabled, mục 4.4) và kiểu Text."""
+        module = self._load_migration_0002()
+        module.op = MagicMock()
+
+        module.upgrade()
+
+        table_name, column = module.op.add_column.call_args.args
+        assert table_name == "chat_turns"
+        assert column.name == "langfuse_trace_id"
+        assert column.nullable is True
+        assert isinstance(column.type, Text)
+
+    def test_migration_0002_downgrade_drops_column(self) -> None:
+        module = self._load_migration_0002()
+        module.op = MagicMock()
+
+        module.downgrade()
+
+        module.op.drop_column.assert_called_once_with(
+            "chat_turns", "langfuse_trace_id"
+        )
 
 
 class _Repository:
@@ -460,3 +527,159 @@ class TestApiLifecycle:
         asyncio.run(run_lifespan())
         engine.dispose.assert_awaited_once()
         fake_redis.aclose.assert_awaited_once()
+
+
+class TestObservabilityWiring:
+    """observability_spec.md mục 4.4: root span `chat_turn` gắn `langfuse_trace_id`
+    vào `TurnTrace`/chatlog, `metrics.record_turn` chạy cùng chỗ ghi chatlog."""
+
+    def test_stream_chat_turn_copies_current_trace_id_into_recorded_turn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`trace.langfuse_trace_id` phải lấy đúng từ `tracing.current_trace_id()`
+        ngay sau khi mở root span — không tự bịa giá trị khác."""
+        monkeypatch.setattr(
+            api_routes.tracing, "current_trace_id", lambda: "fixed-trace-id"
+        )
+        repository = _Repository()
+        manager = ChatLogTaskManager(repository, _METADATA)
+
+        async def consume() -> None:
+            events = stream_chat_turn(
+                _Orchestrator("answered", "miss"),
+                [ChatMessage(role="user", content="q")],
+                _context(),
+                manager,
+            )
+            async for _ in events:
+                pass
+            await asyncio.sleep(0)
+            await manager.drain()
+
+        asyncio.run(consume())
+
+        assert repository.turns[0].langfuse_trace_id == "fixed-trace-id"
+
+    def test_stream_chat_turn_langfuse_trace_id_none_when_disabled(self) -> None:
+        """Không monkeypatch gì (Langfuse disabled mặc định, thiếu key) -> NULL."""
+        repository = _Repository()
+        manager = ChatLogTaskManager(repository, _METADATA)
+
+        async def consume() -> None:
+            events = stream_chat_turn(
+                _Orchestrator("answered", "miss"),
+                [ChatMessage(role="user", content="q")],
+                _context(),
+                manager,
+            )
+            async for _ in events:
+                pass
+            await asyncio.sleep(0)
+            await manager.drain()
+
+        asyncio.run(consume())
+
+        assert repository.turns[0].langfuse_trace_id is None
+
+    def test_stream_chat_turn_calls_record_turn_exactly_once_with_final_trace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`metrics.record_turn` phải chạy đúng 1 lần/lượt, cùng `trace` đã điền
+        đầy đủ dùng để ghi chatlog — không tính toán lại từ nguồn khác."""
+        recorded: list[TurnTrace] = []
+        monkeypatch.setattr(api_routes.metrics, "record_turn", recorded.append)
+        repository = _Repository()
+        manager = ChatLogTaskManager(repository, _METADATA)
+
+        async def consume() -> None:
+            events = stream_chat_turn(
+                _Orchestrator("answered", "miss"),
+                [ChatMessage(role="user", content="q")],
+                _context(),
+                manager,
+            )
+            async for _ in events:
+                pass
+
+        asyncio.run(consume())
+
+        assert len(recorded) == 1
+        assert recorded[0].outcome == "answered"
+        assert recorded[0].cache_status == "miss"
+
+    def test_stream_chat_turn_calls_record_turn_even_on_cancellation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Lượt bị huỷ giữa chừng vẫn phải cập nhật metric (finally, giống chatlog)."""
+        recorded: list[TurnTrace] = []
+        monkeypatch.setattr(api_routes.metrics, "record_turn", recorded.append)
+        repository = _Repository()
+        manager = ChatLogTaskManager(repository, _METADATA)
+
+        class WaitingOrchestrator:
+            def stream(
+                self,
+                _: list[ChatMessage],
+                __: RequestContext,
+                trace: TurnTrace,
+            ):
+                async def events():
+                    yield DoneEvent()
+                    await asyncio.Event().wait()
+
+                return events()
+
+        async def cancel() -> None:
+            events = stream_chat_turn(
+                WaitingOrchestrator(),
+                [ChatMessage(role="user", content="q")],
+                _context(),
+                manager,
+            )
+            await events.__anext__()
+            with pytest.raises(asyncio.CancelledError):
+                await events.athrow(asyncio.CancelledError)
+
+        asyncio.run(cancel())
+
+        assert len(recorded) == 1
+        assert recorded[0].outcome == "client_disconnected"
+
+
+class TestLangfuseFlushOnShutdown:
+    """observability_spec.md mục 4.4: `_flush_langfuse` không bao giờ chặn shutdown
+    quá timeout hay để lộ exception, kể cả khi Langfuse không phản hồi."""
+
+    def test_flush_langfuse_returns_promptly_when_client_hangs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import production_legal_qa_rag.api.app as app_module
+
+        class _SlowClient:
+            def flush(self) -> None:
+                time.sleep(0.3)
+
+        monkeypatch.setattr(app_module, "get_langfuse_client", lambda: _SlowClient())
+        monkeypatch.setattr(app_module, "_LANGFUSE_FLUSH_TIMEOUT_SECONDS", 0.02)
+
+        started = time.monotonic()
+        asyncio.run(app_module._flush_langfuse())
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 1.0
+
+    def test_flush_langfuse_swallows_exception_without_raising(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import production_legal_qa_rag.api.app as app_module
+
+        class _BrokenClient:
+            def flush(self) -> None:
+                raise RuntimeError("Langfuse không phản hồi")
+
+        monkeypatch.setattr(app_module, "get_langfuse_client", lambda: _BrokenClient())
+        caplog.set_level(logging.WARNING, logger="production_legal_qa_rag.api.app")
+
+        asyncio.run(app_module._flush_langfuse())  # không được raise
+
+        assert "flush Langfuse" in caplog.text
