@@ -550,9 +550,8 @@ def test_reasoning_effort_chi_duoc_truyen_trong_context_va_go_ra_sau_khi_thoat()
 def test_reasoning_effort_duoc_go_ke_ca_khi_khoi_with_nem_loi():
     rig = _Rig(1)
 
-    with pytest.raises(RuntimeError):
-        with rig.router.reasoning_effort("low"):
-            raise RuntimeError("lỗi giữa chừng")
+    with pytest.raises(RuntimeError), rig.router.reasoning_effort("low"):
+        raise RuntimeError("lỗi giữa chừng")
 
     assert rig.router.current_reasoning_effort is None
 
@@ -561,9 +560,8 @@ def test_reasoning_effort_duoc_go_ke_ca_khi_luot_goi_ben_trong_bi_loi_tat_dinh()
     rig = _Rig(1)
     rig.behaviours = [_raising(_bad_request)]
 
-    with pytest.raises(BadRequestError):
-        with rig.router.reasoning_effort("low"):
-            rig.router._generate(messages=[])
+    with pytest.raises(BadRequestError), rig.router.reasoning_effort("low"):
+        rig.router._generate(messages=[])
 
     assert rig.kwargs[0][0]["reasoning_effort"] == "low"  # đã gửi trước khi lỗi
     assert rig.router.current_reasoning_effort is None
