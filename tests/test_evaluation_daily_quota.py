@@ -128,7 +128,9 @@ def test_breaker_chan_ca_duong_async_ma_ragas_dung_khong_gui_them_request():
 
 def test_429_theo_phut_khong_kich_hoat_breaker_va_luot_sau_thanh_cong_khi_het_gioi_han():
     scripted = _ScriptedClients([_rate_limit(_PER_MINUTE)] * 3)
-    router = scripted.router()
+    waits: list[float] = []
+    # Cả 3 tài khoản cùng cooldown phút thì router chờ (mục 3.2 A): ghi lại thay vì ngủ thật.
+    router = GroqRoundRobinChatModel(clients=scripted.clients, sleep=waits.append)
 
     with pytest.raises(RateLimitError) as first:
         router._generate(messages=[])
@@ -137,6 +139,9 @@ def test_429_theo_phut_khong_kich_hoat_breaker_va_luot_sau_thanh_cong_khi_het_gi
 
     assert not isinstance(first.value, DailyQuotaExhaustedError)
     assert result.generations[0].text == "ok"
+    # Thông điệp không có `retry-after` nên cooldown mặc định 15 giây; chờ phần còn lại của nó.
+    assert len(waits) == 1
+    assert 0 < waits[0] <= groq_round_robin._MINUTE_COOLDOWN_DEFAULT
 
 
 def test_chi_can_mot_tai_khoan_bao_theo_phut_trong_vong_thi_khong_phai_het_quota_ngay():
