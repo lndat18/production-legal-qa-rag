@@ -75,8 +75,7 @@ def test_record_turn_khong_lam_lan_loi_ra_ngoai_khi_metric_that_bai(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """observability_spec.md mục 1: lỗi Prometheus không bao giờ ảnh hưởng
-    response path — tương tự `test_failed_background_record_warning_has_no_turn_content`
-    (chatlog) nhưng cho `record_turn`."""
+    response path; log warning không được chứa nội dung câu hỏi/câu trả lời."""
     raw_query = "PRIVATE_QUERY_DO_NOT_LOG"
     answer_text = "PRIVATE_ANSWER_DO_NOT_LOG"
 

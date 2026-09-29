@@ -189,7 +189,10 @@ def test_docker_compose_restart_policy_va_logging(tmp_path: Path) -> None:
 
 @requires_docker_compose
 def test_docker_compose_healthcheck_va_depends_on_chain(tmp_path: Path) -> None:
-    """Chuỗi phụ thuộc `postgres,redis -> api -> open-webui -> cloudflared` (mục 4)."""
+    """Chuỗi phụ thuộc `redis -> api -> open-webui -> cloudflared` (mục 4).
+
+    `api` không còn dùng Postgres (chatlog đã gỡ) nên không phụ thuộc `postgres`.
+    """
     config = _resolve_compose_config(tmp_path)
     services = config["services"]
 
@@ -197,7 +200,7 @@ def test_docker_compose_healthcheck_va_depends_on_chain(tmp_path: Path) -> None:
         assert services[name].get("healthcheck"), f"'{name}' thiếu healthcheck"
 
     api_depends = services["api"]["depends_on"]
-    assert api_depends["postgres"]["condition"] == "service_healthy"
+    assert "postgres" not in api_depends
     assert api_depends["redis"]["condition"] == "service_healthy"
 
     webui_depends = services["open-webui"]["depends_on"]
@@ -229,7 +232,6 @@ def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
         "CHATBOT_API_KEY",
         "REDIS_PASSWORD",
         "REDIS_URL",
-        "CHATLOG_DATABASE_URL",
         "DEPLOY_POSTGRES_USER",
         "DEPLOY_POSTGRES_PASSWORD",
         "WEBUI_SECRET_KEY",
@@ -261,27 +263,27 @@ def test_env_example_khong_de_lo_gia_tri_bi_mat_mau() -> None:
         )
 
 
-def test_env_example_redis_va_chatlog_url_tro_localhost_cho_dev_tren_host() -> None:
-    """`REDIS_URL`/`CHATLOG_DATABASE_URL` trong `.env.example` là giá trị dev trên host.
+def test_env_example_redis_url_tro_localhost_cho_dev_tren_host() -> None:
+    """`REDIS_URL` trong `.env.example` là giá trị dev trên host.
 
-    Container `api` production KHÔNG dùng 2 giá trị này: `docker-compose.yml` ghi đè bằng URL
-    dựng từ `REDIS_PASSWORD`/`DEPLOY_POSTGRES_*` (`environment:` thắng `env_file:`, mục 7).
+    Container `api` production KHÔNG dùng giá trị này: `docker-compose.yml` ghi đè bằng URL
+    dựng từ `REDIS_PASSWORD` (`environment:` thắng `env_file:`, mục 7).
     """
     env_vars = _parse_env_file(REPO_ROOT / ".env.example")
     assert env_vars["REDIS_URL"] == "redis://localhost:6379/0"
-    assert env_vars["CHATLOG_DATABASE_URL"].startswith("postgresql+asyncpg://")
-    assert "localhost" in env_vars["CHATLOG_DATABASE_URL"]
+    assert "CHATLOG_DATABASE_URL" not in env_vars
+    assert "CHATLOG_RETENTION_DAYS" not in env_vars
 
 
 @requires_docker_compose
-def test_docker_compose_ghi_de_url_redis_postgres_cho_api_production(
+def test_docker_compose_ghi_de_url_redis_cho_api_production(
     tmp_path: Path,
 ) -> None:
-    """`environment:` của `api` phải ghi đè `REDIS_URL`/`CHATLOG_DATABASE_URL` từ `.env`."""
+    """`environment:` của `api` phải ghi đè `REDIS_URL` từ `.env`; không còn URL Postgres."""
     config = _resolve_compose_config(tmp_path)
     env = config["services"]["api"]["environment"]
     assert env["REDIS_URL"].endswith("@redis:6379/0")
-    assert env["CHATLOG_DATABASE_URL"].endswith("@postgres/chatbot")
+    assert "CHATLOG_DATABASE_URL" not in env
 
 
 @requires_docker_compose
@@ -341,19 +343,17 @@ def test_dockerfile_mac_dinh_torch_cpu() -> None:
     assert "ARG TORCH_VARIANT=cpu" in content
 
 
-def test_dockerfile_chay_migration_truoc_khi_serve() -> None:
-    """CMD phải chạy `alembic upgrade head` trước rồi mới `uvicorn --factory` (mục 6)."""
+def test_dockerfile_cmd_chay_uvicorn_factory_khong_con_migration() -> None:
+    """CMD chạy `uvicorn --factory`; không còn `alembic upgrade head` (chatlog đã gỡ, mục 6)."""
     content = (DEPLOY_DIR / "Dockerfile").read_text(encoding="utf-8")
     cmd_lines = _lines_starting_with(content, "CMD")
     assert cmd_lines, "Dockerfile thiếu chỉ thị CMD"
     cmd_line = cmd_lines[-1]
 
-    assert "alembic upgrade head" in cmd_line
+    assert "alembic" not in content
     assert "uvicorn" in cmd_line
     assert "--factory" in cmd_line
     assert "production_legal_qa_rag.api.app:create_app" in cmd_line
-    # Migration phải chạy trước uvicorn (thứ tự trong chuỗi lệnh `&&`).
-    assert cmd_line.index("alembic upgrade head") < cmd_line.index("uvicorn")
 
 
 def test_dockerfile_khong_bake_data_bm25_vao_image() -> None:
@@ -394,12 +394,12 @@ def test_backup_script_cu_phap_shell_hop_le() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_backup_script_giu_dung_7_ban_va_dump_ca_2_database() -> None:
-    """Backup phải dump cả `openwebui` và `chatbot`, giữ 7 bản gần nhất (mục 8)."""
+def test_backup_script_giu_dung_7_ban_va_chi_dump_database_openwebui() -> None:
+    """Backup chỉ dump `openwebui` (DB `chatbot` đã gỡ), giữ 7 bản gần nhất (mục 8)."""
     content = (DEPLOY_DIR / "scripts" / "backup.sh").read_text(encoding="utf-8")
     assert "KEEP=7" in content
     assert "openwebui" in content
-    assert "chatbot" in content
+    assert "chatbot" not in content
 
 
 def test_initdb_script_cu_phap_shell_hop_le() -> None:
@@ -415,9 +415,9 @@ def test_initdb_script_cu_phap_shell_hop_le() -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_initdb_script_tao_ca_2_database() -> None:
-    """Phải tạo cả DB `openwebui` (OpenWebUI) và `chatbot` (chatlog) — mục 4."""
+def test_initdb_script_chi_tao_database_openwebui() -> None:
+    """Chỉ tạo DB `openwebui` (OpenWebUI); DB `chatbot` (chatlog) đã gỡ — mục 4."""
     script = DEPLOY_DIR / "initdb" / "001_create_databases.sh"
     content = script.read_text(encoding="utf-8")
     assert "CREATE DATABASE openwebui" in content
-    assert "CREATE DATABASE chatbot" in content
+    assert "CREATE DATABASE chatbot" not in content

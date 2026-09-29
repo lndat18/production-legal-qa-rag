@@ -18,18 +18,15 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
-from production_legal_qa_rag.api.routes import ChatLogTaskManager, router
+from production_legal_qa_rag.api.routes import router
 from production_legal_qa_rag.api.schemas import ApiError, ErrorDetail, ErrorResponse
 from production_legal_qa_rag.cache.keys import compute_corpus_version
 from production_legal_qa_rag.cache.replay import replay
 from production_legal_qa_rag.cache.singleflight import SingleFlight
 from production_legal_qa_rag.cache.store import AnswerCache, RetrievalCache
-from production_legal_qa_rag.chatlog.models import ChatLogMetadata
-from production_legal_qa_rag.chatlog.repository import ChatLogRepository, create_engine
 from production_legal_qa_rag.config import (
     ApiSettings,
     CacheSettings,
-    DatabaseSettings,
     GenerationSettings,
     RedisSettings,
 )
@@ -38,6 +35,7 @@ from production_legal_qa_rag.conversation.orchestrator import ChatOrchestrator
 from production_legal_qa_rag.generation.generator import PROMPT_VERSION
 from production_legal_qa_rag.observability import metrics
 from production_legal_qa_rag.observability.tracing import get_langfuse_client
+from production_legal_qa_rag.observability.turn_trace import RuntimeVersions
 
 _logger = logging.getLogger(__name__)
 # observability_spec.md mục 4.4: chặn tối đa vài giây để không mất trace của
@@ -49,14 +47,11 @@ _LANGFUSE_FLUSH_TIMEOUT_SECONDS = 5.0
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Khởi tạo mọi dependency của API một lần, đóng lại khi tắt."""
     api_settings = ApiSettings()
-    database_settings = DatabaseSettings()
     cache_settings = CacheSettings()
     redis_settings = RedisSettings()
     generation_settings = GenerationSettings()
 
-    engine = create_engine(database_settings.database_url)
-    repository = ChatLogRepository(engine)
-    metadata = ChatLogMetadata(
+    versions = RuntimeVersions(
         prompt_version=PROMPT_VERSION,
         corpus_version=compute_corpus_version(override=cache_settings.corpus_version),
         model_name=generation_settings.model_name,
@@ -65,11 +60,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis: Redis = Redis.from_url(redis_settings.redis_url)
     answer_cache = AnswerCache(
         redis,
-        corpus_version=metadata.corpus_version,
-        prompt_version=metadata.prompt_version,
-        model_name=metadata.model_name,
+        corpus_version=versions.corpus_version,
+        prompt_version=versions.prompt_version,
+        model_name=versions.model_name,
     )
-    retrieval_cache = RetrievalCache(redis, corpus_version=metadata.corpus_version)
+    retrieval_cache = RetrievalCache(redis, corpus_version=versions.corpus_version)
     single_flight = SingleFlight(redis, answer_cache)
     admission = AdmissionController()
     # guardrail/condenser/generation không truyền vào đây: ChatOrchestrator tự
@@ -87,16 +82,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.api_settings = api_settings
     app.state.redis = redis
-    app.state.database_engine = engine
-    app.state.chatlog_repository = repository
-    app.state.chatlog_tasks = ChatLogTaskManager(repository, metadata)
+    app.state.runtime_versions = versions
     app.state.orchestrator = orchestrator
     try:
         yield
     finally:
-        await app.state.chatlog_tasks.drain()
         await _flush_langfuse()
-        await engine.dispose()
         await redis.aclose()
 
 

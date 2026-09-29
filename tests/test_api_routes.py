@@ -1,24 +1,21 @@
 """Integration tests for the HTTP surface of `api/` (api_spec.md mục 2, 4, 5, 7, 12).
 
 Builds a FastAPI app with the real router/exception handlers but fake
-Redis/Orchestrator/Engine/Repository in ``app.state`` — the same shape the
+Redis/Orchestrator in ``app.state`` — the same shape the
 developer used manually via ``TestClient`` during implementation, now
 codified as an automated regression suite.
 """
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
-from typing import Self
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import production_legal_qa_rag.api.app as app_module
-from production_legal_qa_rag.api.routes import ChatLogTaskManager, router
-from production_legal_qa_rag.chatlog.models import ChatLogMetadata, TurnRecord
+from production_legal_qa_rag.api.routes import router
 from production_legal_qa_rag.config import ApiSettings
 from production_legal_qa_rag.conversation.history import (
     DATA_SNAPSHOT_DISCLAIMER,
@@ -38,10 +35,11 @@ from production_legal_qa_rag.generation.models import (
     TokenEvent,
     Usage,
 )
+from production_legal_qa_rag.observability.turn_trace import RuntimeVersions
 
 _API_KEY = "test-chatbot-api-key"
 _AUTH_HEADERS = {"Authorization": f"Bearer {_API_KEY}"}
-_METADATA = ChatLogMetadata(prompt_version="v1", corpus_version="c1", model_name="m1")
+_VERSIONS = RuntimeVersions(prompt_version="v1", corpus_version="c1", model_name="m1")
 _ANSWER_EVENTS: list[GenerationEvent] = [
     StatusEvent(stage="guardrail"),
     StatusEvent(stage="retrieval"),
@@ -80,31 +78,6 @@ class _FakeRedis:
             raise ConnectionError("redis down")
 
 
-class _FakeConnection:
-    def __init__(self, *, fails: bool) -> None:
-        self._fails = fails
-
-    async def execute(self, _statement: object) -> None:
-        if self._fails:
-            raise ConnectionError("postgres down")
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *_exc: object) -> bool:
-        return False
-
-
-class _FakeEngine:
-    """Stand-in for the SQLAlchemy ``AsyncEngine`` used by ``/readyz``."""
-
-    def __init__(self, *, fails: bool = False) -> None:
-        self._fails = fails
-
-    def connect(self) -> _FakeConnection:
-        return _FakeConnection(fails=self._fails)
-
-
 class _FakeOrchestrator:
     """Replays a fixed event list, recording the messages/context it received."""
 
@@ -120,28 +93,17 @@ class _FakeOrchestrator:
         async def _gen() -> AsyncIterator[GenerationEvent]:
             for event in self._events:
                 yield event
-            # Real ChatOrchestrator fills ``trace`` as it streams (mục 7); the
-            # chatlog-write test only cares that an answered turn is what gets
-            # scheduled, so mimic that single field here.
+            # Real ChatOrchestrator fills ``trace`` as it streams (mục 7); mimic
+            # the single field the API layer reads for metrics/trace here.
             trace.outcome = "answered"
 
         return _gen()
-
-
-class _SpyRepository:
-    def __init__(self) -> None:
-        self.turns: list[TurnRecord] = []
-
-    async def record(self, turn: TurnRecord) -> None:
-        self.turns.append(turn)
 
 
 def _build_app(
     *,
     orchestrator: _FakeOrchestrator | None = None,
     redis: _FakeRedis | None = None,
-    engine: _FakeEngine | None = None,
-    repository: _SpyRepository | None = None,
     rate_limit_per_minute: int = 5,
 ) -> FastAPI:
     app = FastAPI()
@@ -151,11 +113,8 @@ def _build_app(
         chatbot_api_key=_API_KEY, rate_limit_per_minute=rate_limit_per_minute
     )
     app.state.redis = redis or _FakeRedis()
-    app.state.database_engine = engine or _FakeEngine()
     app.state.orchestrator = orchestrator or _FakeOrchestrator(list(_ANSWER_EVENTS))
-    app.state.chatlog_tasks = ChatLogTaskManager(
-        repository or _SpyRepository(), _METADATA
-    )
+    app.state.runtime_versions = _VERSIONS
     return app
 
 
@@ -215,8 +174,8 @@ def test_healthz_is_always_200_without_auth() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_readyz_200_when_redis_and_postgres_are_up() -> None:
-    app = _build_app(redis=_FakeRedis(), engine=_FakeEngine())
+def test_readyz_200_when_redis_is_up() -> None:
+    app = _build_app(redis=_FakeRedis())
     client = TestClient(app)
 
     response = client.get("/readyz")
@@ -226,17 +185,7 @@ def test_readyz_200_when_redis_and_postgres_are_up() -> None:
 
 
 def test_readyz_503_when_redis_ping_fails() -> None:
-    app = _build_app(redis=_FakeRedis(ping_fails=True), engine=_FakeEngine())
-    client = TestClient(app)
-
-    response = client.get("/readyz")
-
-    assert response.status_code == 503
-    assert response.json()["status"] == "not_ready"
-
-
-def test_readyz_503_when_postgres_query_fails() -> None:
-    app = _build_app(redis=_FakeRedis(), engine=_FakeEngine(fails=True))
+    app = _build_app(redis=_FakeRedis(ping_fails=True))
     client = TestClient(app)
 
     response = client.get("/readyz")
@@ -328,41 +277,32 @@ def test_chat_completions_rate_limit_is_per_user() -> None:
 
 
 def test_chat_completions_non_stream_returns_openai_json_with_sources() -> None:
-    repository = _SpyRepository()
-    app = _build_app(repository=repository)
+    app = _build_app()
+    client = TestClient(app)
 
-    # Context-manager form keeps the TestClient's blocking portal (and its event
-    # loop) alive after the request returns, so the fire-and-forget chatlog
-    # write task (scheduled via ``asyncio.create_task`` in ``stream_chat_turn``)
-    # gets a chance to run instead of being cancelled with an ephemeral portal.
-    with TestClient(app) as client:
-        response = client.post(
-            "/v1/chat/completions",
-            json=_chat_payload(stream_options={"include_usage": True}),
-            headers=_AUTH_HEADERS,
-        )
+    response = client.post(
+        "/v1/chat/completions",
+        json=_chat_payload(stream_options={"include_usage": True}),
+        headers=_AUTH_HEADERS,
+    )
 
-        assert response.status_code == 200
-        assert "X-Request-Id" in response.headers
-        body = response.json()
-        assert body["object"] == "chat.completion"
-        assert body["model"] == "legal-qa"
-        message = body["choices"][0]["message"]
-        assert message["role"] == "assistant"
-        assert "Xin chào, đây là câu trả lời." in message["content"]
-        assert SOURCES_FOOTER_MARKER in message["content"]
-        assert "[1] Điều 4 — Luật Doanh nghiệp 2020" in message["content"]
-        assert DATA_SNAPSHOT_DISCLAIMER in message["content"]
-        assert body["choices"][0]["finish_reason"] == "stop"
-        assert body["usage"] == {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
-
-        client.portal.call(asyncio.sleep, 0.1)
-        assert len(repository.turns) == 1
-        assert repository.turns[0].outcome == "answered"
+    assert response.status_code == 200
+    assert "X-Request-Id" in response.headers
+    body = response.json()
+    assert body["object"] == "chat.completion"
+    assert body["model"] == "legal-qa"
+    message = body["choices"][0]["message"]
+    assert message["role"] == "assistant"
+    assert "Xin chào, đây là câu trả lời." in message["content"]
+    assert SOURCES_FOOTER_MARKER in message["content"]
+    assert "[1] Điều 4 — Luật Doanh nghiệp 2020" in message["content"]
+    assert DATA_SNAPSHOT_DISCLAIMER in message["content"]
+    assert body["choices"][0]["finish_reason"] == "stop"
+    assert body["usage"] == {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+    }
 
 
 def test_chat_completions_non_stream_without_include_usage_omits_usage() -> None:

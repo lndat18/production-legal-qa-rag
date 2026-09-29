@@ -1,8 +1,9 @@
-"""Route chat/models/health và điều phối stream chat + ghi chatlog.
+"""Route chat/models/health và điều phối stream chat + trace Langfuse.
 
 Module này giữ phần lifecycle độc lập với serialisation OpenAI/SSE để cùng một
 contract được dùng cho cả stream và non-stream route. Một generator turn luôn
-tạo đúng một ``TurnTrace`` và lên lịch đúng một lần ghi sau khi kết thúc.
+tạo đúng một ``TurnTrace`` và đúng một root trace Langfuse ``chat_turn``,
+được cập nhật output/metadata/tags sau khi kết thúc (observability_spec.md 4.5).
 
 Thứ tự xử lý của ``POST /v1/chat/completions`` (api_spec.md mục 7):
 
@@ -14,8 +15,8 @@ Thứ tự xử lý của ``POST /v1/chat/completions`` (api_spec.md mục 7):
    lý do tương tự — ``InvalidConversationError`` phải thành 422 trước stream).
 3. ``trace = TurnTrace()``; ``events = stream_chat_turn(...)``.
 4. ``stream=true``: ``StreamingResponse(sse_stream(events))``; ``stream=false``:
-   gom toàn bộ event thành một JSON (``build_completion``). Cả hai ghi chatlog
-   trong ``finally`` của ``stream_chat_turn``.
+   gom toàn bộ event thành một JSON (``build_completion``). Cả hai cập nhật
+   trace và metrics trong ``finally`` của ``stream_chat_turn``.
 """
 
 from __future__ import annotations
@@ -28,8 +29,6 @@ from typing import Annotated, Protocol
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from redis.asyncio import Redis
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 from production_legal_qa_rag.api.auth import authenticate
 from production_legal_qa_rag.api.openai_format import build_completion, sse_stream
@@ -43,11 +42,6 @@ from production_legal_qa_rag.api.schemas import (
     ModelListResponse,
     ModelObject,
 )
-from production_legal_qa_rag.chatlog.models import (
-    ChatLogMetadata,
-    TurnRecord,
-    from_trace,
-)
 from production_legal_qa_rag.config import ApiSettings
 from production_legal_qa_rag.conversation.history import (
     InvalidConversationError,
@@ -60,18 +54,14 @@ from production_legal_qa_rag.conversation.models import (
 )
 from production_legal_qa_rag.generation.models import GenerationEvent
 from production_legal_qa_rag.observability import metrics, tracing
+from production_legal_qa_rag.observability.turn_trace import (
+    RuntimeVersions,
+    update_turn_trace,
+)
 
 _logger = logging.getLogger(__name__)
-_SHUTDOWN_DRAIN_SECONDS = 5.0
 
 router = APIRouter()
-
-
-class ChatLogRepositoryPort(Protocol):
-    """Phần repository mà HTTP lifecycle cần để ghi chatlog."""
-
-    async def record(self, turn: TurnRecord) -> None:
-        """Ghi một turn mà không làm lỗi response lan ra ngoài."""
 
 
 class ChatOrchestratorPort(Protocol):
@@ -86,94 +76,26 @@ class ChatOrchestratorPort(Protocol):
         """Phát event và điền trace của lượt hiện tại."""
 
 
-class ChatLogTaskManager:
-    """Giữ task ghi chatlog đến khi hoàn tất hoặc API tắt.
-
-    Task được giữ tham chiếu mạnh để không bị garbage collector dọn giữa chừng.
-    Một lỗi không mong đợi từ task chỉ tạo warning có ``request_id``; tuyệt đối
-    không đưa nội dung câu hỏi/câu trả lời vào log ứng dụng.
-    """
-
-    def __init__(
-        self,
-        repository: ChatLogRepositoryPort,
-        metadata: ChatLogMetadata,
-    ) -> None:
-        self._repository = repository
-        self._metadata = metadata
-        self._tasks: set[asyncio.Task[None]] = set()
-
-    def schedule(self, trace: TurnTrace, context: RequestContext) -> None:
-        """Lên lịch ghi đúng một turn mà không chờ Postgres.
-
-        Args:
-            trace: Vết đã hoàn tất của stream.
-            context: Danh tính request, chỉ id nội bộ.
-        """
-        try:
-            turn = from_trace(trace, context, metadata=self._metadata)
-            task = asyncio.create_task(self._repository.record(turn))
-        except Exception:  # noqa: BLE001 - logging must not affect the response path.
-            _logger.warning(
-                "Không thể lên lịch ghi chatlog (request_id=%s)",
-                context.request_id,
-            )
-            return
-        self._tasks.add(task)
-        task.add_done_callback(
-            lambda completed: self._handle_completed_task(completed, context.request_id)
-        )
-
-    async def drain(self) -> None:
-        """Chờ các task ghi tối đa năm giây khi API shutdown."""
-        if not self._tasks:
-            return
-        _, pending = await asyncio.wait(
-            self._tasks.copy(), timeout=_SHUTDOWN_DRAIN_SECONDS
-        )
-        for task in pending:
-            task.cancel()
-        if pending:
-            _logger.warning(
-                "Hết thời gian chờ %d task ghi chatlog khi shutdown", len(pending)
-            )
-
-    def _handle_completed_task(
-        self,
-        task: asyncio.Task[None],
-        request_id: str,
-    ) -> None:
-        """Bỏ task đã xong và ghi warning an toàn nếu nó bị lỗi."""
-        self._tasks.discard(task)
-        try:
-            task.result()
-        except asyncio.CancelledError:
-            _logger.warning("Task ghi chatlog bị huỷ (request_id=%s)", request_id)
-        except Exception:  # noqa: BLE001 - task failures cannot affect the response path.
-            _logger.warning(
-                "Task ghi chatlog thất bại (request_id=%s)",
-                request_id,
-            )
-
-
 async def stream_chat_turn(
     orchestrator: ChatOrchestratorPort,
     messages: list[ChatMessage],
     context: RequestContext,
-    chatlog_tasks: ChatLogTaskManager,
+    versions: RuntimeVersions,
 ) -> AsyncIterator[GenerationEvent]:
-    """Phát một lượt orchestrator và luôn lên lịch ghi chatlog sau cùng.
+    """Phát một lượt orchestrator và luôn cập nhật root trace Langfuse sau cùng.
 
     Bọc root span Langfuse ``chat_turn`` quanh toàn bộ lượt (observability_spec.md
     mục 4.4): mọi span/generation con tạo bên trong ``orchestrator.stream`` tự
-    lồng đúng vị trí qua OTel context. ``metrics.record_turn`` chạy cùng chỗ với
-    lịch ghi chatlog vì cùng dùng ``trace`` đã điền đầy đủ.
+    lồng đúng vị trí qua OTel context. Mọi nhánh (trả lời, từ chối, lỗi, cache
+    hit, ngắt kết nối) đều đi qua cùng một ``finally`` nên có đúng một trace với
+    output/metadata/tags đủ (mục 4.5). ``metrics.record_turn`` chạy cùng chỗ vì
+    cùng dùng ``trace`` đã điền đầy đủ; cả hai đều fail-safe.
 
     Args:
         orchestrator: Orchestrator đã được khởi tạo một lần ở API lifespan.
         messages: Messages đã parse từ request HTTP.
         context: Request context xác thực ở tầng HTTP.
-        chatlog_tasks: Manager giữ background task và metadata runtime.
+        versions: Phiên bản prompt/corpus/model của runtime, gắn vào trace.
 
     Yields:
         Các event generation từ orchestrator.
@@ -184,28 +106,24 @@ async def stream_chat_turn(
         with tracing.span(
             "chat_turn",
             input=root_query,
-            metadata={
-                "user_id": context.user_id,
-                "chat_id": context.chat_id,
-                "request_id": context.request_id,
-            },
+            metadata={"request_id": context.request_id},
+            user_id=context.user_id,
+            session_id=context.chat_id,
         ) as root_span:
-            trace.langfuse_trace_id = tracing.current_trace_id()
-            async for event in orchestrator.stream(messages, context, trace):
-                yield event
-            root_span.update(
-                output=trace.answer_text,
-                metadata={
-                    "outcome": trace.outcome,
-                    "cache_status": trace.cache_status,
-                    "error_code": trace.error_code,
-                },
-            )
-    except asyncio.CancelledError:
-        trace.outcome = "client_disconnected"
-        raise
+            try:
+                async for event in orchestrator.stream(messages, context, trace):
+                    yield event
+            except asyncio.CancelledError:
+                trace.outcome = "client_disconnected"
+                raise
+            finally:
+                update_turn_trace(
+                    root_span,
+                    trace,
+                    request_id=context.request_id,
+                    versions=versions,
+                )
     finally:
-        chatlog_tasks.schedule(trace, context)
         metrics.record_turn(trace)
 
 
@@ -251,8 +169,8 @@ async def chat_completions(
     _validate_messages(chat_messages)
 
     orchestrator = request.app.state.orchestrator
-    chatlog_tasks: ChatLogTaskManager = request.app.state.chatlog_tasks
-    events = stream_chat_turn(orchestrator, chat_messages, ctx, chatlog_tasks)
+    versions: RuntimeVersions = request.app.state.runtime_versions
+    events = stream_chat_turn(orchestrator, chat_messages, ctx, versions)
     include_usage = bool(
         payload.stream_options and payload.stream_options.include_usage
     )
@@ -289,22 +207,11 @@ async def healthz() -> JSONResponse:
 
 @router.get("/readyz")
 async def readyz(request: Request) -> JSONResponse:
-    """Readiness: ping Redis + Postgres; lỗi -> 503 (không ping Groq/Pinecone)."""
+    """Readiness: ping Redis; lỗi -> 503 (không ping Groq/Pinecone)."""
     redis: Redis = request.app.state.redis
-    engine: AsyncEngine = request.app.state.database_engine
-    ready = True
     try:
         await redis.ping()
     except Exception:
         _logger.warning("readyz: Redis không sẵn sàng.", exc_info=True)
-        ready = False
-    try:
-        async with engine.connect() as connection:
-            await connection.execute(text("SELECT 1"))
-    except Exception:
-        _logger.warning("readyz: Postgres không sẵn sàng.", exc_info=True)
-        ready = False
-    status_code = 200 if ready else 503
-    return JSONResponse(
-        {"status": "ready" if ready else "not_ready"}, status_code=status_code
-    )
+        return JSONResponse({"status": "not_ready"}, status_code=503)
+    return JSONResponse({"status": "ready"})

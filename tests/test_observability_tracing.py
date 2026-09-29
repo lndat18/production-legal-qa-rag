@@ -1,7 +1,7 @@
 """Test `observability/tracing.py` (observability_spec.md mục 4).
 
 Trọng tâm: cơ chế fail-safe khi thiếu `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`
-(mục 4.1) — `span`/`generation`/`current_trace_id` phải no-op, không raise, không
+(mục 4.1) — `span`/`generation` phải no-op, không raise, không
 phụ thuộc `.env` thật của máy dev (đối chiếu quy ước `tests/test_config.py`: luôn
 disable `env_file` + set biến môi trường tường minh cho quyết định).
 
@@ -12,7 +12,10 @@ hành vi no-op khi thiếu key, singleton, và lồng span/generation không rai
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import logging
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from typing import Any
 
 import pytest
 
@@ -51,10 +54,8 @@ def _reset_singleton() -> Iterator[None]:
     khác trong cùng phiên pytest (test khác trong repo cũng gọi tới `tracing.*`).
     """
     tracing._client = None
-    tracing._client_enabled = False
     yield
     tracing._client = None
-    tracing._client_enabled = False
 
 
 # --------------------------------------------------------------- get_langfuse_client
@@ -66,45 +67,6 @@ def test_get_langfuse_client_la_singleton_trong_1_process(
     _set_keys(monkeypatch, public_key=None, secret_key=None)
 
     assert tracing.get_langfuse_client() is tracing.get_langfuse_client()
-
-
-# --------------------------------------------------------------- current_trace_id
-
-
-def test_current_trace_id_none_khi_thieu_ca_hai_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _set_keys(monkeypatch, public_key=None, secret_key=None)
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_none_khi_chi_co_public_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Thiếu secret_key vẫn phải disabled — không đủ 1 nửa cặp key."""
-    _set_keys(monkeypatch, public_key="pk-fake", secret_key=None)
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_none_khi_chi_co_secret_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _set_keys(monkeypatch, public_key=None, secret_key="sk-fake")
-
-    assert tracing.current_trace_id() is None
-
-
-def test_current_trace_id_khong_raise_khi_goi_lap_lai_luc_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Gọi nhiều lần liên tiếp (giống mỗi lượt hỏi) không được tích luỹ lỗi/log rác."""
-    _set_keys(monkeypatch, public_key=None, secret_key=None)
-
-    results = [tracing.current_trace_id() for _ in range(5)]
-
-    assert results == [None] * 5
 
 
 # --------------------------------------------------------------- span / generation
@@ -186,3 +148,151 @@ def test_span_song_song_khong_lan_nhau_khi_disabled(
             guardrail_obs.update(output={"verdict": "allow"})
         with tracing.generation("condense", model="condense-model") as condense_obs:
             condense_obs.update(output={"standalone_query": "q"})
+
+
+# ------------------------------------------- user_id / session_id (mục 4.2, 4.4)
+
+
+class _PropagateSpy:
+    """Thay `propagate_attributes`: ghi lại kwargs và thứ tự vào/ra context."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.events: list[str] = []
+
+    @contextmanager
+    def __call__(self, **kwargs: Any) -> Iterator[None]:
+        self.calls.append(kwargs)
+        self.events.append("enter")
+        try:
+            yield
+        finally:
+            self.events.append("exit")
+
+
+def test_span_co_user_va_session_goi_propagate_attributes_quanh_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1"):
+        spy.events.append("body")
+
+    assert spy.calls == [{"user_id": "user-1", "session_id": "chat-1"}]
+    assert spy.events == ["enter", "body", "exit"]
+
+
+@pytest.mark.parametrize(
+    ("user_id", "session_id"),
+    [("user-1", None), (None, "chat-1")],
+)
+def test_span_chi_co_mot_trong_hai_van_goi_propagate_attributes(
+    monkeypatch: pytest.MonkeyPatch, user_id: str | None, session_id: str | None
+) -> None:
+    """Giá trị thiếu truyền `None` cho SDK (bị bỏ qua), không bịa giá trị."""
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("chat_turn", user_id=user_id, session_id=session_id):
+        pass
+
+    assert spy.calls == [{"user_id": user_id, "session_id": session_id}]
+
+
+def test_span_khong_co_user_va_session_khong_goi_propagate_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("cache_lookup", input="q"):
+        pass
+
+    assert spy.calls == []
+
+
+def test_span_co_user_va_session_van_lan_truyen_exception_tu_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with (
+        pytest.raises(ValueError, match="boom"),
+        tracing.span("chat_turn", user_id="user-1"),
+    ):
+        raise ValueError("boom")
+
+    assert spy.events == ["enter", "exit"]
+
+
+def test_span_disabled_voi_user_va_session_khong_raise_va_chay_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    executed = False
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        executed = True
+        root.update(output="x")
+
+    assert executed
+
+
+def test_span_va_generation_disabled_khong_log_canh_bao_khi_su_dung(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """SDK chỉ cảnh báo một lần lúc dựng client thiếu khoá; dùng span thì im lặng."""
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    tracing.get_langfuse_client()
+    caplog.clear()
+    caplog.set_level(logging.WARNING)
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        root.update(output="x")
+        with tracing.generation("answer", model="m") as child:
+            child.update(output="y")
+
+    assert caplog.records == []
+
+
+def test_span_that_ghi_user_id_va_session_id_len_root_va_span_con(
+    in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
+) -> None:
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        root_attributes = observation_attributes(root)
+        with tracing.generation("answer", model="m") as child:
+            child_attributes = observation_attributes(child)
+
+    assert root_attributes["user.id"] == "user-1"
+    assert root_attributes["session.id"] == "chat-1"
+    assert child_attributes["user.id"] == "user-1"
+    assert child_attributes["session.id"] == "chat-1"
+
+
+def test_span_that_khong_bia_session_id_khi_thieu(
+    in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
+) -> None:
+    with tracing.span("chat_turn", user_id="user-1") as root:
+        attributes = observation_attributes(root)
+
+    assert attributes["user.id"] == "user-1"
+    assert "session.id" not in attributes
+
+
+def test_span_that_khong_co_user_va_session_thi_khong_ghi_thuoc_tinh_trace(
+    in_memory_langfuse: Any,
+    observation_attributes: Callable[[Any], dict[str, Any]],
+) -> None:
+    with tracing.span("cache_lookup", input="q") as observation:
+        attributes = observation_attributes(observation)
+
+    assert "user.id" not in attributes
+    assert "session.id" not in attributes

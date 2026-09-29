@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backup 2 database Postgres (openwebui, chatbot) ra deploy/backups/<ngày>/, giữ 7 bản gần
+# Backup database Postgres (openwebui) ra deploy/backups/<ngày>/, giữ 7 bản gần
 # nhất (deploy_spec.md mục 8). Chạy tay hoặc qua cron/Task Scheduler, không cần dừng dịch
 # vụ. Redis không backup (dữ liệu tính lại được).
 #
@@ -29,7 +29,7 @@ mkdir -p "${out_dir}"
 # $POSTGRES_USER được giãn bên trong container postgres (đã có sẵn trong environment của
 # service, mục 4), không đọc/parse deploy/.env bằng bash — tránh rủi ro mật khẩu chứa ký tự
 # đặc biệt bị shell trên host diễn giải sai khi source trực tiếp.
-for db in openwebui chatbot; do
+for db in openwebui; do
     echo "Dump database '${db}' -> ${out_dir}/${db}.sql.gz"
     compose exec -T postgres sh -c "pg_dump -U \"\$POSTGRES_USER\" --dbname ${db}" \
         | gzip > "${out_dir}/${db}.sql.gz"

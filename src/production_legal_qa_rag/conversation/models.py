@@ -34,7 +34,7 @@ class RequestContext(BaseModel):
 
 
 class TurnTrace(BaseModel):
-    """Vết một lượt hỏi đáp, orchestrator điền dần để lớp API ghi `chatlog/`."""
+    """Vết một lượt hỏi đáp, orchestrator điền dần để lớp API gắn lên trace Langfuse và metrics."""
 
     raw_query: str = ""
     standalone_query: str | None = None
@@ -50,5 +50,3 @@ class TurnTrace(BaseModel):
     usage: Usage | None = None
     time_to_first_token_ms: int | None = None
     latency_ms: int = 0
-    # observability_spec.md mục 4.4: `None` khi Langfuse disabled (thiếu key).
-    langfuse_trace_id: str | None = None
