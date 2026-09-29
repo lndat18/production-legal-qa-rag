@@ -90,11 +90,11 @@ def _unit() -> EvalUnit:
 # ==========================================================================
 
 
-def test_build_groq_clients_tao_dung_6_client_doc_lap_tai_khoan():
+def test_build_groq_clients_tao_dung_9_client_doc_lap_tai_khoan():
     clients = ragas_runner._build_groq_clients(_settings())
 
     assert [client.openai_api_key.get_secret_value() for client in clients] == [
-        f"key-{n}" for n in range(1, 7)
+        f"key-{n}" for n in range(1, 10)
     ]
     assert all(client.model_name == "openai/gpt-oss-120b" for client in clients)
 

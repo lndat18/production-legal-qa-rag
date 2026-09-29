@@ -11,8 +11,10 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from pydantic_settings import BaseSettings
 
 from production_legal_qa_rag.config import (
+    CondenseSettings,
     EmbeddingSettings,
     GenerationSettings,
     GuardrailSettings,
@@ -21,6 +23,7 @@ from production_legal_qa_rag.config import (
     LangfuseSettings,
     LLMSettings,
     RerankerSettings,
+    TestsetGeneratorSettings,
     ThrottleSettings,
     VectorDBSettings,
 )
@@ -534,3 +537,61 @@ def test_langfuse_settings_bo_qua_gia_tri_rong(monkeypatch: pytest.MonkeyPatch) 
 
     assert settings.public_key is None
     assert settings.secret_key is None
+
+
+# ==========================================================================
+# Đổi tên cứng GROQ_API_KEY -> GROQ_API_KEY_1 (không alias tên cũ)
+# ==========================================================================
+
+_SETTINGS_BAT_BUOC_KEY_1 = [
+    LLMSettings,
+    GuardrailSettings,
+    CondenseSettings,
+    HydeSettings,
+    TestsetGeneratorSettings,
+]
+
+
+def _chi_set_ten_cu(
+    monkeypatch: pytest.MonkeyPatch, settings_cls: type[BaseSettings]
+) -> None:
+    """Chỉ đặt `GROQ_API_KEY` (tên cũ); key 2-9 hợp lệ để cô lập lỗi về key 1."""
+    monkeypatch.delenv("GROQ_API_KEY_1", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_TEN_CU_BI_MAT")
+    for number in range(2, 10):
+        monkeypatch.setenv(f"GROQ_API_KEY_{number}", f"key-{number}")
+    monkeypatch.setattr(
+        settings_cls, "model_config", {**settings_cls.model_config, "env_file": None}
+    )
+
+
+@pytest.mark.parametrize("settings_cls", _SETTINGS_BAT_BUOC_KEY_1)
+def test_settings_khong_con_doc_ten_cu_groq_api_key(
+    monkeypatch: pytest.MonkeyPatch, settings_cls: type[BaseSettings]
+) -> None:
+    _chi_set_ten_cu(monkeypatch, settings_cls)
+
+    with pytest.raises(ValidationError) as excinfo:
+        settings_cls()
+
+    locations = [".".join(map(str, e["loc"])) for e in excinfo.value.errors()]
+    assert locations == ["GROQ_API_KEY_1"]
+    assert "gsk_TEN_CU_BI_MAT" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("settings_cls", [GenerationSettings, JudgeSettings])
+def test_settings_fallback_khong_roi_ve_ten_cu_groq_api_key(
+    monkeypatch: pytest.MonkeyPatch, settings_cls: type[BaseSettings]
+) -> None:
+    """Không có key riêng (3 / 2) thì fallback là `GROQ_API_KEY_1`, không phải tên cũ."""
+    for name in ("GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_TEN_CU_BI_MAT")
+    monkeypatch.setattr(
+        settings_cls, "model_config", {**settings_cls.model_config, "env_file": None}
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        settings_cls()
+
+    assert "gsk_TEN_CU_BI_MAT" not in str(excinfo.value)
