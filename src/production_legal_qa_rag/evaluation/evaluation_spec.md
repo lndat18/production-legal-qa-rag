@@ -311,7 +311,7 @@ Thiết kế (đơn giản nhất đủ dùng cho 1 script chạy 1 lần, nhưn
 class GroqRoundRobinChatModel(BaseChatModel):
     """Proxy luân phiên round-robin qua N ChatOpenAI (Groq) độc lập tài khoản."""
 
-    clients: list[ChatOpenAI]  # đúng 6, mỗi client gắn 1 key cố định
+    clients: list[ChatOpenAI]  # đúng 9 (từ 2026-09-29), mỗi client gắn 1 key cố định
 
     def _generate(self, messages, ...):
         order = self._plan_attempts()            # DƯỚI LOCK: chốt điểm bắt đầu 1 lần/lượt gọi
@@ -360,10 +360,139 @@ class GroqRoundRobinChatModel(BaseChatModel):
   vòng đời server qua nhiều event loop) — không áp dụng ở đây vì đây là script chạy tuần
   tự trong đúng 1 process, không phải server long-running.
 
+### 3.2 Điều phối key mượt và tiết kiệm token (chốt 2026-09-29, chưa implement)
+
+**Mục tiêu (người dùng):** các key phối hợp mượt, tiêu token ít nhất có thể. Chỉ làm 3 thay
+đổi nhỏ trong `groq_round_robin.py`/`ragas_runner.py`; KHÔNG đổi thuật toán chọn key.
+
+**Sự thật đã kiểm (docs Groq, 2026-09-29):** free `gpt-oss-120b` mỗi tài khoản RPM 30, RPD 1K,
+TPM 8K, TPD 200K. Header trả về `x-ratelimit-*` chỉ có RPD và TPM (KHÔNG có TPD còn lại), và
+`retry-after` chỉ xuất hiện trên 429. Docs không nói 429 bị từ chối có tính vào RPD hay không.
+Hệ quả: không dựng được sổ TPD chính xác từ header; và mỗi lượt gọi bị 429 rồi cascade qua cả
+9 tài khoản có thể ăn tới 9 request RPD nếu chúng được tính — nên tránh bắn 429 vô ích.
+
+**Không làm (và lý do):** chọn key theo "còn nhiều quota nhất" (không đọc được TPD, các lượt
+gọi cùng cỡ nên xoay vòng đều là đủ); lưu sổ TPD qua nhiều ngày (không có nguồn sự thật);
+bỏ qua đơn vị lỗi tất định, ghi chẩn đoán lỗi parse, lịch sử `last_failure` (không phục vụ
+mục tiêu trên; để dịp khác nếu cần).
+
+**A. Cooldown ngắn khi 429 theo phút (TPM/RPM).** Hiện chỉ 429 THEO NGÀY mới đặt cooldown
+(300 giây, `_DAILY_COOLDOWN_SECONDS`); 429 theo phút để tài khoản đó vẫn nằm đầu vòng nên lượt
+gọi kế lại đập vào đúng tài khoản đang bị giới hạn.
+- Khi bắt `RateLimitError` KHÔNG phải giới hạn ngày: đọc header `retry-after` (giây) từ
+  `error.response.headers`; thiếu/không parse được thì dùng `_MINUTE_COOLDOWN_DEFAULT = 15`
+  giây; kẹp vào `[1, _MINUTE_COOLDOWN_MAX = 60]`. Đặt `_cooldown_until[index]` = `max(giá trị
+  hiện có, now + số giây đó)` (không được rút ngắn cooldown ngày đang có).
+- Tài khoản đang cooldown vẫn xếp CUỐI như cũ (`_plan_attempts`, sắp xếp ổn định).
+- **Nếu CẢ n tài khoản đều đang cooldown** (tất cả do 429 theo phút, không có bằng chứng ngày):
+  `_generate` chờ (`time.sleep`) tới lúc tài khoản sớm nhất hết cooldown (tối đa
+  `_MINUTE_COOLDOWN_MAX` giây) TRƯỚC khi thử, thay vì bắn một loạt 429 qua cả n tài khoản. Không
+  giữ lock khi ngủ. Không áp dụng khi có cooldown ngày (để breaker vẫn tính đúng bằng bằng chứng
+  mới, mục 3.1).
+- Điều kiện bật breaker KHÔNG đổi: cả n tài khoản báo giới hạn NGÀY trong cùng lượt gọi.
+- Đồng hồ và `sleep` tiêm được (tham số/thuộc tính) để test không chờ thật.
+
+**B. Đếm token thật theo tài khoản và theo đơn vị.** Hiện chỉ đếm số lượt gọi (`call_counts`,
+gồm cả lượt 429); ước lượng "5,5 token/ký tự" sai số ±30% (mục 4.4) và không biết token suy
+luận chiếm bao nhiêu.
+- Router cộng dồn từ kết quả thành công: `prompt_tokens`, `completion_tokens`, và
+  `reasoning_tokens` (`completion_tokens_details.reasoning_tokens` nếu Groq trả, thiếu thì 0)
+  theo từng client, dưới cùng lock; thuộc tính `token_totals` trả bản sao. Lấy từ
+  `ChatResult.llm_output["token_usage"]` của `ChatOpenAI`; nếu không có thì coi là 0 và log một
+  lần cảnh báo (developer xác nhận đường lấy số trong venv `eval` bằng pilot).
+- `UnitResult` thêm `tokens: int` và `reasoning_tokens: int` của riêng đơn vị (hiệu số trước/sau,
+  như `llm_calls`); `UnitProgress` ghi thêm hai trường này (cộng dồn khi `--append`), mặc định
+  `None` để đọc được `generation_progress.json` đã có (33 đơn vị cũ không có số đo).
+- Log INFO cuối mỗi đơn vị: tổng token và token theo từng tài khoản (nhìn được có rải đều không;
+  chỉ số, không có key).
+- `generate --dry-run`: khi ≥ 3 đơn vị đã xong có `tokens`, ước lượng số token còn lại bằng hệ
+  số token/ký tự ĐO ĐƯỢC (thay 5,5) và ghi rõ trong dòng tóm tắt "(hệ số đo được X token/ký tự)";
+  ít hơn 3 thì giữ 5,5.
+
+**C. Hạ `reasoning_effort` xuống `low` CHỈ khi dựng KG** (người dùng chốt 2026-09-29: "chỉ
+hạ khi dựng KG, sinh câu giữ nguyên"). Token suy luận của `gpt-oss-120b` tính vào TPM/TPD; KG
+(summary/themes/NER/headlines) là trích xuất đơn giản, còn câu hỏi/đáp án cuối vẫn dùng mức mặc
+định để chất lượng testset không đổi so với 33 đơn vị đã sinh.
+- Router có thuộc tính `reasoning_effort: str | None` (mặc định `None` = không gửi) và context
+  manager `with router.reasoning_effort("low"):`; trong `_generate`, nếu đặt thì truyền
+  `reasoning_effort=...` xuống `client._generate(...)` (cách truyền — kwarg hay `extra_body` —
+  developer chốt theo phiên bản `openai`/`langchain-openai` của venv `eval`; pilot phải xác nhận
+  Groq nhận và số `reasoning_tokens` giảm). Đặt/đọc dưới lock.
+- `RagasUnitRunner._build_knowledge_graph` (kể cả `apply_transforms`) chạy trong context manager
+  `low`; `_get_synthesizers` (`adapt_prompts`), `_query_distribution` và `_generate_cases` KHÔNG.
+  Hai giai đoạn chạy tuần tự trong một đơn vị nên không xen kẽ; thoát context dù có lỗi.
+- KG đã dựng trước đó (lưu ở `knowledge_graph/`) không bị dựng lại nên không hưởng lợi; chỉ các
+  đơn vị chưa có KG.
+- Không thêm biến `.env`; hằng số `_KG_REASONING_EFFORT: Final = "low"` trong `ragas_runner.py`.
+
+**Test bắt buộc:** cooldown theo `retry-after` (có/thiếu/kẹp), không rút ngắn cooldown ngày;
+chờ khi cả n đang cooldown phút và KHÔNG chờ khi có cooldown ngày; breaker không đổi; cộng dồn
+token theo client và thread-safe; `reasoning_effort` chỉ được truyền trong context và được gỡ
+sau (kể cả khi lỗi); `UnitProgress` đọc được file cũ không có `tokens`; dry-run dùng hệ số đo
+khi đủ 3 đơn vị.
+
+**Tiêu chí hoàn thành:** chạy tiếp 17 đơn vị còn lại; sau đó `generation_progress.json` có
+`tokens`/`reasoning_tokens` cho các đơn vị mới, log cho thấy token rải xấp xỉ đều 9 tài khoản, và
+so token/ký tự giữa đơn vị dựng KG mới (đã hạ effort) với hệ số 5,5 để biết mức tiết kiệm thật.
+
+### 3.3 Giữ phần đã sinh khi lỗi giữa đơn vị (chốt 2026-09-29, chưa implement)
+
+**Vấn đề:** hôm nay lỗi giữa đơn vị làm mất TOÀN BỘ câu đã sinh dở (chỉ KG được giữ). Nguyên
+nhân: `TestsetGenerator.generate` của ragas chạy mọi câu rồi trả một lần, và mặc định
+`raise_exceptions=True` nên một câu lỗi (429 ngày hay parse output) huỷ cả lô. Đặt
+`raise_exceptions=False` **không dùng được**: ragas 0.4.3 trả `NaN` cho job lỗi rồi lặp/dựng
+`TestsetSample` trên `NaN` và tự crash.
+
+**Quy mô lãng phí (nói thẳng để người dùng cân nhắc):** lượt quota tối đa mất mỗi lần dừng là
+phần SINH CÂU của một đơn vị (KG đã lưu), ước tính vài chục K token ≈ 1–2% quota ngày; trong 33
+đơn vị đã chạy chỉ ghi nhận đúng 1 lần dừng (hết quota ngày). Lợi ích thật nằm ở chỗ khác: **một
+câu lỗi tất định (parse) không còn làm hỏng cả đơn vị và chặn cả chương trình.** Người dùng chọn
+làm (2026-09-29).
+
+**Thiết kế (thay thế cách gọi `generate` trong `RagasUnitRunner._generate_cases`):**
+- Không gọi `TestsetGenerator.generate`. Tự làm đúng các bước của nó với API công khai của
+  synthesizer: (1) `generate_personas_from_kg(llm, kg, num_personas=3)` một lần cho đơn vị;
+  (2) với từng loại có quota > 0: `await synthesizer.generate_scenarios(n, knowledge_graph,
+  persona_list)`; (3) với từng scenario: `await synthesizer.generate_sample(scenario)` bọc
+  `try/except`, đồng thời tối đa `MAX_WORKERS` (`asyncio.Semaphore`). Ragas ghim `==0.4.3`; có
+  test khoá hành vi này để nâng phiên bản không âm thầm phá.
+- Kết quả một sample lỗi:
+  - `DailyQuotaExhaustedError` (breaker đã bật): ngừng đưa sample mới, giữ mọi sample đã xong,
+    đơn vị kết thúc ở trạng thái **dở** (`partial`) rồi chương trình dừng như cũ (mã thoát 1).
+  - Lỗi khác (parse, timeout đã hết retry...): BỎ sample đó, ghi log CHỈ tên loại lỗi (chính sách
+    mục 8, không log nội dung), đếm `skipped_samples`; đơn vị vẫn `done` với ít câu hơn quota.
+  - Nếu đơn vị không sinh được câu nào mà có sample lỗi: raise `UnitGenerationError` như cũ (lỗi
+    có tính hệ thống; không ghi `done` rỗng). Lỗi ở bước (2) sinh scenario của một loại: cũng
+    coi là lỗi đơn vị, nhưng các loại đã xong trước đó được giữ theo quy tắc `partial`.
+- **Ghi ngay khi kết thúc bước sinh (kể cả `partial`):** nối câu vào raw TRƯỚC, ghi progress SAU
+  (đúng thứ tự mục 4.5, `_recover_unfinished` không đổi).
+- **`UnitProgress` thêm** `status: Literal["done", "partial"] = "done"` và `skipped_samples: int
+  = 0` (mặc định để đọc được file 33 đơn vị cũ). `partial` cộng dồn `questions`/`llm_calls`/
+  `seconds` như `--append`; KHÔNG ghi `completed_at` mới cho tới khi `done` (giữ giá trị cũ hoặc
+  thời điểm dừng — developer chốt, phải là datetime hợp lệ).
+- **Chạy tiếp một đơn vị `partial`:** nằm trong danh sách chờ như đơn vị chưa xong, dùng lại KG,
+  quota còn lại theo loại = `quota − questions` đã ghi (kẹp ≥ 0); chỉ sinh phần còn thiếu rồi
+  chuyển `done`. Loại đã bị `_has_clusters` bỏ (mục 4.5) được kiểm lại và bỏ lại như cũ, không tính
+  là thiếu vĩnh viễn.
+- `--dry-run` hiển thị trạng thái `dở (đã có N/M câu)` cho đơn vị `partial`; `--append` vẫn chạy
+  lại đơn vị `done` theo cách cũ.
+- Mã thoát và `last_failure`: không đổi (đơn vị `partial` do quota vẫn ghi `last_failure`).
+
+**Thay thế các quy tắc cũ:** mục 4.5 ("đơn vị đang dở KHÔNG được ghi vào raw/`units`") và bảng
+mục 8 dòng Groq lỗi/quota, mục 10.11 ("Không resume trong lòng một đơn vị") — chỉ còn đúng khi
+lỗi xảy ra TRƯỚC khi có sample nào xong (dựng KG, sinh scenario); từ lúc có sample xong thì áp
+dụng mục này.
+
+**Test bắt buộc:** breaker bật giữa lúc sinh ⇒ sample đã xong vào raw, đơn vị `partial`, lần chạy
+sau chỉ sinh phần còn lại (đếm lượt gọi synthesizer giả) rồi `done`; sample lỗi parse bị bỏ, đơn vị
+`done`, `skipped_samples` đúng; mọi sample lỗi ⇒ `UnitGenerationError`, không ghi raw/progress;
+progress cũ (không có `status`) đọc thành `done`; thứ tự raw trước progress khi chết giữa hai bước;
+log lỗi sample không chứa nội dung.
+
 ## 4. Workflow (`testset_generator.py`)
 
 ```text
-clients = [ChatOpenAI(key=GROQ_API_KEY_1), ..._2, ... , ..._6]            # 6 client, config mục 6
+clients = [ChatOpenAI(key=GROQ_API_KEY_1), ..._2, ... , ..._9]            # 9 client, config mục 6
 generator_llm = LangchainLLMWrapper(GroqRoundRobinChatModel(clients=clients))  # mục 3.1
 generator_embeddings = LangchainEmbeddingsWrapper(adapter)              # embeddings_adapter.py
 generator = TestsetGenerator(llm=generator_llm, embedding_model=generator_embeddings)
@@ -667,6 +796,9 @@ của `split_document`, không đổi khi sắp xếp lại; dùng số thứ t�
   chạy sau thấy đơn vị có dòng trong raw (theo `source_document` + `source_section`) mà
   chưa có trong progress → **coi là đã xong** (ghi bổ sung vào progress, log rõ), không sinh
   lại (tránh trùng câu).
+- > **Từ 2026-09-29 (mục 3.3, chưa implement):** khi đã có sample xong, phần đã xong được ghi
+  > vào raw và đơn vị ở trạng thái `partial` thay vì bỏ hết; bullet dưới đây chỉ còn đúng cho
+  > lỗi xảy ra trước khi có sample nào xong (dựng KG, sinh scenario).
 - **Khi hết quota/lỗi giữa đơn vị** (429 sau khi mọi tài khoản đã thử, timeout, 413...):
   đơn vị đang dở KHÔNG được ghi vào raw/`units`; ghi `last_failure` (tên đơn vị, loại lỗi,
   thời điểm, không có nội dung câu hỏi/context); in tóm tắt tiến độ; **dừng luôn, không thử
@@ -744,6 +876,11 @@ chạy bắt buộc xong việc sửa code cho 9 key bên dưới, vì `TestsetG
 - `.env.example`: thêm `GROQ_API_KEY_7`, `_8`, `_9`.
 - Test: cập nhật các test dựng `TestsetGeneratorSettings`/đếm 6 client sang 9.
 - `groq_round_robin.py` KHÔNG cần đổi (router dùng `len(clients)`, không hard-code 6).
+
+**Việc code kế tiếp (đã chốt 2026-09-29, chưa implement, PR riêng sau PR #63):** mục 3.2 (cooldown
+429 theo phút, đếm token thật theo key/đơn vị, `reasoning_effort=low` chỉ khi dựng KG) và mục 3.3
+(giữ phần đã sinh khi lỗi giữa đơn vị, đơn vị `partial`). Chạy tiếp 17 đơn vị còn lại có thể làm
+ngay bằng code hiện tại; làm xong 3.2/3.3 trước thì tiết kiệm hơn và ít rủi ro mất công hơn.
 
 **Rủi ro 3 tài khoản mới (chưa kiểm chứng):** Groq tính quota theo tổ chức; nếu `_7`–`_9` cùng
 tổ chức với key cũ thì bucket dùng chung, quota không tăng và round-robin chỉ thêm request thừa.
@@ -885,7 +1022,7 @@ package này — tránh phải dời code khi mở rộng.
 
 | Sự cố | Xử lý |
 | --- | --- |
-| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở**, ghi `last_failure` vào `generation_progress.json` (file được commit nên thông điệp HTTP bỏ tiền tố SDK, che mã tổ chức `org_...` và mọi chuỗi giống key `gsk_...` RỒI mới cắt 200 ký tự, để không mất phần "per day (TPD): Limit/Used"). Đơn vị đang dở KHÔNG được ghi vào raw/progress (raw không bao giờ ghi dở); KG chỉ được giữ nếu đã dựng xong hoàn chỉnh (mục 4.5), còn lỗi giữa lúc dựng KG thì không có file KG; các đơn vị đã xong trước đó giữ nguyên. Retry ragas giới hạn ở lỗi tạm thời và hết quota ngày dừng ngay sau một vòng (mục 4.5). Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11). |
+| Groq lỗi/quota (429 hết token/ngày)/timeout giữa lúc build `KnowledgeGraph` hoặc sinh câu hỏi của MỘT Chương | Dừng chương trình (không thử đơn vị kế), log lỗi rõ ràng (không log nội dung câu hỏi/context — theo chính sách log chung của project) kèm **khoá đơn vị đang dở** và một dòng `traceback: <Loại lỗi> @ file:dòng:hàm -> ...` (`_describe_traceback`, chốt 2026-09-29: chỉ tên loại lỗi + basename file + số dòng + tên hàm của từng frame để debug được; KHÔNG dùng `exc_info=True`/`logger.exception` vì chúng in cả thông điệp exception, có thể chứa nội dung câu hỏi/context), ghi `last_failure` vào `generation_progress.json` (file được commit nên thông điệp HTTP bỏ tiền tố SDK, che mã tổ chức `org_...` và mọi chuỗi giống key `gsk_...` RỒI mới cắt 200 ký tự, để không mất phần "per day (TPD): Limit/Used"). Đơn vị đang dở KHÔNG được ghi vào raw/progress (raw không bao giờ ghi dở) — **trừ phần sample đã xong theo mục 3.3 (ghi `partial`, chưa implement)**; KG chỉ được giữ nếu đã dựng xong hoàn chỉnh (mục 4.5), còn lỗi giữa lúc dựng KG thì không có file KG; các đơn vị đã xong trước đó giữ nguyên. Retry ragas giới hạn ở lỗi tạm thời và hết quota ngày dừng ngay sau một vòng (mục 4.5). Chạy lại `generate` ngày hôm sau sẽ làm tiếp từ đơn vị đó (mục 4.5). Không resume trong lòng một đơn vị (mục 10.11) — **được nới bởi mục 3.3: đơn vị `partial` chạy tiếp phần còn thiếu**. |
 | `--only` nêu tên văn bản không tồn tại trong `data/markdown/` | Raise lỗi rõ liệt kê tên hợp lệ, trước khi gọi Groq. |
 | `embeddings_adapter.py` trả response sai định dạng (khác kỳ vọng của HF API) | Raise lỗi rõ, không âm thầm trả vector rỗng — cùng nguyên tắc validate ở biên như `embedding/hf_client.py`. |
 | File `data/markdown/*.md` trống hoặc thiếu | Raise lỗi rõ trước khi gọi `TestsetGenerator` (fail fast, không lãng phí LLM call). |

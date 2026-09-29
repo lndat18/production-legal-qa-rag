@@ -252,10 +252,9 @@ thật để chấm RAGAS phase 2 lấy từ Langfuse (API/export) thay vì quer
   `test_deploy_compose.py`, `test_deploy_migration.py`, `test_observability_metrics.py`) sửa
   hoặc xoá phần liên quan chatlog.
 - Doc: `api_spec.md`, `conversation_spec.md`, `cache_spec.md`, `deploy_spec.md`, `README.md`
-  đã sửa. **Còn lại người dùng tự cập nhật** (file đang có thay đổi chưa commit, ngoài lượt
-  develop này): `evaluation_spec.md`, `CLAUDE.md` (bảng package, roadmap: RAGAS lấy mẫu từ
-  Langfuse), `docs/online_flow.md` (bỏ nhánh "Ghi chatlog Postgres", thay bằng "Gửi trace
-  Langfuse" — và sửa luôn dòng "quota ngày" không tồn tại trong code).
+  đã sửa. Phần người dùng tự cập nhật ngoài lượt develop đó đã xong (2026-09-29):
+  `evaluation_spec.md`, `CLAUDE.md` (bảng package, roadmap: RAGAS lấy mẫu từ Langfuse); riêng
+  `docs/online_flow.md` đã bị xoá, sơ đồ tổng quan nay là `docs/architecture.png`.
 
 **Ràng buộc còn nguyên:** ghi trace không bao giờ chặn/làm hỏng câu trả lời (mục 1). Khác
 chatlog: Langfuse không chạy thì **mất** nhật ký lượt đó (không có hàng đợi bền) — chấp nhận
