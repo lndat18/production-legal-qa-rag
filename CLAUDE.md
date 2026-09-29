@@ -9,12 +9,12 @@ RAG chatbot hỏi-đáp pháp luật Việt Nam, thiết kế theo hướng sát
 src/production_legal_qa_rag/   Toàn bộ source code import được (packages theo nghiệp vụ)
 tests/                         Test, đặt tên test_<package>_<phần>.py
 tools/                         CLI (Typer) chạy từng bước pipeline độc lập, vd. tools/chunk_documents.py
-alembic/                       Migration schema Postgres (chatlog, ...)
+alembic/                       Migration schema Postgres (chỉ còn chatlog — gỡ cùng chatlog, xem Tiến độ)
 data/                          raw -> markdown -> chunks -> embeddings, bm25/ cho sparse index
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
 deploy/                        Docker compose production (chỉ phục vụ end-user) + docs (deploy/deploy_spec.md), scripts/ (backup, reset cache); không phải code import được
 dev/                           observability/ (Langfuse/Prometheus/Grafana compose, dev only) — tách khỏi deploy/ (2026-09-29) vì không phục vụ end-user
-docs/                          Tài liệu tổng quan hệ thống (vd. online_flow.md — activity diagram 1 câu hỏi)
+docs/                          Tài liệu tổng quan hệ thống (luồng xử lý 1 câu hỏi, kiến trúc)
 .claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
 
@@ -33,78 +33,60 @@ trong package tương ứng.
 | `generation/`   | `RetrievedChunk` đã rerank → câu trả lời có citation, đã kiểm chứng                         | [generation_spec.md](src/production_legal_qa_rag/generation/generation_spec.md)       |
 | `conversation/` | Điều phối 1 lượt hỏi đáp: condense → guardrail → cache → admission → retrieve → generate    | [conversation_spec.md](src/production_legal_qa_rag/conversation/conversation_spec.md) |
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
-| `chatlog/`      | Ghi mỗi lượt hỏi-đáp vào Postgres để quan sát/đánh giá (không phải lịch sử hội thoại) | [chatlog_spec.md](src/production_legal_qa_rag/chatlog/chatlog_spec.md)                |
+| `chatlog/`      | Ghi mỗi lượt hỏi-đáp vào Postgres (**sẽ gỡ**, Langfuse thay thế — xem Tiến độ) | [chatlog_spec.md](src/production_legal_qa_rag/chatlog/chatlog_spec.md)                |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres, spec tổng toàn hệ thống                  | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
-| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset tổng hợp từ corpus (Phase 2 chạy eval — chưa làm)  | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
+| `observability/` | Langfuse trace 1 lượt hỏi + Prometheus `/metrics` cho `api`                                       | [observability_spec.md](src/production_legal_qa_rag/observability/observability_spec.md) |
+| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 chạy pipeline thật + chấm điểm (đã thiết kế, chưa implement) | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
 
 ## Tiến độ
 
-Toàn bộ 9 package trong pipeline (`formatting/` → `chunking/` → `embedding/` →
-`retrieval/` → `generation/` → `conversation/` → `cache/` → `chatlog/` → `api/`) đã
-implement xong, có spec, có test — chatbot chạy được end-to-end qua API OpenAI-compatible
-(#53), kèm OpenWebUI + Redis + Postgres.
+Trạng thái tại **2026-09-29**.
 
-**Deploy production đã xong (2026-09-27)** — `deploy/docker-compose.yml` (deploy_spec.md
-mục 4) đã tạo, entrypoint duy nhất `deploy/up.sh` (tự dò GPU NVIDIA, build đúng biến thể
-torch — `cpu` mặc định, `cu126` trở lên cho GPU vì `cu121`/`cu124` không có wheel Python
-3.14 — rồi `up -d`). Đã nghiệm thu thật: public qua Cloudflare quick tunnel, end-user
-hỏi-đáp multi-turn thành công (citation, Evidence Judge chạy đúng). Bài học vận hành đã ghi
-vào deploy_spec.md: `api` cần `mem_limit: 3g` (1.5g cũ bị OOM-killer giết ngay lượt hỏi
-retrieval+rerank đầu); Groq giới hạn rate limit theo (tài khoản, model) chứ không theo API
-key — key chỉ tách được ngân sách thật nếu lấy từ tài khoản Groq khác.
+**Đã xong**
+- Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
+  `conversation/` → `cache/` → `chatlog/` → `api/`: có spec, có test, chatbot chạy end-to-end
+  qua API OpenAI-compatible + OpenWebUI + Redis + Postgres.
+- **Deploy production** (`deploy/`, chỉ phục vụ end-user): entrypoint `deploy/up.sh` (tự dò GPU
+  NVIDIA), public qua Cloudflare quick tunnel, đã nghiệm thu thật. Lưu ý vận hành: `api` cần
+  `mem_limit: 3g`; Groq giới hạn rate limit theo (tài khoản, model), không theo API key.
+- **Chính sách model/key LLM** (`conversation_spec.md` mục 12.1, PR #58): generation `gpt-oss-120b`
+  xoay key 3 ⇄ 4; condense/HyDE/Judge `gpt-oss-20b`; guardrail `gpt-oss-safeguard-20b`;
+  throttle theo bucket `(model, key)`.
+- **Observability code** (PR #61): Langfuse trace + Prometheus/Grafana; `deploy/docker-compose.observe.yml`
+  nối `api` production vào stack observe (`dev/observability/`), `up.sh` tự ghép khi stack đang
+  chạy. Prometheus chỉ scrape `api` production (`env=production`).
+- **Hạ tầng gọn:** đúng 1 cặp `.env`/`.env.example` ở repo root (3 block APP/DEPLOY/OBSERVABILITY,
+  prefix `DEPLOY_`/`OBS_` cho biến trùng tên); `deploy/` chỉ chứa thứ phục vụ end-user, stack
+  dev nằm ở `dev/observability/` (chạy: `docker compose -f dev/observability/docker-compose.yml up -d`,
+  cần symlink `dev/observability/.env` → `../../.env`).
+- **Evaluation Phase 1** (PR #55, #60): sinh golden testset theo đơn vị, có checkpoint, chạy tiếp
+  nhiều ngày (`tools/generate_testset.py`).
 
-**Cập nhật 2026-09-28:**
+**Đã chốt thiết kế, chưa implement**
+- **Gỡ `chatlog/`** (quyết định 2026-09-29): Langfuse là nơi duy nhất lưu nhật ký lượt hỏi-đáp
+  (`observability_spec.md` mục 4.5, có bảng ánh xạ trường `chat_turns` → trace). Gỡ kèm `alembic/`,
+  `sqlalchemy`/`asyncpg`, `tools/chatlog.py`, `tools/purge_chatlog.py`, biến `CHATLOG_*`, DB
+  `chatbot` trong compose/initdb; test và các spec liên quan cập nhật theo. Dữ liệu `chat_turns`
+  cũ trong Postgres production: người dùng tự drop. Hệ quả: Langfuse không chạy thì mất nhật ký
+  lượt đó — stack observe nên chạy cùng production. Langfuse giữ self-host (riêng tư), không dùng cloud.
+- **Evaluation Phase 2** (`evaluation_spec.md` mục 11): 6 stage (HyDE → embed → retrieve MMR bật/tắt
+  → chấm retrieval → generation → chấm câu trả lời), file JSONL trung gian, resume theo `case_id`;
+  generation chạy nguyên `GenerationPipeline` (phương án B), rải 6 key Groq; pilot `--limit 10–20`
+  trước khi chạy full. Cần `precomputed` ở `RetrievalPipeline.retrieve` (`retrieval_spec.md` mục 2).
+  Spec chưa commit.
 
-- **`deploy/` tổ chức lại** (#57): compose dev + `observability/` chuyển vào `deploy/dev/`
-  (`deploy/dev/docker-compose.yml` vẫn phục vụ dev cục bộ: Redis + Postgres), `backup.sh` +
-  `reset_cache.sh` vào `deploy/scripts/`. Dockerfile, compose và 2 file `.env.example` đã rút
-  gọn; hướng dẫn cấu hình chi tiết nằm trong `README.md`. (Đảo ngược lại 2026-09-29, xem
-  dưới — `deploy/dev/` tách hẳn khỏi `deploy/`.)
-- **Chính sách model + key LLM để tránh rate limit** (`conversation_spec.md` mục 12.1; đã
-  implement, chờ tester/reviewer): generation giữ `gpt-oss-120b` xoay vòng `GROQ_API_KEY_3` ⇄
-  `_4`; condense/HyDE/Judge dùng `gpt-oss-20b` trên key 1, 2 (Judge riêng key 2, fallback
-  key 1), guardrail giữ `gpt-oss-safeguard-20b`; throttle cửa sổ trượt dùng chung theo bucket
-  `(model, key)` ở `retrieval/llm_throttle.py`. `GROQ_JUDGE_API_KEY` đã bỏ. Không có bước đo
-  đi kèm (không đo lại `MIN_RERANK_SCORE`, không chạy lại bộ ca Judge) — chốt 2026-09-28.
-- **Evaluation Phase 1 đã merge** (#55): `evaluation/` + `tools/generate_testset.py` sinh
-  golden testset (RAGAS, round-robin 3 tài khoản Groq). Chưa ghi nhận đã chạy sinh testset
-  và duyệt tay; Phase 2 (chạy pipeline thật, tính metric) chưa làm.
+**Đang dở / chờ người dùng**
+- Nghiệm thu thủ công observe (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào
+  `.env`, `./deploy/up.sh`, xem trace/metrics thật) — chưa làm xong.
+- Golden testset: tiến trình sinh và duyệt tay chưa hoàn tất (`data/eval/*`).
 
-**Cập nhật 2026-09-29:**
+Roadmap tiếp theo (thứ tự đề xuất):
 
-- **Observability (Langfuse tracing + Prometheus/Grafana metrics) đã merge** (PR #61,
-  `src/production_legal_qa_rag/observability/observability_spec.md`): package mới
-  `observability/`, trace 1 span cây/lượt hỏi trên Langfuse self-host, `/metrics` cho `api`.
-  Nghiệm thu thủ công (chạy stack, xem trace/metrics thật) **chưa làm** — đang hoãn lại để
-  ưu tiên dọn hạ tầng trước.
-- **Gộp toàn bộ `.env`/`.env.example` về đúng 1 cặp ở repo root** (trước đó có thêm
-  `deploy/.env` riêng): chia 3 block bằng comment (APP/DEPLOY/OBSERVABILITY), prefix
-  `DEPLOY_`/`OBS_` chỉ cho 2 biến `POSTGRES_USER`/`POSTGRES_PASSWORD` (trùng tên giữa 2
-  domain). `deploy/up.sh` bỏ hẳn cơ chế đồng bộ 2 file cũ. Xem `deploy_spec.md` mục 7,
-  `README.md`.
-- **`deploy/dev/` tách hẳn thành `dev/` ở root repo** (đảo ngược quyết định #57 ở trên):
-  `deploy/` giờ **chỉ chứa thứ phục vụ end-user** (compose production, `up.sh`, `scripts/`,
-  `initdb/`) — Redis+Postgres cho code trên host và stack Langfuse/Prometheus/Grafana (dev
-  only) không còn nằm trong `deploy/` vì không phải hạ tầng production.
-- Xoá `dev/docker-compose.yml` (Redis+Postgres cho code trên host) — không còn dùng; `dev/` chỉ còn `observability/`.
-- Vá `.gitignore`: dòng `.env` trước đó bị comment nhầm (không thực sự ignore) — đã bật lại.
-
-Roadmap tiếp theo (đã chốt, xem thứ tự — không đảo ngược trừ khi có quyết định mới):
-
-1. **Đánh giá chất lượng bằng RAGAS** — Phase 1 (code sinh golden testset tổng hợp) đã
-   merge; còn chạy sinh + duyệt tay testset, rồi Phase 2 (chạy pipeline thật, tính metric)
-   và lấy mẫu Q&A thật từ bảng `chat_turns` (chatlog) khi dữ liệu đã tích lũy đủ.
-   **Trước đó/song song:** implement chính sách model + key LLM ở trên.
-2. **CI/CD** (GitHub Actions cho CD) + **tracking/tracing/observability** (Prometheus +
-   Grafana + Langfuse — Langfuse trace từng bước condense → retrieve → rerank → generate,
-   Prometheus/Grafana cho metrics/ops thời gian thực). Quyết định gần nhất
-   (2026-09-26): chạy Langfuse self-host + Prometheus + Grafana **trên local trước**;
-   việc tách hạ tầng sang VM free-tier riêng (vd. Oracle Cloud, cho k8s/observability)
-   để tính sau, chưa chốt. `dev/observability/` đã có compose khung cho
-   Prometheus/Grafana.
-
-Giữ nguyên quyết định: `chatlog` (Postgres tự host) vẫn là nguồn dữ liệu chính chủ, không
-thay bằng Langfuse cloud (lý do riêng tư + cần query SQL trực tiếp lên schema nghiệp vụ).
+1. Implement gỡ chatlog (`/develop-cycle` trên `observability_spec.md`, branch mới).
+2. Nghiệm thu observe trên production thật.
+3. Hoàn tất golden testset → implement Evaluation Phase 2 → lấy mẫu Q&A thật từ Langfuse.
+4. **CD**: GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà) — chưa
+   brainstorm chi tiết. Tách observability sang VM riêng: chưa chốt.
 
 ## Quy trình phát triển (`.claude/`)
 
@@ -134,5 +116,5 @@ uv run pytest              # chạy test; -m "not slow" để bỏ test nạp mo
 uv run ruff format .
 uv run ruff check .
 uv run mypy .
-uv run alembic upgrade head
+uv run alembic upgrade head   # bỏ khi gỡ chatlog
 ```
