@@ -247,7 +247,7 @@ tích hợp thật, không phải workaround; đồng thời tránh đổi versi
   mục 1-7. Pydantic v2 vẫn là nguồn sự thật cho mọi schema.
 
 - GuardrailSettings: input safeguard, fail-open.
-- GenerationSettings: generator, ưu tiên `GROQ_API_KEY_3` (fallback `GROQ_API_KEY`).
+- GenerationSettings: generator, ưu tiên `GROQ_API_KEY_3` (fallback `GROQ_API_KEY_1`).
   `round_robin_api_key` (env `GROQ_API_KEY_4`, TÙY CHỌN) — khi có, `AnswerGenerator`
   giữ 2 `LoopBoundClient` (1 mỗi key) và xoay vòng theo từng lượt gọi draft/repair
   (`_next_client()`, index tăng dần mod số client). Quan sát thật 2026-09-27: TPD của
@@ -259,13 +259,13 @@ tích hợp thật, không phải workaround; đồng thời tránh đổi versi
   đổi được bằng config. Judge/generator không share client state qua event loop.
   Chốt 2026-09-28 (chi tiết: `conversation_spec.md` mục 12.1): `model_name` đổi từ
   `gpt-oss-120b` sang `openai/gpt-oss-20b`; chuỗi key đổi thành `GROQ_API_KEY_2` →
-  `GROQ_API_KEY` (bỏ `GROQ_JUDGE_API_KEY`; bỏ `GROQ_API_KEY_3`/`_4` khỏi fallback — 2 key
+  `GROQ_API_KEY_1` (bỏ `GROQ_JUDGE_API_KEY`; bỏ `GROQ_API_KEY_3`/`_4` khỏi fallback — 2 key
   đó thuộc generation). Judge chạy trên tài khoản B riêng, nên không tranh bucket với
   generation (khác model, khác tài khoản) lẫn với Condense/HyDE (khác tài khoản). Judge
   dùng throttle chung theo bucket `(model, key)` (`retrieval/llm_throttle.py`): gọi
   `acquire(...)` trước mỗi lời gọi Judge, `ThrottleTimeout` được coi như lỗi Judge nên vẫn
   fail-closed theo mục 6 — không thêm nhánh xử lý mới.
-- Guardrail giữ `gpt-oss-safeguard-20b` trên `GROQ_API_KEY`, không qua throttle chung
+- Guardrail giữ `gpt-oss-safeguard-20b` trên `GROQ_API_KEY_1`, không qua throttle chung
   (bucket model riêng).
 
 | Module | Trách nhiệm |

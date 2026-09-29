@@ -223,7 +223,7 @@ def test_docker_compose_moi_service_co_gioi_han_bo_nho(tmp_path: Path) -> None:
 def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
     """`.env.example` phải liệt kê đủ toàn bộ biến ở bảng mục 7 (không thiếu tên nào)."""
     required_vars = {
-        "GROQ_API_KEY",
+        "GROQ_API_KEY_1",
         "GROQ_API_KEY_2",
         "HF_TOKEN",
         "PINECONE_API_KEY",
@@ -246,7 +246,7 @@ def test_env_example_liet_ke_du_bien_theo_spec_muc_7() -> None:
 def test_env_example_khong_de_lo_gia_tri_bi_mat_mau() -> None:
     """Các biến bí mật phải để trống trong `.env.example` — không commit giá trị mẫu."""
     secret_vars = {
-        "GROQ_API_KEY",
+        "GROQ_API_KEY_1",
         "GROQ_API_KEY_2",
         "HF_TOKEN",
         "PINECONE_API_KEY",
@@ -261,6 +261,19 @@ def test_env_example_khong_de_lo_gia_tri_bi_mat_mau() -> None:
         assert env_vars.get(name, "") == "", (
             f"'{name}' trong .env.example phải để trống, tìm thấy: {env_vars.get(name)!r}"
         )
+
+
+def test_env_example_co_du_groq_api_key_1_den_9_va_bo_ten_cu() -> None:
+    """`.env.example` có `GROQ_API_KEY_1`...`_9` (để trống) và không còn `GROQ_API_KEY` trần."""
+    env_vars = _parse_env_file(REPO_ROOT / ".env.example")
+
+    for number in range(1, 10):
+        name = f"GROQ_API_KEY_{number}"
+        assert name in env_vars, f"`.env.example` thiếu {name}"
+        assert env_vars[name] == "", (
+            f"{name} phải để trống, tìm thấy: {env_vars[name]!r}"
+        )
+    assert "GROQ_API_KEY" not in env_vars, "tên cũ GROQ_API_KEY không còn được hỗ trợ"
 
 
 def test_env_example_redis_url_tro_localhost_cho_dev_tren_host() -> None:

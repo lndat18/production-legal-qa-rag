@@ -57,7 +57,7 @@ class FakeGroq(_LoopBoundFake):
 @pytest.fixture
 def pipeline(monkeypatch: pytest.MonkeyPatch) -> tuple[RetrievalPipeline, FakeSparse]:
     created.clear()
-    monkeypatch.setenv("GROQ_API_KEY", "k")
+    monkeypatch.setenv("GROQ_API_KEY_1", "k")
     monkeypatch.setattr(hyde_module, "AsyncGroq", FakeGroq)
     monkeypatch.setattr(
         reranker_module.AutoTokenizer, "from_pretrained", lambda _: object()

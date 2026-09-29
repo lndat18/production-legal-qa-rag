@@ -1,4 +1,4 @@
-"""Cài đặt `UnitRunner` bằng `ragas` + 6 tài khoản Groq round-robin (evaluation_spec.md mục 3, 4.3).
+"""Cài đặt `UnitRunner` bằng `ragas` + 9 tài khoản Groq round-robin (evaluation_spec.md mục 3, 4.3).
 
 Toàn bộ code chạm `ragas` nằm ở đây (import ở mức module) để `testset_generator.py`
 không cần dependency-group `eval`; chỉ import module này qua `build_unit_runner`.
@@ -63,7 +63,7 @@ LANGUAGE: Final = "vietnamese"
 
 # Retry của ragas (mục 3.1, 8). Mặc định `RunConfig` là 10 lần với MỌI `Exception`: lỗi tất
 # định (400/401/413) bị thử lại vô ích và khi hết quota mỗi lượt gọi đốt hàng trăm request
-# (mỗi lượt đã là 6 tài khoản x retry SDK). Chỉ thử lại lỗi tạm thời, ít lần, chờ ngắn.
+# (mỗi lượt đã là 9 tài khoản x retry SDK). Chỉ thử lại lỗi tạm thời, ít lần, chờ ngắn.
 MAX_RETRIES: Final = 3
 MAX_WAIT_SECONDS: Final = 30
 # 429 (`RateLimitError`, theo phút), timeout + lỗi kết nối (`APIConnectionError`), 5xx
@@ -129,7 +129,7 @@ def cap_token_limit(transforms: Any, limit: int) -> int:
 
 
 def _build_groq_clients(settings: TestsetGeneratorSettings) -> list[ChatOpenAI]:
-    """Khởi tạo 6 `ChatOpenAI` (Groq) độc lập tài khoản cho round-robin (mục 3.1)."""
+    """Khởi tạo 9 `ChatOpenAI` (Groq) độc lập tài khoản cho round-robin (mục 3.1)."""
     api_keys = (
         settings.api_key,
         settings.api_key_2,
@@ -137,6 +137,9 @@ def _build_groq_clients(settings: TestsetGeneratorSettings) -> list[ChatOpenAI]:
         settings.api_key_4,
         settings.api_key_5,
         settings.api_key_6,
+        settings.api_key_7,
+        settings.api_key_8,
+        settings.api_key_9,
     )
     return [
         ChatOpenAI(

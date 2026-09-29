@@ -107,7 +107,7 @@ def _exhausted_throttle(clock: _FakeClock) -> TokenWindowThrottle:
 
 
 def _condenser(fake: _FakeGroq, throttle: Any, **kwargs: Any) -> QueryCondenser:
-    settings = CondenseSettings(GROQ_API_KEY="k")
+    settings = CondenseSettings(GROQ_API_KEY_1="k")
     return QueryCondenser(settings, fake, throttle=throttle, **kwargs)
 
 
@@ -224,8 +224,8 @@ def test_condense_va_hyde_cung_model_cung_key_dung_chung_bucket(
     monkeypatch.setenv("THROTTLE_RPM_LIMIT", "1")
     condense_fake = _FakeGroq()
     hyde_fake = _FakeGroq(content="đoạn văn")
-    condenser = QueryCondenser(CondenseSettings(GROQ_API_KEY="k"), condense_fake)
-    hyde = HydeGenerator(HydeSettings(GROQ_API_KEY="k"), hyde_fake)
+    condenser = QueryCondenser(CondenseSettings(GROQ_API_KEY_1="k"), condense_fake)
+    hyde = HydeGenerator(HydeSettings(GROQ_API_KEY_1="k"), hyde_fake)
 
     outcome = asyncio.run(condenser.condense_detailed(QUERY, HISTORY))
     hyde_text = asyncio.run(hyde.generate("hỏi"))
@@ -240,9 +240,9 @@ def test_condense_va_hyde_khac_key_khong_dung_chung_bucket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("THROTTLE_RPM_LIMIT", "1")
-    condenser = QueryCondenser(CondenseSettings(GROQ_API_KEY="k1"), _FakeGroq())
+    condenser = QueryCondenser(CondenseSettings(GROQ_API_KEY_1="k1"), _FakeGroq())
     hyde_fake = _FakeGroq(content="đoạn văn")
-    hyde = HydeGenerator(HydeSettings(GROQ_API_KEY="k2"), hyde_fake)
+    hyde = HydeGenerator(HydeSettings(GROQ_API_KEY_1="k2"), hyde_fake)
 
     outcome = asyncio.run(condenser.condense_detailed(QUERY, HISTORY))
     hyde_text = asyncio.run(hyde.generate("hỏi"))

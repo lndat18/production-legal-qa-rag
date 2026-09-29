@@ -57,6 +57,17 @@ vì score thấp. Tầng sở hữu UX/policy có thể dùng `rerank_score` đ�
 quyết định `no_context`, xin làm rõ, hay tiếp tục generation. Nhờ vậy primitive
 retrieval vẫn tái sử dụng được cho debug, research và các product policy khác.
 
+**Đường vào cho evaluation (thêm 2026-09-29, `evaluation_spec.md` mục 11).**
+`RetrievalPipeline.retrieve(query, *, use_mmr=None, precomputed=None)` nhận thêm
+`precomputed: PrecomputedQuery | None` (Pydantic v2 ở `models.py`:
+`hypothetical_document: str | None`, `hypothetical_embedding: list[float] | None`,
+`query_embedding: list[float]`; `hypothetical_document` là `None` khi và chỉ khi
+`hypothetical_embedding` là `None`). Khi có `precomputed`, bỏ bước HyDE + embed và dùng
+giá trị đó; mọi bước sau (nhánh A/B, RRF, MMR, extras, rerank) giữ NGUYÊN code.
+Mặc định `None` = hành vi cũ, không đổi. Mục đích duy nhất: evaluation tách HyDE/embed
+thành stage chạy trước và lưu file, nhưng vẫn đo đúng code retrieval production thay vì
+copy logic sang module eval. Hàm module-level `retrieve()` không lộ tham số này.
+
 ## 3. Luồng online
 
 ```text
@@ -274,7 +285,7 @@ cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ đ�
 | Module | Trách nhiệm duy nhất |
 | --- | --- |
 | `models.py` | Pydantic public/intermediate contracts và `RetrievalError`. |
-| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
+| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY_1`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
 | `llm_throttle.py` | `TokenWindowThrottle` dùng chung cho bucket `gpt-oss-20b` (condense, HyDE, Judge); xem `conversation_spec.md` mục 12.1. |
 | `query_embedder.py` | Query preprocessing, API batch và validate embedding. |
 | `bm25.py` | Tokenize, fit/load params, encode sparse vector. |

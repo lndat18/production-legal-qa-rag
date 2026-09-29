@@ -220,6 +220,27 @@ def test_loi_khong_co_status_http_chi_ghi_ten_loai_khong_ghi_thong_diep(
     assert "bí mật" not in caplog.text
 
 
+def test_log_loi_don_vi_co_ten_loai_loi_va_frame_nhung_khong_co_noi_dung_loi(
+    dirs: tuple[Path, Path], caplog: pytest.LogCaptureFixture
+):
+    markdown_dir, output_dir = dirs
+    runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
+
+    with (
+        caplog.at_level(logging.INFO, logger=tg.logger.name),
+        pytest.raises(tg.UnitGenerationError),
+    ):
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    records = [r for r in caplog.records if "lỗi, dừng" in r.getMessage()]
+    assert len(records) == 1
+    message = records[0].getMessage()
+    assert "traceback: ValueError @ " in message
+    assert "testset_generator.py:" in message
+    assert "bí mật" not in caplog.text
+    assert records[0].exc_info is None
+
+
 def test_hai_lan_loi_lien_tiep_last_failure_tro_sang_don_vi_moi(
     dirs: tuple[Path, Path],
 ):

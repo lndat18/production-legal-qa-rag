@@ -695,7 +695,7 @@ def test_plan_generation_in_thu_tu_trang_thai_va_tom_tat_khong_can_key(
         raise AssertionError("dry-run không được dựng runner/đọc key Groq")
 
     monkeypatch.setattr(tg, "build_unit_runner", _khong_duoc_goi)
-    for env_name in ("GROQ_API_KEY", "GROQ_API_KEY_2"):
+    for env_name in ("GROQ_API_KEY_1", "GROQ_API_KEY_2"):
         monkeypatch.delenv(env_name, raising=False)
 
     plan = tg.plan_generation(markdown_dir, output_dir)

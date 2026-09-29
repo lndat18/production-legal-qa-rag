@@ -267,7 +267,7 @@ def test_cli_dry_run_corpus_that_khong_can_key_groq(
 ):
     from tools import generate_testset
 
-    for suffix in ("", "_2", "_3", "_4", "_5", "_6"):
+    for suffix in ("_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"):
         monkeypatch.delenv(f"GROQ_API_KEY{suffix}", raising=False)
     args = [
         "generate",

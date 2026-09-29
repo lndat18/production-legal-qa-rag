@@ -24,7 +24,7 @@ Chạy `api`/tools trên host cần Redis cục bộ (`REDIS_URL` mặc định 
 
 | Biến                                                | Lấy ở đâu                                                                                    | Ghi chú                                                                                                      |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GROQ_API_KEY` (và `_2`, `_3`, `_4`)                | [console.groq.com/keys](https://console.groq.com/keys)                                       | Xem bảng phân vai key Groq bên dưới                                                                          |
+| `GROQ_API_KEY_1` … `_9`                             | [console.groq.com/keys](https://console.groq.com/keys)                                       | Xem bảng phân vai key Groq bên dưới                                                                          |
 | `HF_TOKEN`                                          | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)                     | Token quyền "Read" là đủ; dùng để embed văn bản                                                              |
 | `PINECONE_API_KEY`                                  | [app.pinecone.io](https://app.pinecone.io) → "API Keys"                                      | —                                                                                                            |
 | `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME` | Tên index tạo trên Pinecone dashboard                                                        | PHẢI khớp đúng tên thật. Sparse index (BM25) tạo + build bằng `tools/sparse_index_documents.py`              |
@@ -33,18 +33,18 @@ Chạy `api`/tools trên host cần Redis cục bộ (`REDIS_URL` mặc định 
 
 Groq giới hạn rate limit (TPM/RPM/TPD) theo **(tài khoản, model)**, không theo từng API key —
 tạo thêm key từ cùng 1 tài khoản không có thêm ngân sách. Muốn thêm ngân sách, lấy key từ
-tài khoản Groq khác (email khác, đăng ký riêng). Chỉ `GROQ_API_KEY` là bắt buộc; key nào không
-set thì bước tương ứng dùng lại `GROQ_API_KEY`.
+tài khoản Groq khác (email khác, đăng ký riêng). Chỉ `GROQ_API_KEY_1` là bắt buộc cho production; key nào không
+set thì bước tương ứng dùng lại `GROQ_API_KEY_1`.
 
 | Biến             | Nhóm | Bước dùng                                                                                        | Không set thì |
 | ---------------- | ---- | ------------------------------------------------------------------------------------------------ | ------------- |
-| `GROQ_API_KEY`   | Nhẹ  | Guardrail, condense, HyDE (model 20b)                                                            | Bắt buộc      |
+| `GROQ_API_KEY_1` | Nhẹ  | Guardrail, condense, HyDE (model 20b)                                                            | Bắt buộc      |
 | `GROQ_API_KEY_2` | Nhẹ  | Evidence Judge (model 20b)                                                                       | Dùng key 1    |
 | `GROQ_API_KEY_3` | Nặng | Generation (model 120b), xoay vòng luân phiên với key 4 theo từng lượt draft/repair              | Dùng key 1    |
 | `GROQ_API_KEY_4` | Nặng | Generation, xoay vòng với key 3 để giãn TPD (nút thắt nhất pipeline) ra 2 tài khoản              | Không xoay    |
 
-Ngoại lệ: `formatting/` (offline) dùng `GROQ_API_KEY` (+ `GROQ_API_KEY_2` nếu có, chạy 2 worker);
-`evaluation/` (RAGAS, `tools/generate_testset.py`) bắt buộc cả `GROQ_API_KEY`, `_2`, `_3` — thiếu
+Ngoại lệ: `formatting/` (offline) dùng `GROQ_API_KEY_1` (+ `GROQ_API_KEY_2` nếu có, chạy 2 worker);
+`evaluation/` (RAGAS, `tools/generate_testset.py`) bắt buộc đủ 9 key `GROQ_API_KEY_1` … `_9` (9 tài khoản độc lập; production không dùng `_5`–`_9`) — thiếu
 key nào, pydantic báo lỗi ngay lúc khởi tạo. Thiết kế đầy đủ:
 `src/production_legal_qa_rag/conversation/conversation_spec.md` mục 12.1.
 
@@ -99,7 +99,7 @@ thật (biến DEPLOY_* + các biến dùng chung đã điền ở phần trên 
 | `quick` (mặc định) | Không cần domain, miễn phí                     | URL ngẫu nhiên `*.trycloudflare.com`, chỉ đổi khi container `cloudflared-quick` restart              |
 | `named`           | Domain riêng đã trỏ về Cloudflare               | URL cố định. Dựng named tunnel theo `deploy_spec.md` mục 3 trước, rồi điền `TUNNEL_TOKEN`, `WEBUI_URL` |
 
-**Biến `[BẮT BUỘC]` lấy từ dịch vụ ngoài:** `GROQ_API_KEY*`, `HF_TOKEN`, `PINECONE_*` — đã
+**Biến `[BẮT BUỘC]` lấy từ dịch vụ ngoài:** `GROQ_API_KEY_*`, `HF_TOKEN`, `PINECONE_*` — đã
 điền ở block APP phía trên, container `api` đọc chung, không cần điền lại.
 
 **Biến `[TỰ SINH]`, riêng cho block DEPLOY** (sinh bằng

@@ -68,7 +68,7 @@ class LLMSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    groq_api_key: str = Field(validation_alias="GROQ_API_KEY")
+    groq_api_key: str = Field(validation_alias="GROQ_API_KEY_1")
     groq_api_key_2: str | None = Field(default=None, validation_alias="GROQ_API_KEY_2")
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
@@ -83,7 +83,7 @@ class GuardrailSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    api_key: str = Field(validation_alias="GROQ_API_KEY_1")
     model_name: str = "openai/gpt-oss-safeguard-20b"
     max_retries: int = 2
     timeout_seconds: int = 30
@@ -92,7 +92,7 @@ class GuardrailSettings(BaseSettings):
 class CondenseSettings(BaseSettings):
     """Cấu hình Groq cho bước condense câu follow-up (conversation_spec.md mục 5).
 
-    Dùng model ``gpt-oss-20b`` trên ``GROQ_API_KEY`` để tách bucket khỏi
+    Dùng model ``gpt-oss-20b`` trên ``GROQ_API_KEY_1`` để tách bucket khỏi
     generation (``gpt-oss-120b``); chung bucket với HyDE nên hai bước dùng chung
     throttle (conversation_spec.md mục 12.1). Timeout ngắn vì condense lỗi thì
     degrade về câu gốc, không đáng để người dùng chờ.
@@ -100,7 +100,7 @@ class CondenseSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    api_key: str = Field(validation_alias="GROQ_API_KEY_1")
     model_name: str = "openai/gpt-oss-20b"
     max_retries: int = 1
     timeout_seconds: int = 20
@@ -144,7 +144,7 @@ class GenerationSettings(BaseSettings):
 
     Generation là bước tốn TPD nhất pipeline (conversation_spec.md mục 16.2) nên
     dùng riêng cặp tài khoản nặng: ``api_key`` ưu tiên ``GROQ_API_KEY_3``, fallback
-    ``GROQ_API_KEY``. Khi có thêm ``GROQ_API_KEY_4`` (tài khoản Groq thứ 4, TÙY
+    ``GROQ_API_KEY_1``. Khi có thêm ``GROQ_API_KEY_4`` (tài khoản Groq thứ 4, TÙY
     CHỌN), ``AnswerGenerator`` round-robin giữa key 3 và key 4 theo từng lượt gọi
     (draft/repair) để giãn TPD ra 2 tài khoản thay vì dồn vào 1 — quan sát thật
     2026-09-27: dùng hết ~200k TPD chỉ trong 1 phiên test nhiều lượt liên tiếp trên
@@ -156,7 +156,7 @@ class GenerationSettings(BaseSettings):
     )
 
     api_key: str = Field(
-        validation_alias=AliasChoices("GROQ_API_KEY_3", "GROQ_API_KEY")
+        validation_alias=AliasChoices("GROQ_API_KEY_3", "GROQ_API_KEY_1")
     )
     round_robin_api_key: str | None = Field(
         default=None, validation_alias="GROQ_API_KEY_4"
@@ -170,7 +170,7 @@ class JudgeSettings(BaseSettings):
     """Cấu hình Evidence Judge độc lập với client generation.
 
     Judge chạy ``gpt-oss-20b`` trên tài khoản nhẹ thứ 2: ưu tiên ``GROQ_API_KEY_2``,
-    fallback ``GROQ_API_KEY`` (conversation_spec.md mục 12.1). Model, timeout và
+    fallback ``GROQ_API_KEY_1`` (conversation_spec.md mục 12.1). Model, timeout và
     retry riêng để thay đổi evaluator không ảnh hưởng prompt tạo answer.
     """
 
@@ -179,7 +179,7 @@ class JudgeSettings(BaseSettings):
     )
 
     api_key: str = Field(
-        validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY")
+        validation_alias=AliasChoices("GROQ_API_KEY_2", "GROQ_API_KEY_1")
     )
     model_name: str = "openai/gpt-oss-20b"
     max_retries: int = 1
@@ -190,7 +190,7 @@ class HydeSettings(BaseSettings):
     """Cấu hình Groq cho bước HyDE (retrieval_spec.md mục 3, 4).
 
     Tách khỏi ``LLMSettings`` vì đó là config của ``formatting/`` (120b): đổi model
-    ở đó sẽ kéo formatting đổi theo. HyDE chạy ``gpt-oss-20b`` trên ``GROQ_API_KEY``,
+    ở đó sẽ kéo formatting đổi theo. HyDE chạy ``gpt-oss-20b`` trên ``GROQ_API_KEY_1``,
     chung bucket với condense (conversation_spec.md mục 12.1).
     """
 
@@ -198,7 +198,7 @@ class HydeSettings(BaseSettings):
         env_file=".env", extra="ignore", env_ignore_empty=True
     )
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    api_key: str = Field(validation_alias="GROQ_API_KEY_1")
     model_name: str = "openai/gpt-oss-20b"
     max_retries: int = 2
     timeout_seconds: int = 30
@@ -254,10 +254,10 @@ class RerankerSettings(BaseSettings):
 
 
 class TestsetGeneratorSettings(BaseSettings):
-    """Cấu hình 6 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
+    """Cấu hình 9 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
 
-    Cả 6 key BẮT BUỘC và KHÔNG được rỗng (không optional/fallback như
-    GenerationSettings/JudgeSettings) — round-robin chỉ có ý nghĩa khi đủ 6 tài khoản
+    Cả 9 key BẮT BUỘC và KHÔNG được rỗng (không optional/fallback như
+    GenerationSettings/JudgeSettings) — round-robin chỉ có ý nghĩa khi đủ 9 tài khoản
     độc lập; thiếu key nào, hoặc để trống như `GROQ_API_KEY_5=` trong `.env.example`,
     pydantic báo lỗi rõ ràng ngay lúc khởi tạo thay vì âm thầm chạy round-robin với ít
     tài khoản hơn.
@@ -265,12 +265,15 @@ class TestsetGeneratorSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(min_length=1, validation_alias="GROQ_API_KEY")
+    api_key: str = Field(min_length=1, validation_alias="GROQ_API_KEY_1")
     api_key_2: str = Field(min_length=1, validation_alias="GROQ_API_KEY_2")
     api_key_3: str = Field(min_length=1, validation_alias="GROQ_API_KEY_3")
     api_key_4: str = Field(min_length=1, validation_alias="GROQ_API_KEY_4")
     api_key_5: str = Field(min_length=1, validation_alias="GROQ_API_KEY_5")
     api_key_6: str = Field(min_length=1, validation_alias="GROQ_API_KEY_6")
+    api_key_7: str = Field(min_length=1, validation_alias="GROQ_API_KEY_7")
+    api_key_8: str = Field(min_length=1, validation_alias="GROQ_API_KEY_8")
+    api_key_9: str = Field(min_length=1, validation_alias="GROQ_API_KEY_9")
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
     timeout_seconds: int = 60

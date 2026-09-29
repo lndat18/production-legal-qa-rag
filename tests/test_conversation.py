@@ -178,7 +178,7 @@ def _condenser(
     content: str | Exception, finish_reason: str = "stop"
 ) -> tuple[QueryCondenser, _FakeGroq]:
     fake = _FakeGroq(content, finish_reason)
-    settings = CondenseSettings(GROQ_API_KEY="k")
+    settings = CondenseSettings(GROQ_API_KEY_1="k")
     # Throttle riêng, rộng: test này gọi condense nhiều lần trong một hàm nên không
     # được phụ thuộc ngân sách bucket dùng chung của tiến trình.
     throttle = TokenWindowThrottle(tpm_limit=10**9, rpm_limit=10**6)
@@ -319,7 +319,7 @@ def _sequenced_condenser(
     results: list[tuple[str | Exception, str]],
 ) -> tuple[QueryCondenser, _SequencedFakeGroq]:
     fake = _SequencedFakeGroq(results)
-    settings = CondenseSettings(GROQ_API_KEY="k")
+    settings = CondenseSettings(GROQ_API_KEY_1="k")
     return QueryCondenser(settings, fake), fake  # type: ignore[arg-type]
 
 

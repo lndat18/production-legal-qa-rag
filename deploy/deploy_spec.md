@@ -229,7 +229,7 @@ prefix):
 
 | Nhóm        | Biến                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------- |
-| LLM/dịch vụ (dùng chung block APP) | `GROQ_API_KEY`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3`, `GROQ_API_KEY_4`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY` |
+| LLM/dịch vụ (dùng chung block APP) | `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3`, `GROQ_API_KEY_4`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY` |
 | Backend     | `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL` cho container `api` do `docker-compose.yml` tự dựng từ `REDIS_PASSWORD`, không đọc trực tiếp từ `.env`) |
 | Postgres (production) | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`                                                              |
 | OpenWebUI   | `WEBUI_SECRET_KEY` (cố định, để phiên đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn) |

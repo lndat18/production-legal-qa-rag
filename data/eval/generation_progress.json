@@ -389,11 +389,50 @@
       "llm_calls": 43,
       "seconds": 838.5022987049888,
       "completed_at": "2026-09-29T08:55:08.811587+07:00"
+    },
+    "Điều kiện lao động và quan hệ lao động.md#10": {
+      "title": "Chương XI. GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG — Mục 1. HÒA GIẢI VIÊN LAO ĐỘNG",
+      "chars": 13790,
+      "estimated_tokens": 79845,
+      "questions": {
+        "single_hop": 4,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 35,
+      "seconds": 834.3040541259998,
+      "completed_at": "2026-09-29T11:57:50.871226+07:00"
+    },
+    "Luật bảo hiểm y tế.md#3": {
+      "title": "Chương III + Chương IV",
+      "chars": 14924,
+      "estimated_tokens": 86082,
+      "questions": {
+        "single_hop": 4,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 49,
+      "seconds": 941.8217913419994,
+      "completed_at": "2026-09-29T12:13:32.693868+07:00"
+    },
+    "Luật bảo hiểm y tế.md#2": {
+      "title": "Chương II. ĐỐI TƯỢNG, MỨC ĐÓNG, TRÁCH NHIỆM VÀ PHƯƠNG THỨC ĐÓNG BẢO HIỂM Y TẾ",
+      "chars": 16992,
+      "estimated_tokens": 97456,
+      "questions": {
+        "single_hop": 4,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 11,
+      "seconds": 359.7019901720014,
+      "completed_at": "2026-09-29T15:39:14.138794+07:00"
     }
   },
   "last_failure": {
-    "unit": "Điều kiện lao động và quan hệ lao động.md#10",
-    "error": "DailyQuotaExhaustedError (HTTP 429): Hết quota ngày cả 6 tài khoản Groq: Rate limit reached for model `openai/gpt-oss-120b` in organization `org_***` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 199250, Requested ",
-    "at": "2026-09-29T09:14:58.177065+07:00"
+    "unit": "Điều kiện lao động và quan hệ lao động.md#8",
+    "error": "DailyQuotaExhaustedError (HTTP 429): Hết quota ngày cả 6 tài khoản Groq: Rate limit reached for model `openai/gpt-oss-120b` in organization `org_***` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 198983, Requested ",
+    "at": "2026-09-29T16:14:42.435616+07:00"
   }
 }

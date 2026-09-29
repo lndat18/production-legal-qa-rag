@@ -148,5 +148,14 @@ if __name__ == "__main__":
     uv sync --group eval --no-group production
     uv run --group eval --no-group production tools/generate_testset.py generate --dry-run
     uv run --group eval --no-group production tools/generate_testset.py generate
+
+    # Chạy nền, tắt terminal vẫn chạy tiếp (tiến độ được checkpoint theo từng đơn vị):
+    setsid nohup uv run --group eval --no-group production tools/generate_testset.py generate > data/eval/generate.log 2>&1 &
+    
+    # Xem log (Ctrl+C chỉ dừng tail, không dừng generate)
+    tail -f data/eval/generate.log
+    
+    # Dừng hẳn khi cần
+    pkill -f generate_testset.py     
     """
     app()
