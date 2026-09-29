@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from langfuse import Langfuse
 
 
 def pytest_configure() -> None:
@@ -52,3 +57,76 @@ def reset_llm_throttle_buckets(monkeypatch: pytest.MonkeyPatch) -> Iterator[None
     _clear_throttle_buckets()
     yield
     _clear_throttle_buckets()
+
+
+def _reset_langfuse_client() -> None:
+    """Xoá singleton Langfuse client nếu `observability/tracing` đã được nạp."""
+    module = sys.modules.get("production_legal_qa_rag.observability.tracing")
+    if module is not None:
+        module._client = None
+
+
+@pytest.fixture(autouse=True)
+def langfuse_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Mặc định Langfuse ở chế độ disabled, không phụ thuộc `.env` của máy dev.
+
+    `get_langfuse_client()` dựng client từ `LangfuseSettings` (đọc `.env` ở root);
+    máy dev có khoá thật sẽ khiến mọi test đi qua `tracing.span`/`generation` thực sự
+    gửi trace. Fixture tắt việc đọc `.env`, xoá khoá khỏi môi trường và reset singleton
+    trước/sau mỗi test (observability_spec.md mục 4.1: thiếu khoá -> no-op).
+    """
+    from production_legal_qa_rag.config import LangfuseSettings
+
+    monkeypatch.setattr(
+        LangfuseSettings,
+        "model_config",
+        {**LangfuseSettings.model_config, "env_file": None},
+    )
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+    _reset_langfuse_client()
+    yield
+    _reset_langfuse_client()
+
+
+@pytest.fixture
+def in_memory_langfuse(monkeypatch: pytest.MonkeyPatch) -> Iterator[Langfuse]:
+    """Langfuse client thật (enabled) nhưng hermetic: không gửi gì qua mạng.
+
+    Khoá giả duy nhất mỗi test (resource manager của SDK là singleton theo
+    `public_key`), `TracerProvider` riêng (không đụng provider toàn cục của OTel) và
+    `InMemorySpanExporter` thay cho OTLP exporter nên không có kết nối nào tới
+    `base_url` (cổng không lắng nghe). Client được gắn vào `tracing._client` để
+    `tracing.span`/`generation` dùng nó; test đọc thuộc tính OTel qua
+    `observation._otel_span.attributes`.
+    """
+    from langfuse import Langfuse as LangfuseClient
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from production_legal_qa_rag.observability import tracing
+
+    for name in (
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENABLED",
+        "LANGFUSE_SAMPLE_RATE",
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        "OTEL_SDK_DISABLED",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    provider = TracerProvider()
+    client = LangfuseClient(
+        public_key=f"pk-lf-test-{uuid.uuid4().hex}",
+        secret_key="sk-lf-test",
+        base_url="http://127.0.0.1:9",
+        tracer_provider=provider,
+        span_exporter=InMemorySpanExporter(),
+        sample_rate=1.0,
+    )
+    monkeypatch.setattr(tracing, "_client", client)
+    yield client
+    client.shutdown()
+    provider.shutdown()

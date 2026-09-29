@@ -12,7 +12,10 @@ hành vi no-op khi thiếu key, singleton, và lồng span/generation không rai
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
 
 import pytest
 
@@ -145,3 +148,146 @@ def test_span_song_song_khong_lan_nhau_khi_disabled(
             guardrail_obs.update(output={"verdict": "allow"})
         with tracing.generation("condense", model="condense-model") as condense_obs:
             condense_obs.update(output={"standalone_query": "q"})
+
+
+# ------------------------------------------- user_id / session_id (mục 4.2, 4.4)
+
+
+class _PropagateSpy:
+    """Thay `propagate_attributes`: ghi lại kwargs và thứ tự vào/ra context."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.events: list[str] = []
+
+    @contextmanager
+    def __call__(self, **kwargs: Any) -> Iterator[None]:
+        self.calls.append(kwargs)
+        self.events.append("enter")
+        try:
+            yield
+        finally:
+            self.events.append("exit")
+
+
+def test_span_co_user_va_session_goi_propagate_attributes_quanh_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1"):
+        spy.events.append("body")
+
+    assert spy.calls == [{"user_id": "user-1", "session_id": "chat-1"}]
+    assert spy.events == ["enter", "body", "exit"]
+
+
+@pytest.mark.parametrize(
+    ("user_id", "session_id"),
+    [("user-1", None), (None, "chat-1")],
+)
+def test_span_chi_co_mot_trong_hai_van_goi_propagate_attributes(
+    monkeypatch: pytest.MonkeyPatch, user_id: str | None, session_id: str | None
+) -> None:
+    """Giá trị thiếu truyền `None` cho SDK (bị bỏ qua), không bịa giá trị."""
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("chat_turn", user_id=user_id, session_id=session_id):
+        pass
+
+    assert spy.calls == [{"user_id": user_id, "session_id": session_id}]
+
+
+def test_span_khong_co_user_va_session_khong_goi_propagate_attributes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with tracing.span("cache_lookup", input="q"):
+        pass
+
+    assert spy.calls == []
+
+
+def test_span_co_user_va_session_van_lan_truyen_exception_tu_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    spy = _PropagateSpy()
+    monkeypatch.setattr(tracing, "propagate_attributes", spy)
+
+    with (
+        pytest.raises(ValueError, match="boom"),
+        tracing.span("chat_turn", user_id="user-1"),
+    ):
+        raise ValueError("boom")
+
+    assert spy.events == ["enter", "exit"]
+
+
+def test_span_disabled_voi_user_va_session_khong_raise_va_chay_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    executed = False
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        executed = True
+        root.update(output="x")
+
+    assert executed
+
+
+def test_span_va_generation_disabled_khong_log_canh_bao_khi_su_dung(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """SDK chỉ cảnh báo một lần lúc dựng client thiếu khoá; dùng span thì im lặng."""
+    _set_keys(monkeypatch, public_key=None, secret_key=None)
+    tracing.get_langfuse_client()
+    caplog.clear()
+    caplog.set_level(logging.WARNING)
+
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        root.update(output="x")
+        with tracing.generation("answer", model="m") as child:
+            child.update(output="y")
+
+    assert caplog.records == []
+
+
+def test_span_that_ghi_user_id_va_session_id_len_root_va_span_con(
+    in_memory_langfuse: Any,
+) -> None:
+    with tracing.span("chat_turn", user_id="user-1", session_id="chat-1") as root:
+        root_attributes = dict(root._otel_span.attributes)
+        with tracing.generation("answer", model="m") as child:
+            child_attributes = dict(child._otel_span.attributes)
+
+    assert root_attributes["user.id"] == "user-1"
+    assert root_attributes["session.id"] == "chat-1"
+    assert child_attributes["user.id"] == "user-1"
+    assert child_attributes["session.id"] == "chat-1"
+
+
+def test_span_that_khong_bia_session_id_khi_thieu(in_memory_langfuse: Any) -> None:
+    with tracing.span("chat_turn", user_id="user-1") as root:
+        attributes = dict(root._otel_span.attributes)
+
+    assert attributes["user.id"] == "user-1"
+    assert "session.id" not in attributes
+
+
+def test_span_that_khong_co_user_va_session_thi_khong_ghi_thuoc_tinh_trace(
+    in_memory_langfuse: Any,
+) -> None:
+    with tracing.span("cache_lookup", input="q") as observation:
+        attributes = dict(observation._otel_span.attributes)
+
+    assert "user.id" not in attributes
+    assert "session.id" not in attributes
