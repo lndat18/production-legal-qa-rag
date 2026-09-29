@@ -1,12 +1,11 @@
 # Evaluation — Synthetic Testset Generation (Phase 1): Reference Spec
 
-> **Phạm vi spec này chỉ là Phase 1 của roadmap RAGAS** (xem `CLAUDE.md` mục Tiến độ):
-> sinh bộ câu hỏi + đáp án chuẩn ("golden testset") từ corpus pháp luật thật, không tự
-> gán nhãn thủ công. **Phase 2 — chạy pipeline retrieval/generation thật trên testset này,
-> tính metric RAGAS (`faithfulness`, `answer_relevancy`, `context_precision`,
-> `context_recall`), chọn judge LLM, ngưỡng theo dõi — CHƯA được thiết kế và sẽ mở rộng
-> thêm module vào package `evaluation/` này ở một vòng brainstorm riêng sau.** Người đọc
-> spec này không nên hiểu đây là toàn bộ scope đánh giá chất lượng của dự án.
+> **Mục 1–10 là Phase 1 của roadmap RAGAS** (xem `CLAUDE.md` mục Tiến độ): sinh bộ câu
+> hỏi + đáp án chuẩn ("golden testset") từ corpus pháp luật thật, không tự gán nhãn thủ
+> công. **Phase 2 — chạy retrieval/generation thật trên testset này và tính metric RAGAS
+> (`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`) — được
+> thiết kế ở mục 11 (chốt 2026-09-29, CHƯA implement).** Các mục 1–10 không mô tả
+> Phase 2, trừ chỗ có ghi chú trỏ sang mục 11.
 >
 > Quyết định phạm vi (chốt cùng ngày viết spec): **không dùng dữ liệu `chatlog`/
 > `chat_turns` thật ở phase này** — lý do hệ thống mới nghiệm thu production, dữ liệu
@@ -38,7 +37,8 @@ câu hỏi/đáp án chuẩn.
   có chủ đích của người dùng**. (Lịch sử: chốt ban đầu 3 tài khoản/360 câu; 2026-09-28
   người dùng có thêm `GROQ_API_KEY_4` rồi `_5`, `_6` (tổng **6 tài khoản**, tên biến
   `GROQ_API_KEY_5`/`_6` đã được người dùng xác nhận), chốt đích cuối cùng **180 câu** để còn thời gian
-  làm deploy + observability, và chốt cách sinh dư rồi trừ hao.)
+  làm deploy + observability, và chốt cách sinh dư rồi trừ hao. 2026-09-29 người dùng thêm
+  3 tài khoản nữa `GROQ_API_KEY_7`/`_8`/`_9` → **tổng 9 tài khoản**, mục 3.1.)
 - Lưu testset thô ra `golden_testset_raw.json` (để người dùng đọc lướt/xoá) **ngay sau
   khi xong từng Chương** (checkpoint theo Chương — chạy dở, hết quota Groq ngày hôm đó
   thì hôm sau chạy tiếp, mục 4), rồi lệnh `finalize` chốt còn đúng `TARGET_SIZE = 180`
@@ -48,8 +48,9 @@ câu hỏi/đáp án chuẩn.
   `--reuse-knowledge-graph`, `--append`) và lệnh `finalize` (mục 7).
 
 **Mục tiêu của bộ eval (chốt 2026-09-28, người dùng): kiểm tra TOÀN HỆ THỐNG — chạy
-câu hỏi qua pipeline thật từ đầu đến cuối (HyDE → hybrid retrieval → RRF/MMR → rerank →
-generation → verify; phạm vi chính xác của Phase 2 chưa chốt) — với bộ câu hỏi/đáp án chuẩn
+câu hỏi qua pipeline thật (HyDE → hybrid retrieval → RRF/MMR → rerank → generation →
+Evidence Judge; **phạm vi Phase 2 đã chốt ở mục 11: bỏ guardrail/condense/cache/api**, vì đó
+là tầng phục vụ end-user, không phải chất lượng hỏi-đáp) — với bộ câu hỏi/đáp án chuẩn
 ĐỘC LẬP với thiết kế của hệ thống.** "Độc lập" ở đây nói về **nguồn của testset**: câu hỏi
 và đáp án chuẩn được sinh từ văn bản luật gốc, không đi qua `chunking/` nên không mang
 theo quyết định cắt chunk của hệ thống. Vì vậy input của `TestsetGenerator` là **văn bản
@@ -239,6 +240,19 @@ mới, đặc biệt cho 2 synthesizer multi-hop (mục 4.3).
 > `gpt-oss-120b` **hoàn toàn rảnh** (production chỉ dùng key 1-4). Quota ngày = 6 × 200K =
 > **~1,2M token/ngày** cho `gpt-oss-120b`; các số đo "4 tài khoản/~800K/ngày" trong mục
 > 4.1 là lịch sử pilot — lập kế hoạch theo 6 tài khoản (mục 4.4, 4.5).
+>
+> **Cập nhật 2026-09-29: 9 tài khoản** (thêm `GROQ_API_KEY_7`, `_8`, `_9` — 3 tài khoản Groq
+> mới, độc lập, người dùng xác nhận). Quota ngày = 9 × 200K = **~1,8M token/ngày**
+> (`TOKENS_PER_DAY = 1_800_000`), thông lượng tối đa ≈ 9 × 8.000 = 72.000 token/phút. Mọi con
+> số "6 tài khoản / ~1,2M / 48K token/phút" ở các mục khác của spec là lịch sử tại thời điểm
+> viết — từ nay **N = 9** (cả Phase 1 lẫn Phase 2, mục 11). Ba tài khoản mới chưa từng chạy
+> pipeline này nên **kiểm dashboard usage sau lần chạy đầu** xem chúng có nhận tải thật không
+> (nếu Groq báo cùng tổ chức với key cũ thì quota không tăng — mục 4.6).
+>
+> **Đổi tên biến 2026-09-29: `GROQ_API_KEY` → `GROQ_API_KEY_1`** (đánh số đủ `_1`…`_9` cho nhất
+> quán; người dùng đã đổi trong `.env`). Đổi cứng, KHÔNG giữ alias tên cũ. Ở mọi nơi spec này
+> còn viết `GROQ_API_KEY` trần thì đọc là `GROQ_API_KEY_1`; chính sách key/model chi tiết ở
+> `conversation_spec.md` mục 12.1.
 
 Với `testset_size = 240` (`GENERATE_SIZE`), số lượt gọi `generator_llm` (build `KnowledgeGraph` + sinh câu
 hỏi) đủ lớn để 1 tài khoản Groq duy nhất dễ chạm rate limit theo phút/ngày (`CLAUDE.md`:
@@ -706,6 +720,51 @@ của `split_document`, không đổi khi sắp xếp lại; dùng số thứ t�
 Hôm sau chỉ cần chạy đúng một lệnh, không cần nhớ đã dừng ở đâu:
 `tools/generate_testset.py generate` (không `--only`) — tự chạy tiếp theo thứ tự nhỏ → lớn.
 
+### 4.6 Tiến độ thực tế và việc còn lại (chốt 2026-09-29)
+
+**Số liệu từ `generation_progress.json` / `golden_testset_raw.json`:**
+
+| Hạng mục | Giá trị |
+| --- | --- |
+| Đơn vị đã xong | **33 / 50** (47,9% số ký tự; ước lượng ~2,03M / 4,16M token) |
+| Câu trong raw | **97**: 90 single-hop, 7 multi-hop specific, **0 multi-hop abstract** |
+| Lượt gọi LLM / thời gian | 672 lượt / ~4,3 giờ chạy thực (các đơn vị nhỏ hoàn thành hết trong ngày 2026-09-29) |
+| Dừng lần cuối | 2026-09-29 16:14: `DailyQuotaExhaustedError` (6/6 tài khoản hết TPD 200K của `gpt-oss-120b`) ở đơn vị `Điều kiện lao động và quan hệ lao động.md#8` (chưa ghi vào raw/progress đúng thiết kế mục 4.5) |
+| Còn lại | **17 đơn vị lớn nhất** (17.093 → 29.075 ký tự; 374.010 ký tự; ~2,12M token ước lượng) |
+| Thời gian ước tính | ~2,12M / 1,8M token/ngày (9 tài khoản) ≈ **1,2 ngày** → thực tế 2 lần chạy (TPD là cửa sổ trượt; trước đó 6 tài khoản ≈ 1,8 ngày) |
+
+**Chạy tiếp** (không đổi so với mục 4.5): `tools/generate_testset.py generate` — tự bắt đầu ở đơn
+vị `Điều kiện lao động và quan hệ lao động.md#8` (thứ 34), dùng lại KG đã lưu nếu có. Trước khi
+chạy bắt buộc xong việc sửa code cho 9 key bên dưới, vì `TestsetGeneratorSettings` hiện chỉ đọc
+6 key và code sẽ không dùng `GROQ_API_KEY_7`–`_9`.
+
+**Việc code cho 9 key (developer, Phase 1 — thay đổi nhỏ, không đổi thiết kế):**
+- `config.py`: thêm `api_key_7`/`_8`/`_9` (`Field(min_length=1, validation_alias=...)`, bắt buộc như 6 key trước).
+- `ragas_runner.py`: `_build_groq_clients` thêm 3 key vào tuple; docstring/comment "6" → "9".
+- `testset_generator.py`: `TOKENS_PER_DAY = 1_800_000`; thông báo lỗi thiếu key nêu `GROQ_API_KEY_2 ... GROQ_API_KEY_9`; comment "6 tài khoản".
+- `.env.example`: thêm `GROQ_API_KEY_7`, `_8`, `_9`.
+- Test: cập nhật các test dựng `TestsetGeneratorSettings`/đếm 6 client sang 9.
+- `groq_round_robin.py` KHÔNG cần đổi (router dùng `len(clients)`, không hard-code 6).
+
+**Rủi ro 3 tài khoản mới (chưa kiểm chứng):** Groq tính quota theo tổ chức; nếu `_7`–`_9` cùng
+tổ chức với key cũ thì bucket dùng chung, quota không tăng và round-robin chỉ thêm request thừa.
+Cách kiểm nhanh: sau lần chạy đầu, dashboard usage của `gpt-oss-120b` ở 3 tài khoản mới phải có
+token tiêu thụ (mục 3.1). Key `_7`–`_9` là bucket `gpt-oss-120b` **rảnh hoàn toàn** như key 5, 6
+(production chỉ dùng 1-4, không dùng thêm), nên không cần né traffic thật.
+
+**Vấn đề mở — `multi-hop abstract` = 0 (phát hiện 2026-09-29, người dùng chốt: chạy tiếp cho xong đã, xét sau):**
+33 đơn vị (~48% ký tự) lẽ ra đã cho ~11 câu abstract (quota 24/240, mục 4 phân bổ theo ký tự) và
+~11 câu specific, thực tế 0 và 7. Single-hop đúng kế hoạch (90 so với ~92). Nghi ngờ: KG theo
+từng Chương nhỏ không có cụm đoạn thoả `MultiHopAbstractQuerySynthesizer` (theme chung giữa các
+node) nên `_has_clusters` trả `False` và synthesizer bị bỏ qua — nhưng **chưa xác minh** là do
+`_has_clusters` hay do lỗi khác (ví dụ synthesizer sinh ra rồi bị filter loại hết). Hệ quả nếu
+giữ nguyên: raw kết thúc ~207 dòng (~192 single + ~15 specific + 0 abstract), đủ trên `TARGET_SIZE
+= 180` nhưng **không có câu multi-hop abstract**; phân bố 80/10/10 (mục 10.10) thành ~92/0/8.
+Quyết định sau khi xong 50 đơn vị, một trong ba: (a) sinh bù abstract bằng `generate --only
+"<tên>#<số>" --append` trên các đơn vị lớn có KG dày; (b) chấp nhận testset không có abstract và ghi
+vào chú thích báo cáo Phase 2 (mục 11.6: multi-hop chỉ có specific); (c) chỉnh tỷ lệ 90/0/10 và sửa
+mục 10.10. Nên xác minh nguyên nhân (đọc `_has_clusters` trên KG đã lưu của vài đơn vị lớn) trước khi chọn (a).
+
 ## 5. Model dữ liệu (`models.py`)
 
 ```python
@@ -767,28 +826,31 @@ Thêm vào `config.py` gốc (cạnh `GenerationSettings`, `JudgeSettings`... th
 
 ```python
 class TestsetGeneratorSettings(BaseSettings):
-    """Cấu hình 6 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
+    """Cấu hình 9 tài khoản Groq round-robin cho generator_llm (Phase 1 RAGAS, mục 3.1).
 
-    Cả 6 key BẮT BUỘC (không optional/fallback như GenerationSettings/JudgeSettings) —
-    round-robin chỉ có ý nghĩa khi đủ 6 tài khoản độc lập; thiếu key nào, pydantic báo lỗi
+    Cả 9 key BẮT BUỘC (không optional/fallback như GenerationSettings/JudgeSettings) —
+    round-robin chỉ có ý nghĩa khi đủ 9 tài khoản độc lập; thiếu key nào, pydantic báo lỗi
     rõ ràng ngay lúc khởi tạo thay vì âm thầm chạy round-robin với ít tài khoản hơn.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    api_key: str = Field(validation_alias="GROQ_API_KEY")
+    api_key: str = Field(validation_alias="GROQ_API_KEY_1")  # đổi tên từ GROQ_API_KEY, 2026-09-29
     api_key_2: str = Field(validation_alias="GROQ_API_KEY_2")
     api_key_3: str = Field(validation_alias="GROQ_API_KEY_3")
     api_key_4: str = Field(validation_alias="GROQ_API_KEY_4")
     api_key_5: str = Field(validation_alias="GROQ_API_KEY_5")
     api_key_6: str = Field(validation_alias="GROQ_API_KEY_6")
+    api_key_7: str = Field(validation_alias="GROQ_API_KEY_7")
+    api_key_8: str = Field(validation_alias="GROQ_API_KEY_8")
+    api_key_9: str = Field(validation_alias="GROQ_API_KEY_9")
     model_name: str = "openai/gpt-oss-120b"
     max_retries: int = 2
     timeout_seconds: int = 60
 ```
 
-- Dùng cả 6 khoá `GROQ_API_KEY`/`_2`…`_6` (6 tài khoản Groq độc lập, xác nhận bởi
-  người dùng) qua round-robin (mục 3.1) — khác mục đích tách ngân sách theo bước của
+- Dùng cả 9 khoá `GROQ_API_KEY_1`…`_9` (9 tài khoản Groq độc lập, xác nhận bởi
+  người dùng; `_7`–`_9` thêm 2026-09-29) qua round-robin (mục 3.1) — khác mục đích tách ngân sách theo bước của
   `GenerationSettings`/`JudgeSettings` (`GenerationSettings` cũng đọc `GROQ_API_KEY_3`/
   `_4`, nhưng để xoay vòng cho generation production), nên **không dùng chung class** với
   chúng dù tên biến trùng.
@@ -798,7 +860,7 @@ class TestsetGeneratorSettings(BaseSettings):
   `EmbeddingSettings` đã có (`config.py`).
 - Module không đọc `.env` trực tiếp. `.env.example` mới có `GROQ_API_KEY`…`_4` — **thêm
   `GROQ_API_KEY_5`, `GROQ_API_KEY_6`** và xoá 4 dòng `OPENROUTER_API_KEY*` (chỉ phục vụ pilot
-  đã xong); bổ sung ghi chú: 6 key này cũng được dùng round-robin bởi `tools/generate_testset.py`
+  đã xong; 2026-09-29 thêm `GROQ_API_KEY_7`, `_8`, `_9` vào `.env.example`); bổ sung ghi chú: 9 key này cũng được dùng round-robin bởi `tools/generate_testset.py`
   (chạy khi không có traffic thật, mục 3.1).
 
 ## 7. Module (`src/production_legal_qa_rag/evaluation/`)
@@ -827,12 +889,12 @@ package này — tránh phải dời code khi mở rộng.
 | `embeddings_adapter.py` trả response sai định dạng (khác kỳ vọng của HF API) | Raise lỗi rõ, không âm thầm trả vector rỗng — cùng nguyên tắc validate ở biên như `embedding/hf_client.py`. |
 | File `data/markdown/*.md` trống hoặc thiếu | Raise lỗi rõ trước khi gọi `TestsetGenerator` (fail fast, không lãng phí LLM call). |
 | Một tài khoản Groq bị 429 giữa vòng round-robin (mục 3.1) | Thử ngay tài khoản kế tiếp, tối đa `len(clients)` client KHÁC NHAU cho MỘT lượt gọi (điểm bắt đầu chốt một lần dưới lock); hết vòng vẫn lỗi thì raise nguyên lỗi cuối — không giữ vòng lặp vô hạn, không tự ý bỏ qua câu hỏi đó. Chỉ khi cả `n` client khác nhau đều báo hết quota ngày trong cùng lượt gọi mới bật breaker (`DailyQuotaExhaustedError`). Tài khoản vừa báo TPD được xếp cuối trong 5 phút. |
-| Thiếu hoặc để trống (`GROQ_API_KEY_5=`) bất kỳ key nào trong `GROQ_API_KEY`…`_6` trong `.env` | `TestsetGeneratorSettings` (`Field(min_length=1)`) raise lỗi validate ngay lúc khởi tạo (fail fast), thông báo chỉ nêu TÊN biến — không âm thầm chạy round-robin với ít hơn 6 tài khoản. |
+| Thiếu hoặc để trống (`GROQ_API_KEY_5=`) bất kỳ key nào trong `GROQ_API_KEY_1`…`_9` trong `.env` | `TestsetGeneratorSettings` (`Field(min_length=1)`) raise lỗi validate ngay lúc khởi tạo (fail fast), thông báo chỉ nêu TÊN biến — không âm thầm chạy round-robin với ít hơn 9 tài khoản. |
 | `generate` gặp đơn vị đã có trong `generation_progress.json` mà không có `--append` | Bỏ qua đơn vị đó, log rõ "đã xong" (không gọi Groq, không ghi đè) — vừa là resume vừa bảo vệ công review tay (mục 4.5). Không bao giờ ghi đè/sắp xếp lại các dòng có sẵn trong file raw (người dùng đã sửa tay). |
 | Đơn vị đã xong nhưng `chars` trong progress khác kết quả chia hiện tại | Dừng với lỗi nêu tên đơn vị (nguồn hoặc quy tắc chia đã đổi); không tự bỏ qua/ghi đè (mục 4.5). |
 | Đơn vị có dòng trong raw nhưng chưa có trong progress (chết giữa hai bước ghi) | Coi là đã xong, ghi bổ sung vào progress và log; không sinh lại. |
 | `--append` không kèm `--only` | Lỗi đầu vào (mã thoát 2) trước khi gọi LLM; không chạy lại cả corpus (mục 4.5). |
-| Thiếu/sai `GROQ_API_KEY`…`_6` khi chạy `generate` thật | `EvalInputError` (mã thoát 2) chỉ nêu TÊN biến còn thiếu, KHÔNG in giá trị (lỗi gốc của pydantic in đầu/đuôi key). |
+| Thiếu/sai `GROQ_API_KEY_1`…`_9` khi chạy `generate` thật | `EvalInputError` (mã thoát 2) chỉ nêu TÊN biến còn thiếu, KHÔNG in giá trị (lỗi gốc của pydantic in đầu/đuôi key). |
 | `data/markdown` thiếu/không có `.md`, hoặc file `.md`/progress/raw không phải UTF-8 | `EvalInputError` (mã thoát 2), không traceback. |
 | `generation_progress.json` hỏng/không parse được | Raise lỗi rõ; không âm thầm coi như "chưa làm gì" (sẽ đốt lại toàn bộ quota). |
 | `finalize`: sau review còn ít hơn 180 câu | Dừng với lỗi nêu rõ thiếu bao nhiêu + gợi ý `generate --only <tên> --reuse-knowledge-graph --append` (mục 4.2); không ghi `golden_testset.json` thiếu. |
@@ -917,12 +979,9 @@ package này — tránh phải dời code khi mở rộng.
    `_generate` trong executor) nên trạng thái dùng chung phải thread-safe (mục 3.1): chốt điểm
    bắt đầu một lần mỗi lượt gọi dưới `threading.Lock` để breaker không bật oan. Bản đầu
    ghi đây là "rủi ro chấp nhận được" — sai, vì cờ breaker khoá cả process.
-7. Phase 2 (chạy pipeline thật, tính metric, chọn judge LLM, ngưỡng theo dõi, tần suất
-   chạy) chưa được thiết kế — brainstorm riêng sau khi có `golden_testset.json` dùng được.
-   Các điểm mở đã biết cho brainstorm đó: pipeline chạy eval đi từ đâu (gọi thẳng
-   `retrieve()` + `generate()` hay qua cả `conversation/` với condense/guardrail; đề xuất
-   bỏ cache khi eval để không đo nhầm kết quả cache); judge LLM dùng key/model nào (người
-   dùng chốt dùng cả 6 key Groq, không chạy việc khác song song).
+7. Phase 2 đã được thiết kế ở **mục 11** (2026-09-29): chạy `retrieve` + `generate` thẳng
+   (không qua `conversation/`), bỏ cache; judge RAGAS `gpt-oss-120b` trên cả 9 key Groq.
+   Ngưỡng theo dõi và tần suất chạy vẫn chưa chốt (mục 11.9).
 8. (Phase 2) Metric retrieval xác định (hit@k theo `chunk_id`) cần map đoạn `reference_contexts`
    của ragas sang tập chunk hệ thống (mục 2.1). Chưa xác nhận `reference_contexts` do
    ragas trả về có phải trích nguyên văn hay đã bị biến đổi: **pilot thăm dò xác nhận nguyên
@@ -954,3 +1013,246 @@ package này — tránh phải dời code khi mở rộng.
 13. **Trùng ý giữa các câu cùng một đoạn ragas** (pilot: 4 câu → 2 chủ đề) và **chủ đề nông
     kiểu "Chính phủ quy định chi tiết"** (NER trích thực thể chung chung). Chỉ xử lý bằng đọc
     lướt (mục 9.4); nếu tỷ lệ bỏ thực tế >40% thì tăng `GENERATE_SIZE` hoặc dùng sinh bù.
+
+## 11. Phase 2 — Chạy pipeline thật và chấm điểm (chốt 2026-09-29, chưa implement)
+
+### 11.1 Mục tiêu, phạm vi
+
+Chạy từng câu của `golden_testset.json` qua retrieval + generation thật của hệ thống, rồi
+chấm bằng RAGAS. Trả lời hai câu hỏi: (1) **bật hay tắt MMR** thì retrieval tốt hơn
+(retrieval_spec mục 6 coi MMR là cờ evaluation, không phải tối ưu tin sẵn); (2) chất lượng
+câu trả lời cuối (đã qua Evidence Judge) đang ở mức nào, theo loại câu và theo văn bản luật.
+
+**Trong phạm vi:** HyDE → embed → retrieve (2 cấu hình `mmr_on`/`mmr_off`) → chấm retrieval →
+generation của cấu hình thắng (dùng `GenerationPipeline.generate`, gồm draft + hard gate +
+Evidence Judge + repair, `generation_spec.md` mục 3) → chấm câu trả lời → báo cáo.
+
+**Không làm:**
+- Guardrail, condense, cache, `api/`, `conversation/`: là tầng phục vụ end-user, testset là câu
+  hỏi đơn lượt độc lập, và cache làm sai số đo. Hệ quả: tỷ lệ guardrail từ chối nhầm câu hợp lệ
+  KHÔNG được đo ở Phase 2.
+- **Groq Batch API:** tài khoản free không dùng được (console `dashboard/batch` báo "Upgrade
+  your plan", 2026-09-29; người dùng không có Developer plan). Cách "gom" duy nhất dùng là gom
+  nhiều text vào một request embed HF (25 text/request, như `embedding/hf_client.py`).
+- Metric xác định `hit@k` theo `chunk_id` (mục 10.8), lát đánh giá nhiễu (mục 4.1), lấy mẫu
+  `chat_turns`, CI/cron.
+
+**Tiêu chí hoàn thành:** chạy đủ các stage trên `golden_testset.json` (180 câu), có
+`data/eval/phase2/report.json` (mục 11.6) và người vận hành đọc được bảng so sánh MMR bật/tắt
+lẫn điểm câu trả lời theo `synthesizer_name`/`source_document`.
+
+### 11.2 Stage, file trung gian, resume
+
+Mỗi stage đọc file của stage trước, ghi một file JSONL ở `data/eval/phase2/`, và chạy lại
+được (resume) — đổi prompt generation chỉ chạy lại S5–S6, không đụng retrieval. Khoá bản ghi
+= `case_id` = 12 ký tự hex đầu của `sha256(user_input)` (testset không có id; hash ổn định dù
+người dùng xoá/đổi thứ tự dòng khi đọc lướt).
+
+| Stage | Việc | Tài nguyên | File ra |
+| --- | --- | --- | --- |
+| S1 `hyde` | `HydeGenerator.generate(user_input)` cho mọi câu | LLM `gpt-oss-20b`, cả 9 key (mục 11.3), throttle theo bucket `(model, key)` sẵn có | `hyde.jsonl`: `{case_id, hypothetical_document \| null, error \| null}` |
+| S2 `embed` | Embed `[hypo, query]` bằng `QueryEmbedder` (pyvi + cùng model như index), gom 25 text/request | HF Inference API | `embeddings.jsonl`: `{case_id, hypothetical_embedding \| null, query_embedding}` (không commit git — ~5 MB, tái sinh được) |
+| S3 `retrieve` | `RetrievalPipeline.retrieve(query, use_mmr=…, precomputed=…)`, **tuần tự** từng cấu hình (`mmr_on` xong hết rồi `mmr_off`) | Pinecone, BM25, rerank GPU local | `retrieved_mmr_on.jsonl`, `retrieved_mmr_off.jsonl`: `{case_id, chunks: [RetrievedChunk], error \| null}` |
+| S4 `score-retrieval` | RAGAS `context_precision` + `context_recall` cho từng cấu hình | LLM `gpt-oss-120b`, 9 key round-robin | `retrieval_scores.jsonl`: `{case_id, config, context_precision, context_recall}` |
+| S5 `generate --config <mmr_on\|mmr_off>` | `GenerationPipeline.generate(query, chunks)` cho cấu hình do người dùng chọn sau S4 | 120b draft/repair + 20b Judge, **cả 9 key** (mỗi câu một pipeline theo key, mục 11.3) | `answers.jsonl` (mục 11.4) |
+| S6 `score-answers` | RAGAS `faithfulness` + `answer_relevancy` trên các câu `answered` | 120b 9 key + embedding HF | `answer_scores.jsonl`: `{case_id, faithfulness, answer_relevancy}` |
+| `report` | Tổng hợp | không LLM | `report.json` + bảng in ra terminal |
+
+**Quy tắc chung:**
+- **Resume:** stage bỏ qua `case_id` đã có trong file ra; thiếu bản ghi ở stage trước thì báo số
+  lượng còn thiếu và chỉ xử lý phần đã có. Bản ghi lỗi tạm thời (`error` khác null) được chạy lại
+  bằng `--retry-failed`, mặc định KHÔNG chạy lại (tránh đốt token vào lỗi tất định).
+- Ghi nối từng dòng ngay sau mỗi bản ghi (S4, S6: sau mỗi lô `SCORING_BATCH_SIZE = 10`, để hết
+  quota chỉ mất tối đa một lô); dòng cuối hỏng do chết giữa chừng thì bỏ và log, không raise.
+- Mã thoát như Phase 1: 0 xong; 1 dừng giữa chừng (hết quota/lỗi, chạy lại để làm tiếp); 2 đầu
+  vào/cấu hình sai (thiếu key, file hỏng, `--config` sai).
+- `--testset` (mặc định `data/eval/golden_testset.json`) cho phép trỏ `golden_testset_raw.json`
+  để chạy thử khi chưa `finalize` (raw đang lệch về đơn vị nhỏ, mục 4.4 — chỉ để kiểm pipeline,
+  không đọc điểm như kết quả chính thức). `--limit N` lấy N câu đầu để pilot đo token thật.
+- Người dùng cam kết không chạy traffic thật/việc khác trên các bucket Groq trong lúc chạy
+  (như mục 3.1); S1 và S5 dùng cả 9 key nên càng cần: bucket `gpt-oss-120b` của key 3, 4 vốn
+  là bucket generation của production.
+
+### 11.3 Chi tiết từng stage
+
+**Rải 9 key (S1 và S5).** `HydeGenerator`, `AnswerGenerator` và `EvidenceJudge` mỗi cái chỉ
+đọc key cố định từ settings (HyDE 1 key, generation 2 key, Judge 1 key) nên không tự xoay
+9 key. Eval dựng 9 bộ (`HydeSettings`/`GenerationSettings`/`JudgeSettings` truyền key tường
+minh — developer xác nhận cách truyền theo `validation_alias`, và đặt `GROQ_API_KEY_4` của
+`GenerationSettings` là `None` để mỗi bộ đúng một key, không đọc lẫn từ `.env`), rồi gán các
+bản ghi chờ xử lý cho 9 bộ theo vòng tròn **tính trên danh sách còn lại lúc chạy** (nên
+`--retry-failed` tự rơi sang key khác). Đồng thời mỗi stage = 9 (một lượt gọi mỗi tài khoản);
+tốc độ do throttle theo bucket `(model, key)` sẵn có điều tiết. Một tài khoản hết TPD chỉ làm
+các câu được gán cho nó ra `error` (429), các tài khoản khác vẫn chạy; chạy lại bằng
+`--retry-failed`. Helper dựng 9 bộ nằm ở `key_pool.py` (mục 11.7), không sửa code production.
+
+**S1 HyDE.** Tái dùng `HydeGenerator` nguyên trạng để prompt/model giống production. HyDE là
+best-effort (retrieval_spec mục 8): trả `None` thì lưu `hypothetical_document: null` và stage
+sau bỏ nhánh A, đúng như production. Phân biệt `error` (429/timeout, chạy lại được) với
+`hypothetical_document: null` không lỗi (model trả rỗng). Đồng thời và rải key như trên.
+
+**S2 Embed.** Gom `[hypothetical_document, user_input]` của nhiều câu vào request 25 text,
+không đổi thứ tự (`QueryEmbedder.embed` đã word-segment bằng `ViTokenizer`). Vector của một
+text không phụ thuộc text cùng batch nên tách/gom không đổi kết quả. Không embed song song
+với S1: vector `query` độc lập HyDE, nhưng tách riêng thêm phức tạp mà lợi ích chỉ vài request.
+
+**S3 Retrieve.** Cần đường vào `precomputed` của retrieval (`retrieval_spec.md` mục 2) — thay
+đổi nhỏ duy nhất ở code production. Chỉ tạo **một** `RetrievalPipeline` (model rerank nạp một
+lần), chạy **tuần tự**: hết 180 câu với `use_mmr=True` rồi mới sang `use_mmr=False` (chốt
+2026-09-29: máy người dùng chạy rerank sát giới hạn GPU 2GB, không song song hoá gì cả),
+`RETRIEVE_CONCURRENCY = 1`. Nếu vẫn CUDA OOM: giảm `batch_size` của `LocalReranker` (chỉ đổi
+lượng bộ nhớ mỗi forward pass, không đổi điểm về nguyên tắc) rồi chạy lại các câu lỗi bằng
+`--retry-failed`; không đổi model hay `max_length` vì sẽ đo sai hệ thống thật.
+**Fallback rerank là lỗi, không phải kết quả:** nếu bất kỳ chunk nào có `rerank_score is
+None` (CUDA OOM → fallback xen kẽ nhánh, retrieval_spec mục 8) thì ghi `error` và không chấm —
+nếu để lọt, S4 sẽ so hai cấu hình bằng thứ tự không qua rerank mà không ai biết. Kết quả rỗng
+cũng ghi `error = "no_context"`. `RetrievalError` (HF/Pinecone) ghi `error`.
+
+**S4 Chấm retrieval.** `LLMContextPrecisionWithReference` và `LLMContextRecall` (ragas; chỉ cần
+`user_input`, `retrieved_contexts`, `reference`, KHÔNG cần `response` — nên chọn được cấu hình
+MMR trước khi tốn token generation). Judge = `LangchainLLMWrapper(GroqRoundRobinChatModel)`
+của Phase 1 (`gpt-oss-120b`, 9 key, cùng `RunConfig` mục 4.5: retry giới hạn, hết quota ngày
+dừng ngay; dùng lại `TestsetGeneratorSettings`, không đổi tên). Chuỗi mỗi chunk trong
+`retrieved_contexts` = đúng phần chunk đó trong `build_context` của generation (breadcrumb +
+content/raw_table), để judge thấy cái LLM sinh câu thấy; developer tách hàm dùng chung nếu
+`build_context` chưa cho phép, không tự chế format khác. Chi phí: `context_precision` 1 lượt/
+chunk (5), `context_recall` 1 lượt → 6 lượt/record/cấu hình (`ragas==0.4.3`, đếm từ source).
+
+**Chọn cấu hình sau S4 (người dùng quyết, không tự động).** `report` in bảng so sánh và số câu
+`mmr_on` hơn / thua / hoà `mmr_off` theo từng câu (180 câu: chênh trung bình nhỏ dễ là nhiễu
+judge, số câu thắng/thua nói rõ hơn). Gợi ý quy tắc, người dùng có thể đổi: ưu tiên
+`context_recall` (thiếu chunk là lỗi nặng hơn với pháp luật), `context_precision` để phá hoà.
+Lý do (chốt cùng người dùng 2026-09-29): MMR chỉ đổi **tập candidate vào union trước rerank**
+(top 10 mỗi nhánh), còn thứ tự cuối và cắt top 5 do reranker quyết — nên `context_precision`
+chủ yếu do rerank + `FINAL_TOP_K` cố định quyết định, ít khác giữa hai cấu hình; `context_recall`
+mới là chỗ MMR có thể giúp (candidate đa dạng hơn) hoặc hại (phạt oan các Khoản liền kề cùng
+cần, retrieval_spec mục 6). Nếu `context_precision` lệch nhiều giữa hai cấu hình thì ghi nhận
+như tín hiệu bất thường cần xem lại, không dùng để quyết;
+nếu không có khác biệt rõ thì chọn tắt MMR (đơn giản hơn, bớt một lượt Pinecone lấy vector;
+retrieval_spec mục 6 coi RRF là baseline). Kết luận được ghi lại vào `retrieval_spec.md` mục 6.
+
+### 11.4 S5 — Generation (chốt phương án B, 2026-09-29)
+
+Gọi `GenerationPipeline.generate(query, chunks)` (`generation/pipeline.py`): hàm này sẵn không
+gọi guardrail và không retrieve, nhận context đã chốt — đúng "bỏ tầng end-user" mà không viết
+lại logic. Kết quả là câu người dùng thật sẽ thấy (đã qua hard gate + Evidence Judge + tối đa
+1 repair), không phải draft thô. **Dùng cả 9 key (6 chốt 2026-09-29, nâng lên 9 cùng ngày khi có thêm `_7`–`_9`, người dùng).**
+Cấu hình key production chỉ có 2 tài khoản cho generation (3⇄4) và 1 cho Judge (key 2), nên
+eval dựng **9 `GenerationPipeline` độc lập, mỗi cái một key** (mục 11.3, "Rải 9 key"): pipeline
+thứ i có `AnswerGenerator` (120b) và `EvidenceJudge` (20b) cùng dùng key i. Judge và generator
+cùng tài khoản không tranh nhau vì Groq tính rate limit theo `(tài khoản, model)` và hai bước
+khác model. Không sửa code production; chỉ khác cách dựng settings. Hết quota thì dừng, mai
+chạy tiếp (resume theo `case_id`).
+
+Gom event thành một bản ghi `answers.jsonl`:
+
+```python
+class AnswerRecord(BaseModel):
+    case_id: str
+    config: Literal["mmr_on", "mmr_off"]
+    outcome: Literal["answered", "insufficient_evidence", "unable_to_verify", "error"]
+    response: str | None  # ghép các TokenEvent; None nếu không answered
+    citations: list[int]  # chỉ số [n] hợp lệ trong câu trả lời
+    repair_used: bool     # có StatusEvent("repairing")
+    warning_codes: list[str]
+    error_code: str | None  # ErrorEvent.code khi outcome == "error"
+    usage: Usage | None
+```
+
+- `insufficient_evidence` và `unable_to_verify` là **kết quả hợp lệ của hệ thống**, không chạy
+  lại; chỉ `error` (429, lỗi LLM) mới chạy lại được bằng `--retry-failed`.
+- **Hệ quả cho cách đọc điểm:** câu bị từ chối không có `response` nên RAGAS không chấm được;
+  báo riêng **tỷ lệ từ chối** (theo loại và theo `synthesizer_name`). `faithfulness` đo trên
+  câu ĐÃ qua Evidence Judge nên cao hơn faithfulness của draft — điểm này phản ánh "hệ thống
+  cả Judge", không tách được chất lượng generator riêng.
+
+### 11.5 S6 — Chấm câu trả lời
+
+`Faithfulness` (2 lượt/câu: tách statement + NLI với context) và `ResponseRelevancy`
+(`answer_relevancy`, `strictness = 3` → 3 lượt; wrapper round-robin không có thuộc tính `n`
+nên ragas gọi 3 lượt riêng, tránh lỗi Groq không hỗ trợ `n>1`) — 5 lượt/câu, chỉ trên bản ghi
+`answered`. `context_precision`/`context_recall` của cấu hình thắng đã có từ S4, không tính lại.
+`answer_relevancy` cần embedding: dùng `RagasEmbeddingsAdapter` với **`segment=True`** (thêm
+tham số, mặc định `False` để KHÔNG đổi hành vi Phase 1) để áp `ViTokenizer` — khác quyết định
+mục 3 (không segment cho KG) vì ở đây là cosine giữa câu hỏi gốc và các câu hỏi ragas sinh lại,
+cần cùng không gian với model đã huấn luyện trên văn bản đã segment (`embedding_spec.md` mục 4);
+kiểm ở pilot rằng điểm không lệch bất thường.
+
+### 11.6 Báo cáo (`report.json`)
+
+- **So sánh retrieval:** trung bình `context_precision`/`context_recall` của `mmr_on` và
+  `mmr_off` (tổng, theo `synthesizer_name`, theo `source_document`) + số câu thắng/thua/hoà.
+  Chỉ so trên các `case_id` có kết quả hợp lệ ở CẢ HAI cấu hình; báo số câu bị loại (lỗi/OOM).
+- **Điểm câu trả lời** (cấu hình đã chọn): trung bình bốn metric theo cùng các lát, kèm `n` mỗi
+  lát và số giá trị `null` (ragas trả NaN khi lỗi format; bỏ khỏi trung bình, không coi là 0).
+- **Vận hành:** tỷ lệ `answered`/`insufficient_evidence`/`unable_to_verify`/`error`, tỷ lệ dùng
+  repair, số câu HyDE `null`, số câu retrieval lỗi/fallback.
+- **Ghi chú diễn giải cố định trong báo cáo:** điểm = mức khớp với `reference` do LLM sinh (mục
+  10.9); judge cùng họ model với generator; single-hop là chỉ số chính, multi-hop báo riêng
+  (mục 10.10).
+
+### 11.7 Module
+
+Thêm vào `src/production_legal_qa_rag/evaluation/` (Pydantic v2, docstring theo
+`coding-convention`; chỉ `scoring.py` import `ragas`, các module còn lại không cần):
+
+| Module | Trách nhiệm duy nhất |
+| --- | --- |
+| `run_models.py` | `case_id()`, các record Pydantic (`HydeRecord`, `EmbeddingRecord`, `RetrievalRecord`, `AnswerRecord`, `RetrievalScore`, `AnswerScore`), `EvalConfig`. |
+| `jsonl_store.py` | Đọc/ghi nối JSONL có validate theo model, bỏ dòng cuối hỏng, tập `case_id` đã xong (resume). |
+| `key_pool.py` | Dựng 9 bộ settings/instance (HyDE, generation + Judge) mỗi bộ một key `GROQ_API_KEY`…`_9`, và gán bản ghi cho các bộ theo vòng tròn (mục 11.3). Đọc key qua `TestsetGeneratorSettings` (đã bắt buộc đủ 9 key). |
+| `hyde_stage.py`, `embed_stage.py`, `retrieve_stage.py`, `generate_stage.py` | Mỗi file một stage S1, S2, S3, S5; chỉ điều phối (gọi code production, ghi file). |
+| `scoring.py` | S4 và S6: dựng `EvaluationDataset`, chạy metric ragas theo lô, chuyển kết quả thành record. Tái dùng `build_unit_runner`-style wrapper LLM/`RunConfig` của `ragas_runner.py`. |
+| `report.py` | Hàm thuần tổng hợp `report.json` từ các file JSONL (không I/O mạng, dễ test). |
+| `tools/run_eval.py` | Typer mỏng: lệnh `hyde`, `embed`, `retrieve`, `score-retrieval`, `generate`, `score-answers`, `report`, `status` (in tiến độ từng stage, không tốn token); option chung `--testset`, `--output-dir`, `--limit`, `--retry-failed`. |
+
+Thay đổi ngoài `evaluation/`: `retrieval/` thêm `PrecomputedQuery` + tham số `precomputed`
+(mục 2 `retrieval_spec.md`); `RagasEmbeddingsAdapter` thêm `segment`; `.gitignore` thêm
+`data/eval/phase2/embeddings.jsonl`. Chạy trong venv `eval` (`--group eval --no-group production`,
+mục 3).
+
+### 11.8 Ước lượng chi phí (thô, chưa đo — pilot `--limit 10–20` để đo token thật)
+
+180 câu: S1 180 lượt 20b; S2 ~15 request HF; S3 không LLM; S4 2 cấu hình × 180 × 6 = **2.160
+lượt** 120b; S5 ~180–360 lượt 120b + 180–360 lượt Judge 20b; S6 180 × 5 = **900 lượt** 120b.
+Tổng judge RAGAS ~3.060 lượt (chạy đủ bộ metric cho cả hai cấu hình sẽ là ~3.960). Token mỗi
+lượt chưa đo (giả định thô 1–2K kể cả reasoning → ~3–6M token, cỡ Phase 1); nút thắt vẫn là
+TPD Groq free 200K/(tài khoản, model), nên chia nhiều ngày và dựa vào resume.
+
+### 11.9 Rủi ro / điểm mở
+
+1. **Venv `eval` dùng `openai` cũ hơn production** (mục 3): S1/S5 chạy code production
+   (`AsyncGroq`, `ChatOpenAI.with_structured_output(method="json_mode")`) trong venv này. Phase 1
+   đã chạy `ChatOpenAI` + Groq ổn nhưng chưa kiểm luồng generation/Judge — kiểm ở pilot; nếu
+   lệch hành vi thì phải tách venv chạy S1–S3, S5.
+2. **Điểm bị lạc quan hoá:** Evidence Judge lọc trước (faithfulness), judge RAGAS cùng họ với
+   generator, `reference` chưa đối chiếu với luật (mục 10.9) — đọc điểm như xu hướng/so sánh giữa
+   các lần chạy, không phải chuẩn tuyệt đối.
+3. **`n = 180` nhỏ:** chênh lệch điểm giữa hai cấu hình dưới nhiễu judge không kết luận được;
+   vì vậy báo số câu thắng/thua thay vì chỉ trung bình.
+4. **Testset lệch nếu chạy trên raw dở dang** (mục 4.4): chỉ dùng để kiểm pipeline.
+5. **Chưa chốt:** ngưỡng theo dõi (điểm nào là "đạt"), tần suất chạy lại (mỗi lần đổi prompt/
+   retrieval?), có chạy lại toàn bộ hay chỉ S5–S6. Để sau khi có số đo thật đầu tiên.
+6. **Rerank trên GPU 2GB của người dùng sát giới hạn:** S3 có thể gặp CUDA OOM lẻ tẻ; cách xử
+   lý ở mục 11.3 (giảm `batch_size`, `--retry-failed`). Câu OOM bị bỏ khỏi so sánh MMR nếu chưa
+   chạy lại được — báo số câu bị loại ở `report.json` để không so hai cấu hình trên tập khác nhau.
+7. **Không đo guardrail** (mục 11.1) — tỷ lệ chặn nhầm câu hợp lệ cần một lát đánh giá riêng
+   nếu sau này muốn biết.
+
+### 11.10 Pilot trước khi chạy full (chốt 2026-09-29, người dùng đồng ý)
+
+Sau khi developer xong, chạy toàn bộ S1→S6 với `--limit 10–20` (có thể trỏ `--testset` vào
+`golden_testset_raw.json` khi chưa `finalize`), ghi ra `--output-dir data/eval/phase2_pilot`
+để không lẫn kết quả thật. Pilot phải trả lời:
+
+- **Token và số lượt gọi thật** của từng stage (thay ước lượng mục 11.8) → tính số ngày cho 180 câu.
+- **Venv `eval` chạy được S1 và S5 không** (`openai` cũ hơn production, mục 11.9.1): Judge
+  trả JSON đúng schema, generation ra câu bình thường.
+- **S3 trên GPU 2GB có OOM không**, và `batch_size` nào đủ (mục 11.3).
+- **`answer_relevancy` với embedding có segment** cho điểm hợp lý (không toàn ~0 hoặc ~1).
+- **Rải 9 key hoạt động thật:** cả 9 tài khoản nhận tải xấp xỉ nhau (nhìn usage Groq), câu gán
+  cho tài khoản hết quota ra `error` rồi `--retry-failed` chạy được sang key khác.
+- **Resume:** dừng giữa chừng (Ctrl+C) rồi chạy lại từng stage không làm lại bản ghi đã xong.
+- `report.json` đọc được, có đủ các lát (tổng, `synthesizer_name`, `source_document`).
+
+Chỉ chạy full khi pilot đạt.

@@ -57,6 +57,17 @@ vì score thấp. Tầng sở hữu UX/policy có thể dùng `rerank_score` đ�
 quyết định `no_context`, xin làm rõ, hay tiếp tục generation. Nhờ vậy primitive
 retrieval vẫn tái sử dụng được cho debug, research và các product policy khác.
 
+**Đường vào cho evaluation (thêm 2026-09-29, `evaluation_spec.md` mục 11).**
+`RetrievalPipeline.retrieve(query, *, use_mmr=None, precomputed=None)` nhận thêm
+`precomputed: PrecomputedQuery | None` (Pydantic v2 ở `models.py`:
+`hypothetical_document: str | None`, `hypothetical_embedding: list[float] | None`,
+`query_embedding: list[float]`; `hypothetical_document` là `None` khi và chỉ khi
+`hypothetical_embedding` là `None`). Khi có `precomputed`, bỏ bước HyDE + embed và dùng
+giá trị đó; mọi bước sau (nhánh A/B, RRF, MMR, extras, rerank) giữ NGUYÊN code.
+Mặc định `None` = hành vi cũ, không đổi. Mục đích duy nhất: evaluation tách HyDE/embed
+thành stage chạy trước và lưu file, nhưng vẫn đo đúng code retrieval production thay vì
+copy logic sang module eval. Hàm module-level `retrieve()` không lộ tham số này.
+
 ## 3. Luồng online
 
 ```text

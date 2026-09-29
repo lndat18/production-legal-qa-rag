@@ -491,7 +491,12 @@ xoay vòng key; mọi bước nhẹ dùng `gpt-oss-20b`, mỗi bước gắn **m
 xoay vòng), có giãn thời gian (throttle). Groq tính rate limit theo `(tài khoản, model)`,
 nên hai model khác nhau trên cùng một tài khoản là hai bucket độc lập.
 
-Hiện có 4 tài khoản Groq (A–D, tương ứng `GROQ_API_KEY`, `_2`, `_3`, `_4`). Sắp xếp chốt
+> **Đổi tên biến 2026-09-29: `GROQ_API_KEY` → `GROQ_API_KEY_1`** (đổi cứng, không giữ alias
+> cũ). Toàn bộ mục 12.1 dưới đây vẫn viết `GROQ_API_KEY` trần — đọc là `GROQ_API_KEY_1`, kể cả
+> chỗ "fallback về `GROQ_API_KEY`". Tài khoản `_5`–`_9` (thêm 2026-09-28/29) không thuộc
+> production, chỉ dùng cho `evaluation/`.
+
+Hiện có 4 tài khoản Groq cho production (A–D, tương ứng `GROQ_API_KEY_1`, `_2`, `_3`, `_4`). Sắp xếp chốt
 2026-09-28 (người dùng): **key 1, 2 cho việc nhẹ; key 3, 4 xoay vòng luân phiên cho việc
 nặng.** Trong nhóm nhẹ, mỗi bước gắn một key cố định (không xoay vòng); cách chia giữa key
 1 và key 2 là đề xuất của architect, dựa trên ước tính token dưới đây.
