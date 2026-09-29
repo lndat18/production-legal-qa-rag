@@ -674,7 +674,7 @@ def _run_one_unit(
         )
     except (Exception, KeyboardInterrupt) as error:
         description = _record_failure(progress_path, state.progress, key, error)
-        logger.error("Đơn vị %s lỗi, dừng: %s", key, description)
+        logger.error("Đơn vị %s lỗi, dừng: %s", key, description, exc_info=True)
         if isinstance(error, KeyboardInterrupt):
             raise
         raise UnitGenerationError(key, description) from error
