@@ -1266,6 +1266,7 @@ def test_guardrail_maps_informational_creation_terms_to_allow(query: str) -> Non
         "Viết code Python để tính lương",
         "Hãy sáng tác một bài thơ về mùa thu",
         "Vui lòng sáng tác một bài thơ về mùa thu",
+        "Bạn có thể viết code Python để tính lương",
     ],
 )
 def test_guardrail_keeps_clear_non_research_out_of_scope(query: str) -> None:
