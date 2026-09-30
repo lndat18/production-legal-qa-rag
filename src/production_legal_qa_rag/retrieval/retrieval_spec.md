@@ -1,354 +1,139 @@
 # Retrieval — Legal Question → Evidence Chunks: Reference Spec
 
+> Cô đọng 2026-09-30 (giữ số mục vì code/spec khác tham chiếu). Bản đầy đủ: git history.
+
 ## 1. Mục đích
 
-Từ một câu hỏi, trả về một tập nhỏ `RetrievedChunk` đủ liên quan và có citation
-để generation trả lời dựa trên bằng chứng.
+Từ một câu hỏi, trả về tập nhỏ `RetrievedChunk` đủ liên quan và có citation để generation trả lời dựa trên bằng chứng.
 
-Nguyên tắc cốt lõi:
+> **Tìm theo nghĩa và theo định danh pháp lý, rồi để reranker chọn bằng chứng cuối cùng.**
 
-> **Tìm theo nghĩa và theo định danh pháp lý, rồi để reranker chọn bằng chứng
-> cuối cùng.**
+Luật có hai loại tín hiệu: **ý định** ("người lao động được nghỉ trong trường hợp nào?") và **định danh** ("Khoản 1 Điều 113
+BLLĐ"). Dense mạnh về ý định nhưng không đáng tin với số Điều/Khoản; sparse mạnh về định danh nhưng yếu với paraphrase →
+giữ cả hai, không ép một phương pháp giải toàn bộ.
 
-Văn bản pháp luật có hai loại tín hiệu khác nhau:
-
-- Ý định: “người lao động được nghỉ trong trường hợp nào?”
-- Định danh: “Khoản 1 Điều 113 Bộ luật Lao động”.
-
-Dense embedding mạnh về ý định nhưng không đáng tin cậy với số Điều/Khoản;
-sparse lexical mạnh về định danh nhưng yếu với paraphrase. Retrieval phải giữ cả
-hai, không cố ép một phương pháp giải toàn bộ bài toán.
-
-### Phạm vi
-
-- `retrieve(query)` trả tối đa `FINAL_TOP_K` evidence chunks.
-- Hybrid dense/sparse, citation-aware recall, rerank và fallback có chủ đích.
-- Build offline sparse index từ corpus chunk đã được embed.
-
-### Ngoài phạm vi
-
-- Chunking, embedding corpus, generation, hội thoại nhiều lượt và cache.
-- Quyết định có trả lời người dùng hay từ chối; đó là policy của tầng
-  conversation/API.
-- Agentic decomposition cho câu nhiều Điều, cả Điều, Điểm hoặc nhiều ý định.
-
-Chất lượng phải được tuyên bố theo một task cụ thể. Với legal QA, baseline tốt
-là: câu hỏi viện dẫn một Khoản phải đưa chunk đáp án vào candidate cuối cùng.
-Câu hỏi rộng hơn vẫn chạy cùng pipeline, nhưng không được hứa chất lượng chưa
-đo.
+**Phạm vi:** `retrieve(query)` trả tối đa `FINAL_TOP_K` chunk; hybrid dense/sparse, citation-aware recall, rerank, fallback có
+chủ đích; build offline sparse index từ chunk đã embed. **Ngoài phạm vi:** chunking/embedding corpus/generation/hội thoại/cache;
+quyết định trả lời hay từ chối (policy của conversation/API); agentic decomposition cho câu nhiều Điều/Điểm/ý định. Baseline
+chất lượng: câu hỏi viện dẫn một Khoản phải đưa chunk đáp án vào candidate cuối; câu rộng hơn chạy cùng pipeline nhưng không hứa chất lượng chưa đo.
 
 ## 2. Contract và ranh giới trách nhiệm
 
-`retrieve(query: str) -> list[RetrievedChunk]` trả tối đa `FINAL_TOP_K`, xếp
-theo `rerank_score` khi rerank thành công.
+`retrieve(query) -> list[RetrievedChunk]` (≤ `FINAL_TOP_K`, xếp theo `rerank_score` khi rerank thành công). `RetrievedChunk`
+(Pydantic v2): `chunk_id`, `source_document`, `breadcrumb`, `content` (nguyên văn), `has_table`, `raw_table`, `rerank_score`
+(`None` khi fallback). Retrieval **luôn trả evidence tốt nhất tìm được, không lọc thành rỗng vì score thấp**; tầng policy dùng
+`rerank_score` đã hiệu chỉnh để quyết `no_context`/làm rõ/tiếp tục — nên primitive dùng lại được cho debug/research.
 
-`RetrievedChunk` là Pydantic v2 contract:
-
-| Field | Mục đích |
-| --- | --- |
-| `chunk_id` | Định danh deterministic từ chunking. |
-| `source_document`, `breadcrumb` | Citation và provenance. |
-| `content` | Bằng chứng nguyên văn gửi generation. |
-| `has_table`, `raw_table` | Giữ dữ liệu bảng khi cần hiển thị/trả lời. |
-| `rerank_score` | Điểm rerank, hoặc `None` khi dùng fallback. |
-
-Retrieval luôn trả evidence tốt nhất nó tìm được. Nó không lọc thành rỗng chỉ
-vì score thấp. Tầng sở hữu UX/policy có thể dùng `rerank_score` đã hiệu chỉnh để
-quyết định `no_context`, xin làm rõ, hay tiếp tục generation. Nhờ vậy primitive
-retrieval vẫn tái sử dụng được cho debug, research và các product policy khác.
-
-**Đường vào cho evaluation (thêm 2026-09-29, `evaluation_spec.md` mục 11).**
-`RetrievalPipeline.retrieve(query, *, use_mmr=None, precomputed=None)` nhận thêm
-`precomputed: PrecomputedQuery | None` (Pydantic v2 ở `models.py`:
-`hypothetical_document: str | None`, `hypothetical_embedding: list[float] | None`,
-`query_embedding: list[float]`; `hypothetical_document` là `None` khi và chỉ khi
-`hypothetical_embedding` là `None`). Khi có `precomputed`, bỏ bước HyDE + embed và dùng
-giá trị đó; mọi bước sau (nhánh A/B, RRF, MMR, extras, rerank) giữ NGUYÊN code.
-Mặc định `None` = hành vi cũ, không đổi. Mục đích duy nhất: evaluation tách HyDE/embed
-thành stage chạy trước và lưu file, nhưng vẫn đo đúng code retrieval production thay vì
-copy logic sang module eval. Hàm module-level `retrieve()` không lộ tham số này.
+**Đường vào cho evaluation (2026-09-29, `evaluation_spec.md` mục 11):** `RetrievalPipeline.retrieve(query, *, use_mmr=None,
+precomputed=None)`; `PrecomputedQuery` (`models.py`): `hypothetical_document`, `hypothetical_embedding`, `query_embedding`
+(`hypothetical_document` là `None` khi và chỉ khi `hypothetical_embedding` là `None`). Có `precomputed` thì bỏ HyDE + embed và
+dùng giá trị đó; mọi bước sau giữ NGUYÊN code; mặc định `None` = hành vi cũ. Mục đích duy nhất: eval tách HyDE/embed thành stage
+lưu file nhưng vẫn đo đúng code production. Hàm module-level `retrieve()` không lộ tham số này.
 
 ## 3. Luồng online
 
-```text
-query gốc
-  ├─ HyDE → hypothetical legal text (nhánh A, best-effort)
-  └─ query gốc                         (nhánh B, luôn có)
-       → embed từng text bằng cùng preprocessing index-time
-       → dense + sparse song song trong mỗi nhánh
-       → RRF → MMR tùy chọn → union theo chunk_id
-       → citation extras từ sparse nhánh B (nếu có)
-       → bổ sung metadata/vector thiếu
-       → rerank bằng query gốc
-       → top K RetrievedChunk
-```
+Query gốc → (nhánh A: HyDE → hypothetical text, best-effort) + (nhánh B: query gốc, luôn có) → embed từng text bằng cùng
+preprocessing index-time → dense + sparse song song mỗi nhánh → RRF → MMR tuỳ chọn → union theo `chunk_id` → citation extras từ
+sparse nhánh B → bổ sung metadata/vector thiếu → rerank bằng query gốc → top K. Nhánh A tăng recall semantic; nhánh B là nguồn
+sự thật cho literal wording, số Điều/Khoản, tên văn bản. Hai nhánh dùng cùng code search/fusion, khác text/vector/structural terms.
 
-Nhánh A tăng recall semantic cho cách hỏi tự nhiên. Nhánh B là nguồn sự thật
-cho literal wording, số Điều/Khoản và tên văn bản. Hai nhánh dùng cùng code
-search/fusion; khác nhau duy nhất ở text, vector và structural terms.
-
-HyDE chỉ sinh văn phong/ngữ nghĩa pháp lý, **không được bịa số Điều/Khoản, tên
-văn bản, năm hay mức số cụ thể**. Hypo hỏng/rỗng thì bỏ nhánh A, không làm hỏng
-nhánh B.
-
-Từ 2026-09-28 HyDE chạy `openai/gpt-oss-20b` (trước là 120b) để nhường bucket 120b cho
-generation. `MIN_RERANK_SCORE` (`relevance.py`) giữ nguyên, không đo lại trong thay đổi
-này (`conversation_spec.md` mục 12.1); lệch chất lượng nếu có sẽ thấy ở vòng đánh giá RAGAS.
+HyDE chỉ sinh văn phong/ngữ nghĩa pháp lý, **không được bịa số Điều/Khoản, tên văn bản, năm, mức số**. Hypo hỏng/rỗng → bỏ nhánh
+A, không làm hỏng nhánh B. Từ 2026-09-28 HyDE chạy `gpt-oss-20b` (trước 120b) để nhường bucket 120b cho generation;
+`MIN_RERANK_SCORE` (`relevance.py`) giữ nguyên, không đo lại (`conversation_spec.md` mục 12.1) — lệch chất lượng sẽ thấy ở RAGAS.
 
 ## 4. Dense, sparse và fusion
 
-### Dense
-
-Embed query bằng đúng model và preprocessing lúc index (ví dụ word-segment tiếng
-Việt với `pyvi`). Lệch preprocessing là lỗi semantic im lặng, nên index-time và
-query-time phải được xem là cùng một contract.
-
-Dense query trả metadata; chỉ lấy vector khi MMR cần. `retrieval/` chỉ đọc dense
-index, không tạo hay mutate nó.
-
-### Sparse BM25
-
-Sparse search dùng text:
-
-```text
-breadcrumb + " " + content
-```
-
-Breadcrumb đưa citation vào lexical index, còn content giữ thuật ngữ và quy
-định. Dùng một tokenizer nhất quán cho fit, document và query; với tiếng Việt,
-không mặc định áp stopword/stemming tiếng Anh vì có thể phá thuật ngữ pháp lý.
-
-BM25 có thể tự viết khi dependency sẵn có không phù hợp. Khi làm vậy, công thức,
-vocabulary và thứ tự ID phải deterministic; params được lưu versioned và runtime
-từ chối dùng params khác version.
-
-### RRF
-
-Fusion theo Reciprocal Rank Fusion, không cộng trực tiếp dense score với BM25
-score vì hai thang điểm không tương đương. Dedupe bằng `chunk_id`, giữ candidate
-xuất hiện ở chỉ một nhánh, rồi cắt candidate pool về một giới hạn nhỏ trước
-rerank.
+- **Dense:** embed query bằng đúng model + preprocessing lúc index (word-segment `pyvi`); lệch là lỗi semantic im lặng nên
+  index-time/query-time là một contract. Dense query trả metadata; chỉ lấy vector khi MMR cần. `retrieval/` chỉ đọc dense index.
+- **Sparse BM25:** text = `breadcrumb + " " + content` (breadcrumb đưa citation vào lexical index). Một tokenizer nhất quán cho
+  fit/document/query; **không mặc định stopword/stemming tiếng Anh** (phá thuật ngữ pháp lý). BM25 tự viết được nhưng công
+  thức/vocabulary/thứ tự ID phải deterministic; params lưu versioned, runtime từ chối params khác version.
+- **RRF:** không cộng thẳng dense score với BM25 score (thang khác nhau). Dedupe bằng `chunk_id`, giữ candidate chỉ ở một nhánh,
+  cắt pool nhỏ trước rerank.
 
 ## 5. Citation-aware retrieval
 
-Đây là cơ chế riêng cho định danh pháp lý chính xác, không phải prompt trick.
-
-### Parse thận trọng
-
-Trích Điều/Khoản chỉ từ query gốc. Ưu tiên false negative hơn false positive:
-số năm, tiền, tuổi, đơn vị thời gian, từ như “điều kiện” không được biến thành
-Điều. Nếu tên văn bản mơ hồ hoặc có nhiều văn bản, không đoán document key.
-
-### Structural terms
-
-Sinh token hiếm, ổn định ở cả document và query, ví dụ:
-
-```text
-điều_113
-khoản_1
-điều_113_khoản_1
-vb_blld_điều_113_khoản_1
-```
-
-Chúng bổ sung vào sparse vector, không thay thế text gốc hay dense embedding.
-Chỉ nhánh B nhận token từ citation người dùng; HyDE không được sinh chúng.
-Mapping `source_document` → document key phải explicit, versioned và cảnh báo
-khi corpus có văn bản chưa được map.
-
-### Citation extras
-
-RRF/MMR có thể làm rơi chunk citation đúng dù nó đứng cao ở sparse. Khi query có
-citation hợp lệ, thêm top sparse thô của nhánh B vào union trước rerank. Cơ chế
-này dùng lại kết quả sparse đã có, nên không thêm round trip. Số extras phải bị
-chặn để giữ latency và context budget hữu hạn.
+Cơ chế riêng cho định danh chính xác, không phải prompt trick. **Parse thận trọng:** trích Điều/Khoản chỉ từ query gốc; ưu tiên
+false negative hơn false positive (năm, tiền, tuổi, đơn vị thời gian, từ "điều kiện" không thành Điều); tên văn bản mơ hồ/nhiều
+văn bản thì không đoán document key. **Structural terms:** token hiếm, ổn định ở cả document và query (`điều_113`, `khoản_1`,
+`điều_113_khoản_1`, `vb_blld_điều_113_khoản_1`) bổ sung vào sparse vector, không thay text gốc/dense; **chỉ nhánh B** nhận token
+từ citation người dùng (HyDE không được sinh). Mapping `source_document` → document key phải explicit, versioned, cảnh báo khi
+corpus có văn bản chưa map. **Citation extras:** RRF/MMR có thể làm rơi chunk citation đúng dù cao ở sparse → khi query có
+citation hợp lệ, thêm top sparse thô của nhánh B vào union trước rerank (dùng lại kết quả sparse, không thêm round trip; số
+extras bị chặn).
 
 ## 6. Diversity và rerank
 
-MMR có thể chọn evidence đa dạng hơn từ candidate pool dense, nhưng có thể phạt
-oan các Khoản gần nhau vốn cùng cần thiết cho câu hỏi luật. Vì vậy MMR phải là
-một cờ runtime/evaluation, không phải “tối ưu” được tin sẵn. Khi tắt, giữ đầu RRF
-làm baseline so sánh.
-
-Reranker là quyết định cuối:
-
-- Query là câu hỏi gốc, không phải HyDE.
-- Passage là `breadcrumb + "\n" + content`; reranker cần thấy citation, nhưng
-  `content` công khai và text embedding không bị thay đổi.
-- Gửi cả candidate pool trong một lượt gọi (có thể chia batch nội bộ, xem 6.1),
-  validate số score hữu hạn và đúng thứ tự passage, sort giảm dần rồi cắt top K.
-- Không ghim kết quả bằng rule sau rerank; nếu muốn bắt buộc citation recall,
-  làm ở candidate stage qua extras, không bóp méo thứ tự cuối.
+MMR có thể phạt oan các Khoản gần nhau vốn cùng cần cho câu hỏi luật → **là cờ runtime/evaluation, không phải "tối ưu" được tin
+sẵn**; tắt thì giữ đầu RRF làm baseline. Reranker là quyết định cuối: query là câu hỏi gốc (không phải HyDE); passage =
+`breadcrumb + "\n" + content` (content công khai/text embed không đổi); gửi cả candidate pool một lượt (có thể chia batch nội bộ,
+6.1), validate score hữu hạn + đúng thứ tự, sort giảm dần, cắt top K. **Không ghim kết quả bằng rule sau rerank**; muốn bắt buộc
+citation recall thì làm ở candidate stage qua extras.
 
 ### 6.1 Inference tại chỗ (local, không host API riêng)
 
-Model (`AITeamVN/Vietnamese_Reranker`, fine-tune từ `bge-reranker-v2-m3`) chạy
-in-process trong `RetrievalPipeline`, không qua HTTP/microservice — bỏ hẳn
-kiến trúc host tách rời trên LightningAI Studio/ngrok của bản cũ.
-
-- **Device**: tự phát hiện `cuda` nếu có, fallback `cpu`. Trên GPU dùng fp16
-  (`model.half()`); trên CPU giữ fp32 (fp16 không có lợi tốc độ trên CPU).
-  Không giả định máy chạy luôn có GPU — CPU phải là đường chạy hợp lệ, không
-  phải lỗi. Log `INFO` device đã chọn đúng một lần lúc load model, để vận
-  hành/CLI test (mục `tools/retrieval.py`) thấy ngay đang chạy `cuda` hay
-  fallback `cpu` mà không cần API riêng.
-- **Vòng đời**: load tokenizer + model một lần lúc `RetrievalPipeline` khởi
-  tạo, giữ suốt vòng đời process; không load lại mỗi request.
-- **`MAX_LENGTH = 512`** (giảm mạnh so với 2304 = 256 query + 2048 passage của
-  bản cũ). `MAX_LENGTH` là giới hạn cho **tổng** `token(query) + token(breadcrumb
-  + "\n" + content) + 4 token đặc biệt` sau khi tokenizer nối cặp
-  `[query, passage]` thành một chuỗi — không phải giới hạn riêng cho passage.
-  512 là số ước lượng có margin, KHÔNG đo thực tế trên corpus (user chủ động
-  chọn bỏ qua bước đo), tính từ:
-  - `content` ≤ `MAX_TOKENS` = 236 (đếm bằng tokenizer PhoBERT sau `pyvi`
-    segment — xem `chunking_spec.md`), nhân hệ số an toàn ×1.5 ≈ 400, vì
-    tokenizer của `bge-reranker-v2-m3` là SentencePiece đa ngôn ngữ (không
-    word-segment tiếng Việt sẵn như PhoBERT) nên cùng đoạn văn thường ra
-    nhiều token hơn — KHÔNG được suy thẳng 236 sang model này.
-  - `breadcrumb` ước lượng ~40 token, `query` chừa 64 token, cộng 4 token đặc
-    biệt (`<s> query </s></s> passage </s>`) → tổng ~508, làm tròn lên bội 64.
-  - Vì là ước lượng chứ không phải số đo, cần đo lại thực tế nếu về sau log
-    cảnh báo truncation hoặc chất lượng rerank giảm bất thường — không phải
-    một bước bắt buộc trước khi implement.
-- **Batch**: candidate pool trước dedupe có thể lên tới
-  `2 × (DENSE_TOP_N + SPARSE_TOP_N)` = 80 passage (2 nhánh, mỗi nhánh dense +
-  sparse top 20). Chia batch cố định (`RERANK_BATCH_SIZE`, đề xuất 16) khi gọi
-  model để chặn đỉnh VRAM không phụ thuộc số lượng candidate thực tế, thay vì
-  luôn forward nguyên pool trong một lần.
-- **Không chặn event loop**: forward pass là blocking call (CPU/GPU-bound),
-  phải chạy trong executor vì phần còn lại của pipeline là async.
-- **Concurrency inference process-wide = 1**: `asyncio.to_thread` mỗi request
-  chạy trên thread riêng, nhưng dùng chung một `self._model`. Nhiều request
-  đồng thời → nhiều forward pass cùng lúc trên cùng model → VRAM cộng dồn
-  theo số request đồng thời, rất dễ CUDA OOM trên card 2GB dùng chung 1 model.
-  Bọc toàn bộ một lần gọi `rerank()` (gồm mọi batch của request đó) trong
-  một `ThreadPoolExecutor(max_workers=1)` private, module-scoped và dùng
-  chung process. Mỗi job executor bao trọn một lần `rerank()` gồm mọi batch;
-  request khác await future của job đang xếp hàng nên coroutine tạm dừng,
-  không chặn event loop hoặc chiếm một thread chờ. Nhờ vậy đỉnh VRAM của riêng
-  reranker bị chặn ở đúng 1 batch (`RERANK_BATCH_SIZE`) tại một thời điểm, bất
-  kể có bao nhiêu request đồng thời.
-  - **Cứng `1`, không đưa vào `RerankerSettings`**: đúng với ràng buộc phần
-    cứng hiện có (GPU 2GB, 1 model dùng chung); không thêm biến cấu hình chưa
-    ai cần. Đổi GPU lớn hơn sau này thì sửa hằng số, không phải việc thường
-    xuyên.
-  - **Áp dụng đồng nhất cho cả CUDA lẫn CPU**, không phân biệt theo device —
-    giữ đơn giản, không thêm nhánh logic chỉ để tối ưu throughput CPU. Đổi lại
-    rerank trên CPU cũng bị serialize khi nhiều request tới cùng lúc; chấp
-    nhận được vì quy mô ứng dụng tự giới hạn (`deploy_spec.md` mục 5) và đã có
-    admission/quota ở tầng trên (`conversation_spec.md` mục 8).
-  - **Cross-event-loop**: không dùng `asyncio.Semaphore` hay
-    `LoopBoundClient` cho limiter này. Semaphore là loop-bound; còn
-    `LoopBoundClient` chủ đích tạo một semaphore riêng khi loop đổi, nên hai
-    loop sống song song sẽ có hai permit và có thể cùng forward một
-    `self._model`. `ThreadPoolExecutor` là primitive thread-safe của process:
-    mọi event loop submit vào cùng hàng đợi một worker, và future trả về được
-    await bởi loop đã submit. Cơ chế này giữ singleton dùng được qua nhiều
-    `asyncio.run()` lẫn nhiều loop chạy đồng thời mà vẫn đúng concurrency = 1.
+Model `AITeamVN/Vietnamese_Reranker` (fine-tune từ `bge-reranker-v2-m3`) chạy in-process trong `RetrievalPipeline` (bỏ hẳn
+LightningAI/ngrok của bản cũ).
+- **Device:** tự phát hiện `cuda`, fallback `cpu`; GPU dùng fp16 (`model.half()`), CPU fp32. CPU là đường hợp lệ, không phải
+  lỗi. Log `INFO` device đúng một lần lúc load model.
+- **Vòng đời:** load tokenizer + model một lần lúc khởi tạo pipeline, giữ suốt process.
+- **`MAX_LENGTH = 512`** = giới hạn cho **tổng** `token(query) + token(breadcrumb + "\n" + content) + 4 token đặc biệt`, không
+  riêng passage. Là **ước lượng có margin, KHÔNG đo trên corpus** (người dùng chủ động bỏ bước đo): `content` ≤ 236 token
+  PhoBERT ×1.5 ≈ 400 (tokenizer SentencePiece đa ngôn ngữ của bge ra nhiều token hơn PhoBERT — **không suy thẳng 236 sang model
+  này**) + breadcrumb ~40 + query 64 + 4 → ~508, làm tròn 512. Đo lại nếu log cảnh báo truncation hoặc chất lượng rerank giảm.
+- **Batch:** pool tối đa `2 × (DENSE_TOP_N + SPARSE_TOP_N)` = 80 passage; chia batch cố định `RERANK_BATCH_SIZE` (~16) để chặn đỉnh VRAM.
+- **Không chặn event loop:** forward là blocking → chạy trong executor.
+- **Concurrency inference process-wide = 1 (bài học GPU 2GB):** nhiều request đồng thời → nhiều forward cùng lúc trên cùng
+  `self._model` → VRAM cộng dồn → CUDA OOM. Bọc mỗi lần `rerank()` (gồm mọi batch) trong `ThreadPoolExecutor(max_workers=1)`
+  private, module-scoped, dùng chung process; request khác await future nên không chặn loop/thread. Cứng `1`, không đưa vào
+  `RerankerSettings`; áp đồng nhất cho CUDA và CPU (quy mô app tự giới hạn, đã có admission/quota ở trên). **Không dùng
+  `asyncio.Semaphore`/`LoopBoundClient` cho limiter này**: semaphore là loop-bound và `LoopBoundClient` tạo semaphore riêng khi loop đổi,
+  nên hai loop song song có hai permit và cùng forward một model; `ThreadPoolExecutor` là primitive thread-safe của process nên đúng
+  qua nhiều `asyncio.run()` và nhiều loop.
 
 ## 7. Consistency và state offline
 
-Dense index, sparse index và BM25 params phải mô tả **cùng một corpus snapshot**.
-Mỗi build sparse ghi manifest/version gồm ít nhất:
-
-- corpus fingerprint hoặc version của manifest embedding;
-- số chunk, danh sách/ID nguồn hoặc checksum tương đương;
-- tokenizer/BM25 params version và mapping document version;
-- dense build/version mà sparse build dựa vào.
-
-Runtime chỉ load sparse params và index có version tương thích với dense snapshot;
-không “best effort” khi phát hiện lệch. Candidate có ở sparse nhưng không fetch
-được metadata từ dense cũng bị bỏ và log như tín hiệu build lệch, không phải kết
-quả hợp lệ.
-
-Build sparse là offline, full refresh cho corpus nhỏ. Khi phục vụ traffic, dùng
-snapshot versioned/namespace mới rồi switch consumer sau khi count đã khớp;
-`delete_all → upsert` không phải transaction.
+Dense index, sparse index và BM25 params phải mô tả **cùng một corpus snapshot**. Mỗi build sparse ghi manifest/version: corpus
+fingerprint/version manifest embedding, số chunk + ID/checksum, tokenizer/BM25 params + mapping document version, dense build mà
+sparse dựa vào. Runtime chỉ load params/index tương thích dense snapshot, **không "best effort" khi lệch**; candidate có ở sparse
+mà không fetch được metadata từ dense bị bỏ và log như tín hiệu build lệch. Sparse build offline, full refresh; khi phục vụ
+traffic dùng snapshot/namespace versioned rồi switch sau khi count khớp (`delete_all → upsert` không phải transaction).
 
 ## 8. Xử lý lỗi
 
-Phân biệt lỗi có thể degrade và lỗi phá tính đúng đắn:
-
 | Sự cố | Hành vi |
 | --- | --- |
-| HyDE lỗi/rỗng/`ThrottleTimeout` | Bỏ nhánh A, chạy nhánh B. |
-| Reranker lỗi (runtime/model, ví dụ CUDA OOM) | Fallback deterministic từ các nhánh, `rerank_score=None`. |
-| Query embed, dense/sparse search hoặc metadata fetch lỗi | Raise `RetrievalError`; không giả vờ có evidence đáng tin. |
-| Corpus version mismatch | Từ chối khởi tạo/query và nêu lệnh hay thao tác rebuild. |
+| HyDE lỗi/rỗng/`ThrottleTimeout` | Bỏ nhánh A, chạy nhánh B |
+| Reranker lỗi (runtime/model, ví dụ CUDA OOM) | Fallback deterministic từ các nhánh, `rerank_score=None` |
+| Query embed, dense/sparse search, metadata fetch lỗi | `RetrievalError`; không giả vờ có evidence |
+| Corpus version mismatch | Từ chối khởi tạo/query, nêu thao tác rebuild |
 
-Retry chỉ dành cho lỗi tạm thời của dịch vụ ngoài (HF embedding, Pinecone),
-timeout hữu hạn. Reranker chạy in-process (mục 6.1): lỗi runtime/model với
-cùng input là deterministic, retry vô nghĩa — fallback ngay, log đủ để debug
-(kích thước batch, độ dài passage lúc lỗi).
+Retry chỉ cho lỗi tạm thời của dịch vụ ngoài (HF embedding, Pinecone), timeout hữu hạn. Reranker in-process: lỗi cùng input là
+deterministic, retry vô nghĩa → fallback ngay, log đủ (kích thước batch, độ dài passage).
 
 ## 9. Module boundaries
 
-| Module | Trách nhiệm duy nhất |
-| --- | --- |
-| `models.py` | Pydantic public/intermediate contracts và `RetrievalError`. |
-| `hyde.py` | Sinh hypothetical legal text, best-effort. Từ 2026-09-28 dùng `HydeSettings` riêng (`gpt-oss-20b`, `GROQ_API_KEY_1`), không dùng `LLMSettings` nữa — `LLMSettings` là của `formatting/` (120b), đổi model ở đó sẽ kéo formatting đổi theo. |
-| `llm_throttle.py` | `TokenWindowThrottle` dùng chung cho bucket `gpt-oss-20b` (condense, HyDE, Judge); xem `conversation_spec.md` mục 12.1. |
-| `query_embedder.py` | Query preprocessing, API batch và validate embedding. |
-| `bm25.py` | Tokenize, fit/load params, encode sparse vector. |
-| `citation.py` | Parse citation, mapping document, structural terms, extras. |
-| `dense_search.py`, `sparse_index.py` | Client từng index và lifecycle offline của sparse. |
-| `fusion.py`, `mmr.py` | Thuật toán thuần, không I/O. |
-| `reranker.py` | Load model in-process 1 lần, batch inference (CUDA/CPU) giới hạn 1 request cùng lúc process-wide, validate, fallback khi lỗi. |
-| `pipeline.py` | Điều phối `retrieve()` và sở hữu client. |
-| `relevance.py` | Chỉ cung cấp relevance signal cho tầng policy, không lọc retrieval. |
-| `tools/retrieval.py` | Typer entrypoint mỏng, chỉ gọi `RetrievalPipeline.retrieve()`. |
-
-Mọi contract trao đổi giữa module là Pydantic. Config dùng `pydantic-settings`
-tập trung; constants chỉ thuộc một cơ chế để trong module đó. CLI offline đặt ở
-`tools/` dùng Typer và không chứa business logic.
-
-CLI thủ công `tools/retrieval.py` dùng để chạy thử `retrieve(query)` trên
-corpus/index thật (cần `PINECONE_API_KEY`, `HF_TOKEN`, index Pinecone đã nạp
-dữ liệu), chủ yếu để kiểm chứng thay đổi reranker (mục 6.1) — device đang
-dùng thật là `cuda` hay fallback `cpu`, không silent lỗi. `reranker.py` log
-`INFO` device (`cuda`/`cpu`) một lần lúc load model, nên chạy CLI ở log level
-mặc định là thấy ngay không cần API riêng chỉ để phục vụ test. CLI in ra:
-
-- Tổng thời gian `retrieve()` (wall-clock).
-- Từng `RetrievedChunk`: `breadcrumb`, `content` (rút gọn), `rerank_score`,
-  `has_table`.
-- Cảnh báo rõ ràng nếu `rerank_score=None` (fallback đã kích hoạt — mục 8)
-  thay vì lặng lẽ in kết quả như đang chạy bình thường.
-
-Có bộ câu hỏi mẫu preset (câu viện dẫn cụ thể + câu paraphrase, cùng quy ước
-với `tools/conversation.py`), chọn qua option; `--query` nhập câu tùy ý,
-`--use-mmr/--no-use-mmr` ghi đè `USE_MMR` mặc định.
+`models.py` (contract + `RetrievalError`), `hyde.py` (best-effort; từ 2026-09-28 dùng `HydeSettings` riêng: `gpt-oss-20b`,
+`GROQ_API_KEY_1`, không dùng `LLMSettings` của `formatting/`), `llm_throttle.py` (`TokenWindowThrottle` chung cho bucket
+`gpt-oss-20b`: condense/HyDE/Judge, `conversation_spec.md` mục 12.1), `query_embedder.py`, `bm25.py`, `citation.py` (parse,
+mapping, structural terms, extras), `dense_search.py`/`sparse_index.py`, `fusion.py`/`mmr.py` (thuần, không I/O), `reranker.py`
+(load 1 lần, batch inference, giới hạn 1 request process-wide, validate, fallback), `pipeline.py` (điều phối, sở hữu client),
+`relevance.py` (chỉ cung cấp signal cho policy, không lọc), `tools/retrieval.py` (Typer mỏng: chạy `retrieve(query)` trên
+corpus/index thật để kiểm chứng reranker — in tổng thời gian, từng chunk, **cảnh báo rõ nếu `rerank_score=None`**; có bộ câu hỏi
+preset, `--query`, `--use-mmr/--no-use-mmr`). Contract giữa module là Pydantic; config `pydantic-settings` tập trung.
 
 ## 10. Tiêu chí hoàn thành
 
-- Câu query literal, paraphrase và citation đều đi qua cùng public contract.
-- Citation hợp lệ có đường recall độc lập với HyDE/RRF/MMR và không phát sinh
-  round trip sparse mới.
-- Dense index/query dùng cùng preprocessing; sparse fit/document/query dùng cùng
-  tokenizer và structural-term convention.
-- Output tối đa K chunk, có citation/metadata đầy đủ, không chứa candidate từ
-  snapshot lệch.
-- Rerank lỗi vẫn trả fallback có thứ tự xác định; lỗi nền tảng search không bị
-  che giấu.
-- `MAX_LENGTH = 512` (mục 6.1) là số ước lượng có margin, không phải số đo;
-  nếu sau này log cảnh báo truncation hoặc chất lượng rerank giảm bất thường,
-  đo lại thực tế bằng tokenizer `bge-reranker-v2-m3` trên corpus rồi cập nhật.
-- Reranker chỉ chạy đúng 1 inference cùng lúc process-wide (executor một worker
-  dùng chung, mục 6.1), kể cả khi request đến từ event loop song song; N request
-  đồng thời không làm VRAM cộng dồn theo N.
-- Tầng conversation có thể áp policy score mà không làm đổi hoặc làm mơ hồ
-  contract của `retrieve()`.
+Query literal/paraphrase/citation đi qua cùng contract; citation hợp lệ có đường recall độc lập HyDE/RRF/MMR, không thêm round
+trip sparse; dense index/query cùng preprocessing, sparse fit/document/query cùng tokenizer + structural-term convention; output
+≤ K chunk đủ citation/metadata, không chứa candidate từ snapshot lệch; rerank lỗi vẫn trả fallback có thứ tự xác định, lỗi search
+nền tảng không bị che giấu; `MAX_LENGTH=512` là ước lượng (đo lại nếu có dấu hiệu truncation); reranker đúng 1 inference cùng
+lúc process-wide kể cả nhiều event loop; tầng conversation áp policy score mà không làm đổi/mơ hồ contract `retrieve()`.
 
 ## 11. Áp dụng cho bài toán mới
 
-Chốt trước khi code:
-
-1. Nhiệm vụ retrieval đo được và loại query cần bảo đảm recall.
-2. Tín hiệu semantic, literal và cấu trúc đặc thù domain; chỉ thêm structural
-   terms khi chúng bù được điểm mù có bằng chứng.
-3. Contract preprocessing chung giữa index/query, cùng corpus snapshot/version.
-4. Candidate budget, tiêu chí dùng MMR và reranker, latency budget thực tế.
-5. Ranh giới degrade, fail-fast và policy sản phẩm.
-
-Baseline nhỏ nhất đáng tin là: query gốc + dense/sparse song song + RRF + rerank
-bằng query gốc. Chỉ thêm HyDE, MMR hoặc citation extras khi chúng giải một failure
-mode đã quan sát, và luôn giữ baseline để so sánh.
+Chốt trước khi code: nhiệm vụ retrieval đo được + loại query cần bảo đảm recall; tín hiệu semantic/literal/cấu trúc đặc thù domain
+(chỉ thêm structural terms khi bù điểm mù có bằng chứng); contract preprocessing chung + corpus snapshot/version; candidate
+budget, tiêu chí dùng MMR/reranker, latency thực tế; ranh giới degrade/fail-fast/policy. **Baseline nhỏ nhất đáng tin: query gốc +
+dense/sparse song song + RRF + rerank bằng query gốc.** Chỉ thêm HyDE, MMR, citation extras khi giải một failure mode đã quan sát,
+và luôn giữ baseline để so sánh.
