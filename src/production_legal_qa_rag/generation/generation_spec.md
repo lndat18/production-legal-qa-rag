@@ -12,7 +12,8 @@ evidence. Generation không tự retrieve lại khi kiểm tra hay repair.
 Nguyên tắc: (1) context chốt đúng một lần/request — draft, hard gate, Judge, repair cùng đọc query + context đó;
 (2) **không phát draft trước khi qua mọi gate** (token event chỉ mang answer đã duyệt); (3) code kiểm điều xác định
 được, Judge kiểm claim theo nghĩa (không xác nhận luật ngoài context); (4) **tối đa MỘT repair tổng cộng/request**
-(không phải một repair mỗi gate).
+(không phải một repair mỗi gate); (5) guardrail chỉ bảo vệ khỏi injection/yêu cầu không phải tra cứu rõ ràng, **không**
+được quyết định một câu hỏi có thuộc corpus hay không — evidence retrieval là nguồn sự thật cho quyết định đó.
 
 Không làm: multi-turn, HyDE/query rewrite/retrieve lần hai, nguồn ngoài, xác nhận hiệu lực ngoài corpus, HTTP/SSE,
 cache, RAGAS runtime, moderation tổng quát, human review queue.
@@ -33,10 +34,12 @@ có context cố định (không gọi retrieve; nhờ vậy context và số `[
 | error | code, message, retry_after_seconds | Không thể tạo/tra cứu |
 | done | usage | Event cuối |
 
-Thứ tự: `status* → (token+ → citations → warning* | refusal | error) → done`. `refusal.reason`: `out_of_scope`,
-`injection`, `insufficient_evidence`, `unable_to_verify` (hai reason cuối do pipeline map từ verifier; Judge không tự
-viết phản hồi). Buffer làm time-to-first-token tăng: UI phải hiện `status(verification)`; sau khi pass không thêm delay
-nhân tạo.
+Thứ tự: `status* → (token+ → citations → warning* | refusal | error) → done`. `refusal.reason`: `out_of_scope`
+(chỉ yêu cầu không phải tra cứu rõ ràng), `injection`, `insufficient_evidence`, `unable_to_verify` (hai reason cuối do
+pipeline map từ verifier; Judge không tự viết phản hồi). Câu hỏi thông tin/pháp lý mơ hồ, kể cả có địa danh, cơ quan,
+phụ lục, giấy phép hay thuộc lĩnh vực pháp luật ngoài corpus, không bị map `out_of_scope` ở guardrail: nó đi retrieval
+và thiếu evidence thì trả `error(no_context)`. Buffer làm time-to-first-token tăng: UI phải hiện
+`status(verification)`; sau khi pass không thêm delay nhân tạo.
 
 ## 3. Workflow đã chốt
 
@@ -45,6 +48,11 @@ Draft vào buffer → **code hard gate** → (fail, chưa repair) LLM viết l�
 → viết lại; `repair` (đã repair) hoặc `insufficient_evidence` → từ chối.
 
 1. Input guardrail chạy trước retrieval, **fail-open** khi provider lỗi (bảo vệ availability, không phải verification).
+   Nó chỉ chặn `injection` và yêu cầu rõ ràng không phải tra cứu (chào hỏi thuần tuý, viết code/dịch/sáng tác); mọi câu
+   hỏi tìm thông tin hoặc phân tích — không phân biệt nó có vẻ là hành chính, địa lý hay viện dẫn văn bản nào — là
+   `allow` và đi retrieval. Guardrail không dùng số hiệu/tên văn bản, danh sách keyword hay few-shot để kết luận corpus
+   scope: các cách này đã đo với `gpt-oss-safeguard-20b` và vẫn tạo false-positive cho Sơn Nam, Long An hoặc gia hạn
+   giấy phép.
 2. Retrieval đúng một lần; context rỗng → `error(no_context)`, không draft.
 3. Provider có thể stream nội bộ để lấy usage/finish reason nhưng draft chỉ ở buffer; lỗi transport/rate limit/draft
    rỗng → `error`, không repair.
@@ -124,6 +132,10 @@ Tham số riêng Groq (`reasoning_effort`, `include_reasoning`, `max_completion_
 `LoopBoundClient` quanh instance `ChatOpenAI` (client nội bộ có cùng giới hạn qua event loop). Pydantic v2 là nguồn sự thật cho schema.
 
 - `GuardrailSettings`: `gpt-oss-safeguard-20b` trên `GROQ_API_KEY_1`, fail-open, **không** qua throttle chung (bucket model riêng).
+  `GUARDRAIL_SYSTEM_PROMPT` phân loại theo mục 3: injection luôn ưu tiên; `out_of_scope` chỉ là yêu cầu rõ ràng không
+  phải tra cứu; khi không chắc, `allow`. Prompt nêu rõ địa danh, cơ quan, phụ lục/bảng, giấy phép, tên hoặc số hiệu văn
+  bản không phải tín hiệu ngoài scope. Không thêm deterministic allowlist cho document/địa danh: người dùng có thể chèn
+  chúng vào injection và danh sách không bao phủ được câu hỏi corpus mơ hồ.
 - `GenerationSettings`: `api_key` ưu tiên `GROQ_API_KEY_3` (fallback `_1`); `round_robin_api_key` (`GROQ_API_KEY_4`, tuỳ chọn):
   khi có, `AnswerGenerator` giữ 2 `LoopBoundClient` xoay vòng theo từng lượt draft/repair (`_next_client()`). Lý do (quan sát
   thật 2026-09-27): TPD generation cạn chỉ sau một phiên test nhiều lượt dồn vào 1 tài khoản; xoay giãn TPD ra 2 tài khoản.
@@ -132,7 +144,8 @@ Tham số riêng Groq (`reasoning_effort`, `include_reasoning`, `max_completion_
   generation), chạy tài khoản B riêng nên không tranh bucket với generation lẫn Condense/HyDE. Dùng throttle chung theo bucket
   `(model, key)` (`retrieval/llm_throttle.py`); `ThrottleTimeout` coi như lỗi Judge → vẫn fail-closed (`conversation_spec.md` mục 12.1).
 
-Module: `models.py`, `generator.py`, `output_check.py`, `judge.py`, `guardrail.py` (admission input, không kiểm grounding),
+Module: `models.py`, `generator.py`, `output_check.py`, `judge.py`, `guardrail.py` (admission input, không quyết định
+corpus scope/grounding),
 `pipeline.py` (state machine, repair budget, policy map, phát answer đã duyệt). Judge model/version và prompt version là một
 phần trace và cache identity; khoá cache chỉ chứa `GenerationSettings.model_name` (`cache_spec.md`) nên **đổi model/prompt Judge
 phải kèm bump `PROMPT_VERSION`** mới invalidate được. `conversation/` chỉ chuyển event, ghi trace và cache answer đã duyệt.
@@ -143,4 +156,8 @@ Trace mỗi request: query identity, chunk_id/corpus version, generator/Judge mo
 issues, repair used, finish reason, latency từng stage, usage; không log chain-of-thought; áp chính sách PII trước khi lưu text.
 Đạt spec khi: (1) không token draft nào phát trước hard gate + Judge pass; (2) repair không gọi retrieval, ≤1 lần/request;
 (3) citation ngoài context, output bị cắt, số nhạy cảm thiếu evidence không đến user dưới dạng answer; (4) context thiếu, Judge
-lỗi hoặc parse lỗi không làm lộ draft; (5) stream luôn có đúng một `done` và đủ `status` để UI giải thích thời gian chờ.
+lỗi hoặc parse lỗi không làm lộ draft; (5) stream luôn có đúng một `done` và đủ `status` để UI giải thích thời gian chờ;
+(6) regression guardrail: Sơn Nam/NĐ 293, Long An trong danh mục vùng và câu hỏi gia hạn giấy phép đều `allow` rồi đi
+retrieval; câu địa lý/hành chính hoặc pháp luật ngoài corpus không được phát câu trả lời nếu retrieval thiếu evidence
+(`no_context`); viết code/chào hỏi thuần tuý là `out_of_scope`; injection chứa số Nghị định vẫn là `injection`. Unit test
+mock verdict để bảo vệ workflow; đo live safeguard là CLI/manual regression riêng, không đưa Groq vào CI.

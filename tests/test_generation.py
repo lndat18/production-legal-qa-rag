@@ -22,6 +22,7 @@ from production_legal_qa_rag.generation.generator import (
     build_repair_messages,
 )
 from production_legal_qa_rag.generation.guardrail import (
+    GUARDRAIL_SYSTEM_PROMPT,
     INJECTION_MESSAGE,
     OUT_OF_SCOPE_MESSAGE,
     InputGuardrail,
@@ -1225,10 +1226,7 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
     assert verdict.verdict == "allow"
     assert fake_client.runnable.received_messages is not None
     system_prompt = fake_client.runnable.received_messages[0]["content"]
-    assert (
-        "Câu follow-up mơ hồ nhưng\ncâu hỏi trước thuộc miền cũng là allow"
-        in system_prompt
-    )
+    assert "Câu follow-up mơ hồ nhưng\ncó ý định tra cứu cũng là allow" in system_prompt
     assert fake_client.runnable.received_messages[1] == {
         "role": "user",
         "content": (
@@ -1237,6 +1235,20 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
             "Câu hỏi: Còn trường hợp này?"
         ),
     }
+
+
+def test_guardrail_prompt_uses_evidence_scope_policy() -> None:
+    """Prompt chỉ chặn injection/tác vụ không tra cứu, không lọc topical scope."""
+    assert "Luôn chọn injection" in GUARDRAIL_SYSTEM_PROMPT
+    assert (
+        "chỉ cho yêu cầu rõ ràng không phải tra cứu thông tin"
+        in GUARDRAIL_SYSTEM_PROMPT
+    )
+    assert "mọi câu hỏi tìm thông tin hoặc phân tích" in GUARDRAIL_SYSTEM_PROMPT
+    assert "địa danh, cơ quan, đơn vị hành chính, phụ lục/bảng, giấy phép" in (
+        GUARDRAIL_SYSTEM_PROMPT
+    )
+    assert "lĩnh vực pháp luật ngoài corpus vẫn là allow" in GUARDRAIL_SYSTEM_PROMPT
 
 
 @pytest.mark.parametrize(

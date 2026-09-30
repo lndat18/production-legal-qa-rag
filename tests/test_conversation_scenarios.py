@@ -882,6 +882,27 @@ def test_no_context_error_releases_slot_and_skips_generation() -> None:
     assert admission.entered == admission.exited == 1
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Theo Nghị định 293/2025/NĐ-CP, phường Sơn Nam thuộc khu vực nào?",
+        "Long An nằm trong vùng hành chính nào trong danh mục địa bàn?",
+        "Theo Nghị định, thời hạn tối đa của giấy phép và quy định gia hạn là gì?",
+        "Địa giới hành chính tỉnh Hưng Yên được quy định thế nào?",
+        "Pháp luật đất đai quy định gì về cấp giấy chứng nhận?",
+    ],
+)
+def test_informational_queries_reach_retrieval_before_no_context(query: str) -> None:
+    """Scope corpus được quyết định bằng evidence, không bởi guardrail topical."""
+    retrieve = _Retrieve(chunks=[])
+    events, trace = _run(_build(retrieve=retrieve), [_u(query)])
+
+    assert retrieve.calls == [query]
+    assert _types(events) == ["status", "status", "error", "done"]
+    assert events[-2].code == "no_context"
+    assert trace.verdict is not None and trace.verdict.verdict == "allow"
+
+
 def test_retrieval_exception_becomes_error_and_releases_slot() -> None:
     admission = _Admission()
     events, trace = _run(
