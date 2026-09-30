@@ -101,7 +101,7 @@ bản đầu 1 worker (rủi ro chấp nhận, mục 18); scale nhiều replica 
 
 ## 10. Generation — prompt hệ thống (`generation/generator.py`)
 
-`PROMPT_VERSION = "v6"` (đổi `GENERATION_SYSTEM_PROMPT` → **phải tăng version** → đổi khoá cache). Groq: `reasoning_effort="low"`, `temperature=0.1`, `max_completion_tokens=2048`,
+`PROMPT_VERSION = "v10"` (đổi `GENERATION_SYSTEM_PROMPT` → **phải tăng version** → đổi khoá cache). v10 (2026-09-30) rút system prompt 2.463 → 1.717 token (−30%, giữ nguyên số và ý 14 quy tắc, chỉ bỏ phần lặp ý); đo A/B với retrieval giả (chunk thật chọn tay, 8 ca × 2 prompt, chấm bằng `check_output`): không ca nào vi phạm hard gate, quy tắc 10 không tệ đi, riêng quy tắc 12 phải ghi thẳng câu từ chối chuẩn — `orchestrator.py` chỉ cache câu trả lời không citation khi có cụm "không tìm thấy quy định phù hợp". Groq: `reasoning_effort="low"`, `temperature=0.1`, `max_completion_tokens=2048`,
 `MAX_CONTEXT_CHUNKS = 5`. Generator là hàm thuần `(query, chunks) -> stream`. Prompt trong code; **14 quy tắc** (đây là tài sản tái dùng quan trọng nhất):
 1. Chỉ dùng "Văn bản", không kiến thức ngoài/suy đoán. 2. Mọi khẳng định pháp lý kèm `[n]` cuối câu (nhiều đoạn: `[1][2]`); không tự nêu số Điều/Khoản/Điểm trừ khi nguyên văn có trong "Văn bản". 3. Giữ nguyên số/mức
 tiền/tỉ lệ/thời hạn, không làm tròn/quy đổi/tính thêm. 4. Có bảng thì đọc theo bảng, không bịa ô. 5. Không có thông tin: nói "Tôi không tìm thấy quy định phù hợp trong các văn bản hiện có" và dừng; trả lời
