@@ -295,6 +295,30 @@ def test_normalize_vietnamese_khong_sua_dinh_chu_thuong_voi_thuong():
     assert tr.normalize_vietnamese("Ngườilao động") == "Ngườilao động"
 
 
+@pytest.mark.parametrize(
+    "upper", ["ĐIỀU 5", "QUỐC HỘI", "CHƯƠNG I", "BỘ LUẬT", "ĐIỀU 5. QUỐC HỘI"]
+)
+def test_normalize_vietnamese_chuoi_toan_hoa_co_dau_khong_bi_tach(upper: str):
+    assert tr.normalize_vietnamese(upper) == upper
+
+
+def test_normalize_vietnamese_tach_theo_chu_thuong_va_hoa_that_ke_ca_co_dau():
+    assert tr.normalize_vietnamese("quyềnNgười") == "quyền Người"
+    assert tr.normalize_vietnamese("ngườiÔng") == "người Ông"
+    assert (
+        tr.normalize_vietnamese("abCd") == "ab Cd"
+    )  # cặp liền trước không nuốt mất chỗ tách
+
+
+def test_normalize_vietnamese_luy_dang_voi_chu_hoa_co_dau():
+    text = "ĐIỀU 5 QUỐC HỘI quyềnNgười ngườiÔng CHƯƠNG I"
+
+    once = tr.normalize_vietnamese(text)
+
+    assert once == "ĐIỀU 5 QUỐC HỘI quyền Người người Ông CHƯƠNG I"
+    assert tr.normalize_vietnamese(once) == once
+
+
 def test_normalize_vietnamese_giu_xuong_dong_va_cat_le_moi_dong():
     text = "  dòng một  \n\n   dòng hai ,\n"
 

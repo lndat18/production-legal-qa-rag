@@ -212,7 +212,19 @@ def split_for_request(text: str, max_chars: int = MAX_REQUEST_CHARS) -> list[str
 
 _HORIZONTAL_SPACES: Final = re.compile(r"[^\S\n]+")
 _SPACE_BEFORE_PUNCTUATION: Final = re.compile(r" +([,.;:])")
-_GLUED_WORDS: Final = re.compile(r"([a-zà-ỹ])([A-ZĐ])")
+_LETTER_PAIR: Final = re.compile(r"([^\W\d_])(?=([^\W\d_]))")
+
+
+def _split_glued_words(text: str) -> str:
+    """Chèn dấu cách giữa chữ thường thật liền trước chữ hoa thật (không dùng khoảng codepoint)."""
+
+    def _insert(match: re.Match[str]) -> str:
+        before, after = match.group(1), match.group(2)
+        if before.islower() and after.isupper():
+            return before + " "
+        return before
+
+    return _LETTER_PAIR.sub(_insert, text)
 
 
 def normalize_vietnamese(text: str) -> str:
@@ -224,7 +236,7 @@ def normalize_vietnamese(text: str) -> str:
     text = _HORIZONTAL_SPACES.sub(" ", text)
     text = "\n".join(line.strip(" ") for line in text.split("\n"))
     text = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)
-    return _GLUED_WORDS.sub(r"\1 \2", text)
+    return _split_glued_words(text)
 
 
 def _match_case_of_first_letter(matched: str, replacement: str) -> str:
@@ -489,8 +501,10 @@ def translate_testcase(
     """Dịch các trường tiếng Anh của `case`; trả bản sao đã cập nhật (hoặc chính `case` nếu không cần).
 
     Trường trượt kiểm tra giữ nguyên bản gốc tiếng Anh và gắn cờ `translation_review` (lý do
-    đầu tiên); lỗi mạng (`translate_error`) dừng xử lý phần còn lại của mẫu. Dịch
-    `reference_contexts` thành công gắn `contexts_translated` nếu không có cờ nặng hơn.
+    đầu tiên); lỗi mạng (`translate_error`) dừng xử lý phần còn lại của mẫu và có ưu tiên
+    cao nhất: đè mọi cờ đã có trước đó (bộ đếm 3 lỗi liên tiếp dựa vào nhãn này). Dịch
+    `reference_contexts` thành công (kể cả ở lần chạy trước, khi `--retry-flagged`) gắn
+    `contexts_translated` nếu không còn cờ nào khác.
 
     Raises:
         TranslatorConfigError: Lỗi cấu hình (propagate, không gắn cờ).
@@ -523,7 +537,8 @@ def translate_testcase(
     if contexts_translated:
         updates["reference_contexts"] = contexts
         originals["reference_contexts"] = list(case.reference_contexts)
-        review = review or REVIEW_CONTEXTS_TRANSLATED
+    if review is None and "reference_contexts" in originals:
+        review = REVIEW_CONTEXTS_TRANSLATED
     updates["original_en"] = originals or None
     updates["translation_review"] = review
     return case.model_copy(update=updates)
@@ -545,7 +560,7 @@ _ROW_FIELDS: Final = (
 class TranslationReport(BaseModel):
     """Kết quả một lần `translate`; chỉ số đếm và số dòng, không nội dung."""
 
-    translated_samples: int = 0
+    translated_samples: int = 0  # chỉ mẫu có ít nhất một trường mới dịch xong
     translated_fields: int = 0
     flagged_this_run: dict[str, int] = Field(default_factory=dict)
     skipped_flagged: int = 0
@@ -683,7 +698,7 @@ def translate_raw(
         cases[position] = translated
         _apply_to_row(rows[position], translated)
         write_raw_rows(path, rows)
-        report.translated_samples += 1
+        report.translated_samples += 1 if newly_translated else 0
         report.translated_fields += len(newly_translated)
         review = translated.translation_review
         if review is not None:

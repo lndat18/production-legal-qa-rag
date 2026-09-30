@@ -100,7 +100,7 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
   Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6); sau đó `finalize` đủ 180 câu và duyệt tay.
-- **Dịch mẫu tiếng Anh trong raw** (**đã chốt thiết kế 2026-09-30, chưa implement**; `evaluation_spec.md` mục 12): lệnh
+- **Dịch mẫu tiếng Anh trong raw** (**đã chốt thiết kế 2026-09-30, đã implement (PR #70), chưa pilot/chưa chạy thật**; `evaluation_spec.md` mục 12): lệnh
   `translate` trong `tools/generate_testset.py` + `evaluation/translation.py`, dịch qua **Google Apps Script web app**
   người dùng tự deploy (`TRANSLATE_URL`, tuỳ chọn `TRANSLATE_KEY`; GET ổn tới 6.400 ký tự), ghi đè tại chỗ + lưu
   `original_en`, kiểm code `Điều/Khoản/Điểm/Chương/Mục + số` còn nguyên (lệch → giữ gốc, cờ `translation_review`), chạy

@@ -191,6 +191,35 @@ def test_translate_testcase_co_nang_thang_contexts_translated():
     assert result.original_en == {"reference_contexts": [EN_CONTEXT]}
 
 
+def test_translate_testcase_translate_error_de_co_truoc_do():
+    mismatch = _vi_q(1).replace("Điều 1", "Điều 99")
+    translator = FakeTranslator({_en_q(1): mismatch, _en_a(1): tr.TranslateError("x")})
+    case = _case(user_input=_en_q(1), reference=_en_a(1))
+
+    result = tr.translate_testcase(case, translator, {})
+
+    assert result.translation_review == "translate_error"  # đè citation_mismatch
+    assert (result.user_input, result.reference) == (_en_q(1), _en_a(1))
+
+
+def test_translate_testcase_retry_flagged_contexts_da_dich_truoc_do_gan_contexts_translated():
+    case = _case(
+        user_input=_en_q(1),
+        reference_contexts=[VI_CONTEXT_FROM_EN],
+        original_en={"reference_contexts": [EN_CONTEXT]},
+        translation_review="citation_mismatch",
+    )
+
+    result = tr.translate_testcase(case, FakeTranslator({_en_q(1): _vi_q(1)}), {})
+
+    assert result.user_input == _vi_q(1)
+    assert result.original_en == {
+        "reference_contexts": [EN_CONTEXT],
+        "user_input": _en_q(1),
+    }
+    assert result.translation_review == "contexts_translated"
+
+
 def test_translate_testcase_chi_giu_ly_do_co_dau_tien():
     mismatch = _vi_q(1).replace("Điều 1", "Điều 99")
     translator = FakeTranslator({_en_q(1): mismatch, _en_a(1): _en_a(1)})
@@ -535,6 +564,23 @@ def test_translate_raw_dem_co_theo_ly_do_va_so_truong_da_dich(out: Path):
     assert report.translated_fields == 3  # (user_input + reference) + reference
     assert report.flagged_total == 2
     assert report.exit_code == 3
+
+
+def test_translate_raw_mau_chi_bi_co_khong_dich_duoc_truong_nao_thi_khong_tinh_la_da_dich(
+    out: Path,
+):
+    _write_raw(out, [_en_row(0), _en_row(1)])
+    responses = _pairs(2)
+    responses[_en_q(0)] = _vi_q(0).replace("Điều 0", "Điều 99")
+    responses[_en_a(0)] = _vi_a(0).replace("Điều 0", "Điều 99")
+
+    report = tr.translate_raw(out, FakeTranslator(responses))
+
+    assert (
+        report.translated_samples == 1
+    )  # chỉ mẫu 1; mẫu 0 bị cờ, không trường nào dịch
+    assert report.translated_fields == 2
+    assert report.flagged_this_run == {"citation_mismatch": 1}
 
 
 def test_translate_raw_ma_thoat_3_tinh_theo_moi_dong_raw_con_translation_review(
@@ -897,6 +943,30 @@ def test_cli_translate_sach_thoat_ma_0(
     assert result.exit_code == 0, result.output
     assert "Đã dịch 1 mẫu (2 trường)" in result.output
     assert _read_raw(out)[0]["user_input"] == _vi_q(0)
+
+
+def test_cli_translate_in_ly_do_co_lan_nay_de_doc(
+    cli: ModuleType, monkeypatch: pytest.MonkeyPatch, out: Path
+):
+    _write_raw(out, [_en_row(0)])
+    untouched = FakeTranslator({_en_q(0): _en_q(0), _en_a(0): _en_a(0)})
+    _stub_translator(cli, monkeypatch, untouched)
+
+    result = _invoke(cli, "translate", "--output-dir", str(out))
+
+    assert "Đã dịch 0 mẫu (0 trường)" in result.output
+    assert "cờ lần này: still_english=1;" in result.output
+
+
+def test_cli_translate_khong_co_co_lan_nay_in_khong(
+    cli: ModuleType, monkeypatch: pytest.MonkeyPatch, out: Path
+):
+    _write_raw(out, [_en_row(0)])
+    _stub_translator(cli, monkeypatch, FakeTranslator(_pairs(1)))
+
+    result = _invoke(cli, "translate", "--output-dir", str(out))
+
+    assert "cờ lần này: không;" in result.output
 
 
 def test_cli_translate_con_mau_can_soat_thoat_ma_3(

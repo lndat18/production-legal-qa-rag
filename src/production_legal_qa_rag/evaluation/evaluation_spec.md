@@ -2,7 +2,7 @@
 
 > Cô đọng 2026-09-30 từ bản 1.396 dòng (lịch sử pilot và số đo cũ: git history). Giữ số mục vì code/spec khác tham chiếu (3.1, 3.2, 3.3, 4.4, 4.5, 8 nhất là).
 > **Trạng thái:** Phase 1 đã implement (PR #55, #60, #63, #64: điều phối 9 key, đếm token, giữ phần đã sinh); sinh testset **chạy dở: 33/50 đơn vị, 97 câu** (mục 4.6). Chính sách retry/pass tiết kiệm token (mục 3.4) đã implement trên branch `feature/eval-ragas-retry-pass`.
-> Phase 2 (mục 11) **đã thiết kế, chưa implement**. Mục 12 (lệnh `translate`, dịch mẫu tiếng Anh trong raw bằng Google Apps Script) **đã chốt thiết kế 2026-09-30, chưa implement**.
+> Phase 2 (mục 11) **đã thiết kế, chưa implement**. Mục 12 (lệnh `translate`, dịch mẫu tiếng Anh trong raw bằng Google Apps Script) **đã chốt thiết kế 2026-09-30, đã implement (PR #70), chưa pilot/chưa chạy thật**.
 
 ## 0. Tinh hoa: bài học xương máu và phương pháp đúng
 
@@ -323,7 +323,7 @@ Sau khi implement, chạy S1→S6 với `--limit 10–20` (có thể trỏ raw k
 (tải xấp xỉ đều; câu gán cho tài khoản hết quota ra `error` rồi `--retry-failed` sang key khác); resume (Ctrl+C rồi chạy lại từng stage không làm lại bản ghi xong); `report.json` đọc được, đủ các lát. Chỉ chạy full khi pilot đạt.
 
 
-## 12. Dịch mẫu tiếng Anh trong raw — lệnh `translate` (chốt 2026-09-30, chưa implement)
+## 12. Dịch mẫu tiếng Anh trong raw — lệnh `translate` (chốt 2026-09-30, đã implement PR #70, chưa pilot/chưa chạy thật)
 
 ### 12.1 Vấn đề, mục tiêu, phạm vi
 
@@ -339,7 +339,7 @@ Sau khi implement, chạy S1→S6 với `--limit 10–20` (có thể trỏ raw k
 | --- | --- | --- |
 | Dịch | Google Apps Script web app do người dùng tự deploy (Execute as: Me, Who has access: Anyone) | Miễn phí, không thẻ. Hạn mức của Apps Script chưa xác minh — kiểm ở pilot (12.9) |
 | Gọi HTTP | `requests.get(url, params={"text","source":"en","target":"vi"[,"key"]}, timeout=…)` | Người dùng đã chốt `requests`; khai báo tường minh trong nhóm `eval` (đang chỉ có bắc cầu), không thêm `httpx` |
-| Response | JSON `{"translatedText": "..."}` | Apps Script trả 302 sang `script.googleusercontent.com`, `requests` tự follow. Phải validate: JSON hợp lệ, có `translatedText` là `str` không rỗng; trang HTML (đăng nhập/lỗi quyền/quota) hoặc `{"error": ...}` = lỗi |
+| Response | JSON `{"translatedText": "..."}` | Apps Script trả 302 sang `script.googleusercontent.com`, `requests` tự follow. Phải validate: JSON hợp lệ, có `translatedText` là `str` không rỗng; trang HTML (đăng nhập/lỗi quyền/quota) = **lỗi cấu hình** (không retry, mã thoát 2); `{"error": "forbidden"}` cũng là lỗi cấu hình; `{"error": ...}` khác hoặc JSON hỏng = lỗi tạm thời (retry) |
 | Cấu hình | `TranslateSettings` (pydantic-settings, `env_file=".env"`, `extra="ignore"`): `url` (`TRANSLATE_URL`, bắt buộc), `key` (`TRANSLATE_KEY`, tuỳ chọn), `timeout_seconds = 60` | Thêm `TRANSLATE_URL`, `TRANSLATE_KEY` vào `.env.example` block APP (chú thích: chỉ dùng cho `generate_testset.py translate`). Không đọc/ghi `.env` bằng tay. Thiếu `TRANSLATE_URL` → `EvalInputError` mã thoát 2, nêu TÊN biến |
 
 **Số đo thật (người dùng chạy tay 2026-09-30, `tools/try_translate.py`):** GET chạy ổn tới **6.400 ký tự** → không cần POST. Số Điều/Khoản/Điểm giữ nguyên ("Điều 5, Khoản 2, Điểm a", "Điều 10"); ký tự đặc biệt và xuống dòng qua được. **Lỗi thấy:** (1) thuật ngữ lệch ("social pension" → "lương hưu xã hội" thay vì "trợ cấp hưu trí xã hội"); (2) thỉnh thoảng mất dấu cách ("bảo vệsức khỏe", "Ngườilao động"); (3) văn bản lặp nhân tạo có thể bị gộp câu — **chưa kết luận**, phải đo trên `reference` thật ở pilot.
@@ -357,18 +357,19 @@ Với mỗi trường (`user_input`, `reference`, từng phần tử `reference_
 Thứ tự bắt buộc, mỗi bước là hàm thuần trừ bước gọi mạng:
 1. **Tách:** nếu trường dài hơn `MAX_REQUEST_CHARS = 4.000` (biên an toàn dưới 6.400 đã đo) thì tách gộp theo dòng (`\n`) sao cho mỗi phần ≤ giới hạn, dịch từng phần, nối lại đúng dấu xuống dòng cũ; một dòng đơn dài hơn giới hạn → không dịch, cờ `too_long`.
 2. **Gọi dịch** (`AppsScriptTranslator.translate`): retry 3 lần với backoff + jitter chỉ cho timeout/`ConnectionError`/5xx/lỗi response không hợp lệ tạm thời; không retry lỗi cấu hình (`forbidden`, HTML quyền).
-3. **Chuẩn hoá nhẹ:** NFC; gộp khoảng trắng thừa; bỏ dấu cách trước `, . ; :`; thêm dấu cách giữa chữ thường và chữ hoa dính nhau (`([a-zà-ỹ])([A-ZĐ])`). **Không** cố sửa "dính chữ" kiểu "vệsức" bằng regex/từ điển (đã chấp nhận ở mục 4.1: `reference` chỉ LLM chấm); lỗi này xử lý ở bước soát tay.
+3. **Chuẩn hoá nhẹ:** NFC; gộp khoảng trắng thừa; bỏ dấu cách trước `, . ; :`; thêm dấu cách khi chữ thường liền trước chữ hoa (kiểm bằng `str.islower/isupper` trên từng ký tự chữ, không dùng khoảng codepoint như `à-ỹ` vì nó khớp nhầm chữ HOA có dấu làm vỡ `ĐIỀU`, `CHƯƠNG`; tách được cả `quyềnNgười`, `ngườiÔng`). **Không** cố sửa "dính chữ" kiểu "vệsức" bằng regex/từ điển (đã chấp nhận ở mục 4.1: `reference` chỉ LLM chấm); lỗi này xử lý ở bước soát tay.
 4. **Bảng thuật ngữ** (`data/eval/translation_glossary.json`, `{"lương hưu xã hội": "trợ cấp hưu trí xã hội", ...}`, tuỳ chọn, thiếu file = không thay): thay trên **bản dịch** (không trên bản gốc tiếng Anh), khớp không phân biệt hoa/thường theo cụm dài trước, giữ kiểu hoa ký tự đầu. Bảng nhỏ, người dùng tự thêm mục khi soát; mục mới **không** áp lại lên mẫu đã dịch (soát tay, xem 12.7).
 5. **Kiểm bất biến bằng code** (nếu trượt → giữ nguyên trường gốc, không ghi bản dịch, gắn cờ):
-   - **Tham chiếu pháp lý:** trích tập cặp `(loại, số/chữ)` ở bản gốc bằng regex tiếng Anh `Article|Clause|Point|Chapter|Section|Paragraph + số/chữ cái/số La Mã`, ánh xạ `Article→Điều, Clause→Khoản, Point→Điểm, Chapter→Chương, Section→Mục`; trích tập tương ứng ở bản dịch bằng `Điều|Khoản|Điểm|Chương|Mục + …`; hai tập phải bằng nhau (so tập, không so số lần; chữ Điểm so không phân biệt hoa/thường). Trường gốc không có cụm nào thì không kiểm mục này. `Section` mơ hồ (có thể không là Mục) chỉ gây cờ dư, chấp nhận.
+   - **Tham chiếu pháp lý:** trích tập cặp `(loại, số/chữ)` ở bản gốc bằng regex tiếng Anh `Article|Clause|Point|Chapter|Section|Paragraph + số/chữ cái/số La Mã`, ánh xạ `Article→Điều, Clause→Khoản, Paragraph→Khoản, Point→Điểm, Chapter→Chương, Section→Mục`; trích tập tương ứng ở bản dịch bằng `Điều|Khoản|Điểm|Chương|Mục + …`; hai tập phải bằng nhau (so tập, không so số lần; chữ Điểm so không phân biệt hoa/thường). Trường gốc không có cụm nào thì không kiểm mục này. `Section` mơ hồ (có thể không là Mục) chỉ gây cờ dư, chấp nhận.
    - **Số dòng không rỗng** bằng nhau trước/sau (bắt trường hợp gộp câu/dòng, lỗi (3) ở 12.2). Nếu pilot cho thấy cờ oan nhiều thì bỏ kiểm này, không nới thành heuristic khác.
    - Kết quả không rỗng và tỉ lệ dấu tiếng Việt **không còn** dưới ngưỡng 12.3 (dịch xong vẫn là tiếng Anh = lỗi).
+   - **Thứ tự kiểm đúng như code** (lý do cờ là lý do đầu tiên trượt): `still_english` → `citation_mismatch` → `line_count_mismatch`.
 
 ### 12.5 Model dữ liệu và ghi
 
 `GoldenTestCase` (mục 5) thêm hai trường tuỳ chọn, mặc định `None`, **tương thích ngược** với raw cũ:
 - `original_en: dict[str, str] | None` — bản gốc của trường ĐÃ dịch thành công, khoá `user_input` / `reference` / `reference_contexts`; kiểu `dict[str, str | list[str]]` (`reference_contexts` lưu nguyên `list[str]` gốc). Chỉ có khoá của trường thực sự bị dịch.
-- `translation_review: str | None` — lý do mẫu cần soát tay: `citation_mismatch`, `line_count_mismatch`, `still_english`, `too_long`, `translate_error`, `contexts_translated` (reference_contexts đã dịch, mất tính nguyên văn); `None` = không có vấn đề. Mẫu cờ do kiểm thất bại thì trường tương ứng **giữ bản gốc tiếng Anh** (người dùng sửa tay hoặc xoá dòng); riêng `contexts_translated` thì bản dịch đã ghi.
+- `translation_review: str | None` — lý do mẫu cần soát tay: `citation_mismatch`, `line_count_mismatch`, `still_english`, `too_long`, `translate_error`, `contexts_translated` (reference_contexts đã dịch, mất tính nguyên văn); `None` = không có vấn đề. Mẫu cờ do kiểm thất bại thì trường tương ứng **giữ bản gốc tiếng Anh** (người dùng sửa tay hoặc xoá dòng); riêng `contexts_translated` thì bản dịch đã ghi. **Ưu tiên khi nhiều lý do:** `translate_error` cao nhất và đè cờ gắn trước đó trong cùng mẫu (bộ đếm 3 lỗi liên tiếp, 12.6, dựa vào nhãn này); các lý do còn lại giữ lý do đầu tiên; `contexts_translated` chỉ gắn khi không còn cờ nào khác (kể cả khi `--retry-flagged` dịch nốt các trường khác của mẫu đã có `original_en["reference_contexts"]`).
 
 `golden_testset_raw.json` ghi lại **nguyên tử** (file tạm cùng thư mục + `os.replace`; tái dùng hàm ghi/đọc raw của `testset_generator.py`) sau **mỗi mẫu**, không sửa dòng nào ngoài các trường đã dịch, không sắp xếp lại (không bao giờ ghi đè sửa tay của người dùng). `finalize` giữ hai cột phụ mới trong `golden_testset.json` (cùng nhóm cột phụ với `synthesizer_name`, mục 2) và in cảnh báo **số dòng còn `translation_review`** (không chặn). Phase 2 đọc 3 cột ragas + `synthesizer_name` như cũ, bỏ qua cột thừa.
 
@@ -378,8 +379,8 @@ Thứ tự bắt buộc, mỗi bước là hàm thuần trừ bước gọi mạ
 
 `tools/generate_testset.py translate` (Typer mỏng; logic ở `evaluation/translation.py`): tuỳ chọn `--output-dir` (cùng ý nghĩa với `generate`), `--dry-run`, `--limit N`, `--retry-flagged`.
 - **`--dry-run`** (không gọi mạng, không cần `TRANSLATE_URL`): bảng theo dòng raw gồm số thứ tự dòng, trường bị coi là tiếng Anh, tỉ lệ dấu tiếng Việt, số ký tự; tóm tắt số mẫu/trường và tổng ký tự cần dịch; in riêng các trường tỉ lệ ở vùng mơ hồ (12.3). Đây là **bước đo lại số mẫu tiếng Anh trên raw 203 câu** (12.1).
-- Chạy thật: duyệt raw theo thứ tự file, mẫu nào có trường tiếng Anh thì dịch tuần tự (12.4), ghi raw sau mỗi mẫu. Lỗi mạng sau retry chỉ gắn `translate_error` cho mẫu đó rồi đi tiếp; **3 mẫu liên tiếp `translate_error`** (URL hỏng, hết hạn mức Apps Script) → dừng, mã thoát 1. Log chỉ có số đếm (đã dịch/cờ theo lý do/đã bỏ qua), chỉ số dòng, không nội dung.
-- **Mã thoát:** 0 sạch; 1 dừng do lỗi liên tiếp; 2 đầu vào/cấu hình sai (thiếu `TRANSLATE_URL`, raw thiếu/hỏng, `forbidden`); 3 xong nhưng còn mẫu `translation_review` (như mục 4.5). Chạy lại cùng lệnh là tiếp tục.
+- Chạy thật: duyệt raw theo thứ tự file, mẫu nào có trường tiếng Anh thì dịch tuần tự (12.4), ghi raw sau mỗi mẫu. Lỗi mạng sau retry (timeout/5xx/429/JSON hỏng) chỉ gắn `translate_error` cho mẫu đó rồi đi tiếp; **3 mẫu liên tiếp `translate_error`** (URL hỏng, hết hạn mức Apps Script) → dừng, mã thoát 1. Trang HTML (đăng nhập/quyền/quota) và `forbidden` là lỗi cấu hình: dừng ngay, mã thoát 2. Log chỉ có số đếm (đã dịch/cờ theo lý do/đã bỏ qua), chỉ số dòng, không nội dung.
+- **Mã thoát:** 0 sạch; 1 dừng do 3 mẫu liên tiếp lỗi tạm thời (timeout/5xx/429/JSON hỏng); 2 đầu vào/cấu hình sai (thiếu `TRANSLATE_URL`, raw thiếu/hỏng, `forbidden`, trang HTML đăng nhập/quyền/quota); 3 xong nhưng còn mẫu `translation_review` (như mục 4.5). Chạy lại cùng lệnh là tiếp tục.
 - **Trình tự tổng:** `generate` xong → chốt abstract (mục 4.6) → `translate --dry-run` → pilot `translate --limit 5` → `translate` → **soát tay (12.7)** → `finalize` → duyệt tay đọc lướt (mục 9.4) → Phase 2. **Phải xong trước Phase 2:** `case_id = sha256(user_input)` (mục 11.2) đổi khi `user_input` bị dịch; dịch sau khi đã chạy Phase 2 làm mồ côi mọi bản ghi.
 
 ### 12.7 Soát tay sau dịch

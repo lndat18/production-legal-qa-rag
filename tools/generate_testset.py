@@ -52,7 +52,9 @@ from production_legal_qa_rag.evaluation.translation import (
     translate_raw,
 )
 
-app = typer.Typer(add_completion=False, no_args_is_help=True)
+app = typer.Typer(
+    add_completion=False, no_args_is_help=True, pretty_exceptions_show_locals=False
+)
 
 
 @app.command()
@@ -198,9 +200,15 @@ def translate(
     except EvalInputError as error:
         typer.echo(f"Lỗi đầu vào: {error}", err=True)
         raise typer.Exit(2) from error
+    flagged_this_run = (
+        ", ".join(
+            f"{reason}={count}" for reason, count in report.flagged_this_run.items()
+        )
+        or "không"
+    )
     typer.echo(
         f"Đã dịch {report.translated_samples} mẫu ({report.translated_fields} trường), "
-        f"cờ lần này {report.flagged_this_run or 0}, bỏ qua {report.skipped_flagged} mẫu "
+        f"cờ lần này: {flagged_this_run}; bỏ qua {report.skipped_flagged} mẫu "
         f"đã bị cờ; còn {report.flagged_total} dòng có translation_review trong raw."
     )
     if report.stopped_by_consecutive_errors:
