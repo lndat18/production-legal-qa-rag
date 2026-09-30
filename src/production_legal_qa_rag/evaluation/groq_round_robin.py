@@ -295,9 +295,21 @@ class GroqRoundRobinChatModel(BaseChatModel):
             now = self._now()
             if self._daily_quota_message is not None:
                 return 0.0
-            if any(until > now for until in self._daily_cooldown_until):
+            active = [
+                (cooldown_until, daily_cooldown_until)
+                for cooldown_until, daily_cooldown_until, disabled in zip(
+                    self._cooldown_until,
+                    self._daily_cooldown_until,
+                    self._disabled,
+                    strict=True,
+                )
+                if not disabled
+            ]
+            if not active:
                 return 0.0
-            earliest = min(self._cooldown_until)
+            if any(daily_until > now for _cooldown, daily_until in active):
+                return 0.0
+            earliest = min(cooldown for cooldown, _daily_until in active)
             if earliest <= now:
                 return 0.0
             return min(earliest - now, _MINUTE_COOLDOWN_MAX)
