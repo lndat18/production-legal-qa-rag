@@ -65,13 +65,8 @@ _CLEAR_NON_RESEARCH_REQUESTS: Final = frozenset(
 )
 _CLEAR_NON_RESEARCH_PREFIXES: Final = (
     "viết code",
-    "hãy viết code",
-    "vui lòng viết code",
     "lập trình",
-    "hãy lập trình",
     "sáng tác",
-    "hãy sáng tác",
-    "vui lòng sáng tác",
     "viết thơ",
     "làm thơ",
     "kể chuyện",
@@ -80,9 +75,39 @@ _CLEAR_NON_RESEARCH_PREFIXES: Final = (
     "dịch đoạn ",
     "dịch văn bản ",
     "dịch sang ",
+    "translate ",
+)
+_DIRECT_CREATION_REQUEST_PREFIXES: Final = (
+    "hãy viết code",
+    "vui lòng viết code",
+    "bạn có thể viết code",
+    "hãy lập trình",
+    "vui lòng lập trình",
+    "bạn có thể lập trình",
+    "hãy sáng tác",
+    "vui lòng sáng tác",
+    "bạn có thể sáng tác",
     "hãy dịch ",
     "vui lòng dịch ",
-    "translate ",
+    "bạn có thể dịch ",
+)
+_INFORMATIONAL_QUERY_MARKERS: Final = (
+    "?",
+    "là gì",
+    "là sao",
+    "như thế nào",
+    "ra sao",
+    "bao nhiêu",
+    "khi nào",
+    "ở đâu",
+    "tại sao",
+    "vì sao",
+    "có phải",
+    "có được",
+    "có cần",
+    "được không",
+    "hay không",
+    " nào",
 )
 
 
@@ -189,11 +214,16 @@ def _normalize_scope_verdict(query: str, verdict: GuardrailVerdict) -> Guardrail
 
 
 def _is_clear_non_research_request(query: str) -> bool:
-    """Nhận diện hẹp các tác vụ không cần evidence để tránh chặn topical scope."""
+    """Nhận diện lệnh tạo nội dung rõ ràng, không chặn câu hỏi thông tin."""
     normalized = query.casefold().strip().rstrip("!?. ")
-    return normalized in _CLEAR_NON_RESEARCH_REQUESTS or normalized.startswith(
-        _CLEAR_NON_RESEARCH_PREFIXES
-    )
+    query_with_punctuation = query.casefold().strip()
+    if normalized in _CLEAR_NON_RESEARCH_REQUESTS:
+        return True
+    if normalized.startswith(_DIRECT_CREATION_REQUEST_PREFIXES):
+        return True
+    if any(marker in query_with_punctuation for marker in _INFORMATIONAL_QUERY_MARKERS):
+        return False
+    return normalized.startswith(_CLEAR_NON_RESEARCH_PREFIXES)
 
 
 async def check_input(

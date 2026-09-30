@@ -53,7 +53,9 @@ Draft vào buffer → **code hard gate** → (fail, chưa repair) LLM viết l�
    `allow` và đi retrieval. Guardrail không dùng số hiệu/tên văn bản, danh sách keyword hay few-shot để kết luận corpus
    scope: các cách này đã đo với `gpt-oss-safeguard-20b` và vẫn tạo false-positive cho Sơn Nam, Long An hoặc gia hạn
    giấy phép. Sau safeguard, code chỉ giữ verdict `out_of_scope` cho dạng yêu cầu phi-tra-cứu rõ ràng; mọi
-   `out_of_scope` khác được map về `allow` để retrieval quyết định evidence. `injection` không bao giờ bị map lại.
+   `out_of_scope` khác được map về `allow` để retrieval quyết định evidence. Bộ nhận diện hẹp chỉ giữ lệnh tạo
+   code/nội dung rõ ràng; câu có dạng hỏi thông tin, kể cả bắt đầu bằng các từ đó, vẫn là `allow`. `injection` không
+   bao giờ bị map lại.
 2. Retrieval đúng một lần; context rỗng → `error(no_context)`, không draft.
 3. Provider có thể stream nội bộ để lấy usage/finish reason nhưng draft chỉ ở buffer; lỗi transport/rate limit/draft
    rỗng → `error`, không repair.
@@ -138,7 +140,8 @@ Tham số riêng Groq (`reasoning_effort`, `include_reasoning`, `max_completion_
   bản không phải tín hiệu ngoài scope. Không thêm deterministic allowlist cho document/địa danh: người dùng có thể chèn
   chúng vào injection và danh sách không bao phủ được câu hỏi corpus mơ hồ. Sau model, `InputGuardrail` chỉ giữ
   `out_of_scope` cho một tập hẹp mẫu tác vụ phi-tra-cứu rõ ràng; không khớp mẫu thì map `allow`, vì verdict topical
-  không thể quyết định corpus scope.
+  không thể quyết định corpus scope. Khi từ ngữ tạo code/nội dung xuất hiện trong câu hỏi thông tin, mapping ưu tiên
+  `allow` thay vì suy đoán đó là một lệnh.
 - `GenerationSettings`: `api_key` ưu tiên `GROQ_API_KEY_3` (fallback `_1`); `round_robin_api_key` (`GROQ_API_KEY_4`, tuỳ chọn):
   khi có, `AnswerGenerator` giữ 2 `LoopBoundClient` xoay vòng theo từng lượt draft/repair (`_next_client()`). Lý do (quan sát
   thật 2026-09-27): TPD generation cạn chỉ sau một phiên test nhiều lượt dồn vào 1 tài khoản; xoay giãn TPD ra 2 tài khoản.

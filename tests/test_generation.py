@@ -1235,6 +1235,33 @@ def test_guardrail_maps_topical_out_of_scope_to_allow(query: str) -> None:
 @pytest.mark.parametrize(
     "query",
     [
+        "Viết code Python có phải là hoạt động kinh doanh không?",
+        "Sáng tác tác phẩm có được pháp luật bảo hộ không?",
+        "Viết code Python?",
+    ],
+)
+def test_guardrail_maps_informational_creation_terms_to_allow(query: str) -> None:
+    """Từ tạo nội dung trong câu hỏi không biến nó thành tác vụ tạo nội dung."""
+    settings = SimpleNamespace(
+        api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="out_of_scope", reason="Không thuộc miền.")
+    )
+
+    verdict = asyncio.run(
+        InputGuardrail(
+            settings,
+            client=fake_client,  # type: ignore[arg-type]
+        ).check_input(query)
+    )
+
+    assert verdict.verdict == "allow"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
         "Xin chào",
         "Viết code Python để tính lương",
         "Hãy sáng tác một bài thơ về mùa thu",
