@@ -968,11 +968,8 @@ def _timeout_error() -> Any:
     ],
     ids=["413", "connection"],
 )
-def test_ragas_khong_retry_tang_tren_cho_loi_transport(
-    monkeypatch: pytest.MonkeyPatch, error: BaseException
-):
+def test_ragas_khong_retry_tang_tren_cho_loi_transport(error: BaseException):
     """Router đã quyết retry HTTP; scenario không được gửi lại cùng lỗi transport."""
-    runner = _runner(monkeypatch)
     synthesizer = _FakeSynthesizer(_SINGLE, scenario_error=error)
 
     with pytest.raises(type(error)):
