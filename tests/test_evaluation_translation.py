@@ -14,6 +14,7 @@ import sys
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -266,7 +267,7 @@ def test_split_for_request_thuoc_tinh_ngau_nhien_seed_co_dinh():
         assert "\n".join(parts) == text
         assert all(len(part) <= max_chars for part in parts)
         # Gộp tham lam: không thể nhét dòng đầu của phần sau vào phần trước.
-        for previous, following in zip(parts, parts[1:], strict=False):
+        for previous, following in pairwise(parts):
             first_line = following.split("\n")[0]
             assert len(previous) + 1 + len(first_line) > max_chars
 
