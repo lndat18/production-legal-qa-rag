@@ -8,7 +8,8 @@ Module này KHÔNG import `ragas`: toàn bộ phần chạm `ragas`/Groq nằm �
 Việc của module: chia văn bản thành đơn vị (`unit_splitter`), sắp theo thứ tự chạy
 nhỏ -> lớn, phân bổ số câu theo đơn vị (`allocate_questions`), chạy từng đơn vị qua
 `UnitRunner`, nối kết quả vào `golden_testset_raw.json` rồi ghi
-`generation_progress.json` nguyên tử (mục 4.5), dừng ngay khi một đơn vị lỗi, và
+`generation_progress.json` nguyên tử (mục 4.5), dừng ngay khi một đơn vị lỗi (phần sample đã
+sinh xong được giữ, đơn vị ở trạng thái `partial` và chạy tiếp phần còn thiếu — mục 3.3), và
 chốt đúng `TARGET_SIZE` câu (`finalize_golden_testset`, mục 4.2).
 """
 
@@ -25,9 +26,9 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from production_legal_qa_rag.evaluation.corpus_loader import DEFAULT_MARKDOWN_DIR
 from production_legal_qa_rag.evaluation.models import (
@@ -36,7 +37,11 @@ from production_legal_qa_rag.evaluation.models import (
     UnitFailure,
     UnitProgress,
 )
-from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit, split_directory
+from production_legal_qa_rag.evaluation.unit_splitter import (
+    FIXED_TOKENS_PER_UNIT,
+    EvalUnit,
+    split_directory,
+)
 
 if TYPE_CHECKING:
     from production_legal_qa_rag.config import TestsetGeneratorSettings
@@ -51,6 +56,9 @@ TARGET_SIZE: Final = 180
 _MULTI_HOP_SHARE: Final = 0.1
 # Quota token/ngày của 9 tài khoản Groq free x 200K (mục 3.1), chỉ để ước lượng số ngày.
 TOKENS_PER_DAY: Final = 1_800_000
+# Cần ít nhất chừng này đơn vị `done` có số đo token thì `--dry-run` mới tin hệ số token/ký tự
+# đo được thay cho 5,5 (mục 3.2 B); ít hơn thì sai số quá lớn.
+MIN_MEASURED_UNITS: Final = 3
 
 DEFAULT_OUTPUT_DIR: Final = Path("data/eval")
 RAW_TESTSET_FILENAME: Final = "golden_testset_raw.json"
@@ -99,10 +107,24 @@ class QuestionQuota(BaseModel):
 
 
 class UnitResult(BaseModel):
-    """Kết quả một đơn vị do `UnitRunner` trả về (chưa gắn nguồn, chưa ghi đĩa)."""
+    """Kết quả một đơn vị do `UnitRunner` trả về (chưa gắn nguồn, chưa ghi đĩa).
+
+    `interruption` khác `None` khi runner dừng giữa chừng (hết quota ngày, lỗi sinh scenario
+    của một loại) NHƯNG đã có câu hợp lệ trong `cases`: người điều phối vẫn nối chúng vào raw,
+    ghi đơn vị là `partial`, rồi dừng chương trình như mọi lỗi đơn vị (mục 3.3). Không có
+    câu nào thì runner không trả kết quả mà raise `UnitGenerationError`.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     cases: list[GoldenTestCase]
     llm_calls: int
+    tokens: int = (
+        0  # prompt + completion của riêng đơn vị (hiệu số trước/sau như llm_calls)
+    )
+    reasoning_tokens: int = 0  # phần con của `tokens` dành cho suy luận
+    skipped_samples: int = 0  # sample lỗi (không phải hết quota) bị bỏ
+    interruption: BaseException | None = Field(default=None, exclude=True)
 
 
 class UnitRunner(Protocol):
@@ -116,7 +138,12 @@ class UnitRunner(Protocol):
         *,
         reuse_knowledge_graph: bool,
     ) -> UnitResult:
-        """Dựng (hoặc nạp lại) KG của đơn vị, sinh câu hỏi, lưu KG khi thành công."""
+        """Dựng (hoặc nạp lại) KG của đơn vị, sinh câu hỏi; KG được lưu ngay khi dựng xong.
+
+        Sample lỗi riêng lẻ bị bỏ (đếm vào `skipped_samples`). Hết quota ngày giữa chừng mà đã
+        có câu thì trả `UnitResult` kèm `interruption`; chưa có câu nào thì raise
+        `UnitGenerationError` (mục 3.3).
+        """
         ...
 
 
@@ -366,7 +393,15 @@ def _recoverable_units(
 
 
 def _new_unit_progress(
-    unit: EvalUnit, questions: dict[str, int], llm_calls: int, seconds: float
+    unit: EvalUnit,
+    questions: dict[str, int],
+    llm_calls: int,
+    seconds: float,
+    *,
+    status: Literal["done", "partial"] = "done",
+    skipped_samples: int = 0,
+    tokens: int | None = None,
+    reasoning_tokens: int | None = None,
 ) -> UnitProgress:
     return UnitProgress(
         title=unit.title,
@@ -376,6 +411,30 @@ def _new_unit_progress(
         llm_calls=llm_calls,
         seconds=seconds,
         completed_at=datetime.now().astimezone(),
+        status=status,
+        skipped_samples=skipped_samples,
+        tokens=tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+
+
+def _is_done(progress: GenerationProgress, key: str) -> bool:
+    """Đơn vị đã xong hẳn; `partial` (dừng dở) không tính."""
+    unit_progress = progress.units.get(key)
+    return unit_progress is not None and unit_progress.status == "done"
+
+
+def _remaining_quota(
+    quota: QuestionQuota, previous: UnitProgress | None
+) -> QuestionQuota:
+    """Quota còn phải sinh: đơn vị `partial` trừ số câu đã ghi (kẹp >= 0); còn lại nguyên quota."""
+    if previous is None or previous.status != "partial":
+        return quota
+    return QuestionQuota(
+        **{
+            kind: max(0, getattr(quota, kind) - previous.questions.get(kind, 0))
+            for kind in QUESTION_TYPES
+        }
     )
 
 
@@ -444,6 +503,10 @@ def _format_time(moment: datetime) -> str:
 def _unit_status(unit: EvalUnit, state: _RunState) -> str:
     key = unit_key(unit)
     done = state.progress.units.get(key)
+    if done is not None and done.status == "partial":
+        return (
+            f"dở (đã có {sum(done.questions.values())}/{state.quotas[key].total} câu)"
+        )
     if done is not None:
         return f"xong {_format_time(done.completed_at)}"
     if key in state.recoverable:
@@ -454,13 +517,18 @@ def _unit_status(unit: EvalUnit, state: _RunState) -> str:
     return "chưa"
 
 
+def _run_quota(state: _RunState, key: str) -> QuestionQuota:
+    """Quota cho lần chạy này: nguyên quota, hoặc phần còn thiếu của đơn vị `partial`."""
+    return _remaining_quota(state.quotas[key], state.progress.units.get(key))
+
+
 def _pending_units(state: _RunState, append: bool) -> list[EvalUnit]:
     return [
         u
         for u in state.selected
         if append
         or (
-            unit_key(u) not in state.progress.units
+            not _is_done(state.progress, unit_key(u))
             and unit_key(u) not in state.recoverable
         )
     ]
@@ -486,16 +554,48 @@ def _render_plan(state: _RunState, *, append: bool) -> str:
         )
     remaining = [u for u in state.selected if unit_key(u) in pending_keys]
     lines.append("")
-    lines.append(_summary_line(len(state.selected), remaining))
+    lines.append(_summary_line(len(state.selected), remaining, state.progress))
     return "\n".join(lines)
 
 
-def _summary_line(total_units: int, remaining: Sequence[EvalUnit]) -> str:
-    tokens = sum(u.estimated_tokens for u in remaining)
+def _measured_tokens_per_char(progress: GenerationProgress) -> float | None:
+    """Hệ số token/ký tự đo được từ các đơn vị `done` có `tokens`; `None` nếu chưa đủ số đo.
+
+    Công thức ước lượng một đơn vị là `hệ số x ký tự + FIXED_TOKENS_PER_UNIT` (như 5,5 ở
+    `EvalUnit.estimated_tokens`), nên phần cố định được trừ khỏi số đo trước khi chia — nếu
+    không, phần cố định sẽ bị đếm hai lần khi ước lượng. Đơn vị `partial` bị loại vì `tokens`
+    của nó mới là một phần.
+    """
+    measured = [
+        unit
+        for unit in progress.units.values()
+        if unit.status == "done" and unit.tokens and unit.chars > 0
+    ]
+    if len(measured) < MIN_MEASURED_UNITS:
+        return None
+    variable_tokens = sum(
+        u.tokens or 0 for u in measured
+    ) - FIXED_TOKENS_PER_UNIT * len(measured)
+    return max(variable_tokens, 0) / sum(u.chars for u in measured)
+
+
+def _summary_line(
+    total_units: int, remaining: Sequence[EvalUnit], progress: GenerationProgress
+) -> str:
+    factor = _measured_tokens_per_char(progress)
+    if factor is None:
+        tokens = sum(u.estimated_tokens for u in remaining)
+    else:
+        tokens = sum(
+            round(u.char_count * factor) + FIXED_TOKENS_PER_UNIT for u in remaining
+        )
+    measured_note = (
+        "" if factor is None else f" (hệ số đo được {factor:.2f} token/ký tự)"
+    )
     return (
         f"Đã xong {total_units - len(remaining)}/{total_units} đơn vị, còn {len(remaining)} đơn vị "
         f"ước lượng ~{tokens / 1e6:.2f}M token (≈ {tokens / TOKENS_PER_DAY:.1f} ngày "
-        f"ở {TOKENS_PER_DAY / 1e6:.1f}M token/ngày)."
+        f"ở {TOKENS_PER_DAY / 1e6:.1f}M token/ngày){measured_note}."
     )
 
 
@@ -519,7 +619,9 @@ def summarize_progress(
 ) -> str:
     """Một dòng tóm tắt tiến độ toàn corpus (in sau khi dừng giữa chừng)."""
     state = _prepare_run(markdown_dir, output_dir, (), None)
-    return _summary_line(len(state.all_units), _pending_units(state, append=False))
+    return _summary_line(
+        len(state.all_units), _pending_units(state, append=False), state.progress
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -600,22 +702,57 @@ def _recover_unfinished(state: _RunState, progress_path: Path) -> None:
         save_progress(progress_path, state.progress)
 
 
-def _record_unit_done(
+def _record_unit_result(
     progress: GenerationProgress,
     unit: EvalUnit,
     added: Sequence[GoldenTestCase],
-    llm_calls: int,
+    result: UnitResult,
     seconds: float,
 ) -> None:
+    """Ghi kết quả một lượt chạy: `done`, hoặc `partial` khi runner báo `interruption` (mục 3.3).
+
+    Cộng dồn `questions`/`llm_calls`/`seconds`/`skipped_samples`/token với bản ghi trước (chạy
+    tiếp đơn vị `partial`, hoặc `--append`). Nếu bản ghi trước không có số đo token thì tổng
+    cũng là `None`: cộng phần mới vào một tổng thiếu sẽ ra số sai, còn số sai làm lệch hệ số
+    token/ký tự của `--dry-run` (mục 3.2 B).
+    """
     key = unit_key(unit)
     counts = _count_by_type([case.synthesizer_name for case in added])
+    llm_calls, skipped = result.llm_calls, result.skipped_samples
+    tokens, reasoning_tokens = result.tokens, result.reasoning_tokens
+    total_tokens: int | None = tokens
+    total_reasoning: int | None = reasoning_tokens
     previous = progress.units.get(key)
-    if previous is not None:  # --append: cộng dồn
+    if previous is not None:  # --append hoặc chạy tiếp đơn vị partial: cộng dồn
         counts = {k: counts[k] + previous.questions.get(k, 0) for k in QUESTION_TYPES}
         llm_calls += previous.llm_calls
         seconds += previous.seconds
-    progress.units[key] = _new_unit_progress(unit, counts, llm_calls, seconds)
-    if progress.last_failure is not None and progress.last_failure.unit == key:
+        skipped += previous.skipped_samples
+        if previous.tokens is None:
+            total_tokens = None
+        else:
+            total_tokens = tokens + previous.tokens
+        if previous.reasoning_tokens is None:
+            total_reasoning = None
+        else:
+            total_reasoning = reasoning_tokens + previous.reasoning_tokens
+    interrupted = result.interruption is not None
+    # `--append` trên đơn vị đã `done` bị ngắt vẫn giữ `done`: đơn vị đã đủ quota từ trước, phần
+    # sinh thêm chỉ là bổ sung; chuyển sang `partial` sẽ làm "quota - questions" về 0 và kẹt.
+    was_done = previous is not None and previous.status == "done"
+    progress.units[key] = _new_unit_progress(
+        unit,
+        counts,
+        llm_calls,
+        seconds,
+        status="partial" if interrupted and not was_done else "done",
+        skipped_samples=skipped,
+        tokens=total_tokens,
+        reasoning_tokens=total_reasoning,
+    )
+    if not interrupted and (
+        progress.last_failure is not None and progress.last_failure.unit == key
+    ):
         progress.last_failure = None
 
 
@@ -626,8 +763,8 @@ def _process_unit(
     output_dir: Path,
     *,
     reuse_knowledge_graph: bool,
-) -> tuple[list[GoldenTestCase], int]:
-    """Chạy `runner` cho một đơn vị và nối kết quả vào raw; trả (câu đã nối, số lượt gọi)."""
+) -> tuple[list[GoldenTestCase], UnitResult]:
+    """Chạy `runner` cho một đơn vị và nối kết quả vào raw; trả (câu đã nối, kết quả runner)."""
     result = runner.run_unit(
         unit,
         quota,
@@ -643,7 +780,7 @@ def _process_unit(
         )
         for case in result.cases
     ]
-    return append_raw_cases(output_dir / RAW_TESTSET_FILENAME, cases), result.llm_calls
+    return append_raw_cases(output_dir / RAW_TESTSET_FILENAME, cases), result
 
 
 def build_unit_runner(
@@ -669,6 +806,28 @@ def build_unit_runner(
         ) from None
 
 
+def _root_cause(error: BaseException) -> BaseException:
+    """Lỗi gốc để ghi `last_failure`: runner bọc lỗi sample vào `UnitGenerationError` (mục 3.3)."""
+    if isinstance(error, UnitGenerationError) and error.__cause__ is not None:
+        return error.__cause__
+    return error
+
+
+def _stop_on_failure(
+    progress_path: Path, progress: GenerationProgress, key: str, error: BaseException
+) -> UnitGenerationError:
+    """Ghi `last_failure` (cùng trạng thái progress hiện có) + log; trả lỗi để dừng chương trình."""
+    root = _root_cause(error)
+    description = _record_failure(progress_path, progress, key, root)
+    logger.error(
+        "Đơn vị %s lỗi, dừng: %s | traceback: %s",
+        key,
+        description,
+        _describe_traceback(root),
+    )
+    return UnitGenerationError(key, description)
+
+
 def _run_one_unit(
     runner: UnitRunner,
     unit: EvalUnit,
@@ -680,35 +839,39 @@ def _run_one_unit(
     """Chạy + checkpoint một đơn vị; lỗi thì ghi `last_failure` và dừng. Trả số câu mới."""
     key = unit_key(unit)
     progress_path = output_dir / PROGRESS_FILENAME
-    # Đơn vị chưa xong có thể còn KG hoàn chỉnh từ lần lỗi trước (lưu ngay sau khi dựng,
-    # mục 4.5): dùng lại thay vì tốn lại 30-160K token. Đơn vị đã xong (--append) chỉ dùng
-    # lại khi người dùng đòi bằng --reuse-knowledge-graph.
-    reuse = reuse_knowledge_graph or key not in state.progress.units
+    # Đơn vị chưa xong hẳn (chưa có, hoặc `partial`) có thể còn KG hoàn chỉnh từ lần lỗi trước
+    # (lưu ngay sau khi dựng, mục 4.5): dùng lại thay vì tốn lại 30-160K token. Đơn vị đã xong
+    # (--append) chỉ dùng lại khi người dùng đòi bằng --reuse-knowledge-graph.
+    reuse = reuse_knowledge_graph or not _is_done(state.progress, key)
     started = time.monotonic()
     try:
-        added, llm_calls = _process_unit(
+        added, result = _process_unit(
             runner,
             unit,
-            state.quotas[key],
+            _run_quota(state, key),
             output_dir,
             reuse_knowledge_graph=reuse,
         )
     except (Exception, KeyboardInterrupt) as error:
-        description = _record_failure(progress_path, state.progress, key, error)
-        logger.error(
-            "Đơn vị %s lỗi, dừng: %s | traceback: %s",
-            key,
-            description,
-            _describe_traceback(error),
-        )
+        stop = _stop_on_failure(progress_path, state.progress, key, error)
         if isinstance(error, KeyboardInterrupt):
             raise
-        raise UnitGenerationError(key, description) from error
-    _record_unit_done(
-        state.progress, unit, added, llm_calls, time.monotonic() - started
-    )
+        raise stop from error
+    # Raw đã được nối trong `_process_unit`; progress ghi SAU (mục 4.5, `_recover_unfinished`).
+    _record_unit_result(state.progress, unit, added, result, time.monotonic() - started)
+    if result.interruption is not None:
+        # Sample đã xong được giữ (`partial`); `last_failure` ghi cùng lần lưu progress.
+        raise _stop_on_failure(
+            progress_path, state.progress, key, result.interruption
+        ) from result.interruption
     save_progress(progress_path, state.progress)
-    logger.info("Xong %s: +%d câu, %d lượt gọi LLM.", key, len(added), llm_calls)
+    logger.info(
+        "Xong %s: +%d câu (bỏ %d sample lỗi), %d lượt gọi LLM.",
+        key,
+        len(added),
+        result.skipped_samples,
+        result.llm_calls,
+    )
     return len(added)
 
 
@@ -730,7 +893,7 @@ def generate_testset(
         output_dir: Thư mục `data/eval` (raw, progress, knowledge_graph/).
         only: Bộ lọc `<tên>[#<số>]`; rỗng = mọi đơn vị theo thứ tự nhỏ -> lớn.
         reuse_knowledge_graph: Nạp lại KG đã lưu của đơn vị ĐÃ XONG (dùng với `append`);
-            đơn vị chưa xong luôn tự dùng lại KG còn sót từ lần lỗi trước.
+            đơn vị chưa xong (kể cả `partial`) luôn tự dùng lại KG còn sót từ lần lỗi trước.
         append: Chạy lại cả đơn vị đã xong, nối thêm dòng và cộng dồn progress; bắt buộc
             đi kèm `only`.
         testset_size: Ghi đè tổng số câu (mặc định `GENERATE_SIZE`); chia cho các đơn vị đã chọn.
@@ -740,9 +903,11 @@ def generate_testset(
     Raises:
         EvalInputError: `--only` sai, `append` thiếu `only`, thiếu key Groq, progress
             hỏng/lệch nguồn, file raw hỏng.
-        UnitGenerationError: Một đơn vị lỗi giữa chừng; `last_failure` đã được ghi,
-            đơn vị đó KHÔNG được ghi vào raw/progress (KG hoàn chỉnh nếu đã dựng xong thì
-            được giữ), các đơn vị sau không chạy.
+        UnitGenerationError: Một đơn vị lỗi giữa chừng; `last_failure` đã được ghi và các
+            đơn vị sau không chạy. Sample đã sinh xong trước lúc lỗi (nếu có) được nối vào raw
+            và đơn vị ghi là `partial` (chạy tiếp chỉ sinh phần còn thiếu, mục 3.3); chưa có
+            sample nào xong thì đơn vị KHÔNG được ghi vào raw/progress. KG hoàn chỉnh nếu đã
+            dựng xong thì được giữ.
     """
     _require_only_with_append(only, append)
     state = _prepare_run(markdown_dir, output_dir, only, testset_size)
@@ -751,7 +916,7 @@ def generate_testset(
     to_run = [
         u
         for u in state.selected
-        if unit_key(u) in pending and state.quotas[unit_key(u)].total > 0
+        if unit_key(u) in pending and _run_quota(state, unit_key(u)).total > 0
     ]
     to_run_keys = {unit_key(u) for u in to_run}
     report = GenerationReport(generated_units=[], skipped_units=[], new_questions=0)

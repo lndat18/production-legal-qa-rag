@@ -1,9 +1,10 @@
 """Unit test cho `evaluation/ragas_runner.py` — phần chạm `ragas` (Phase 1 sinh golden testset).
 
-Mọi interaction Groq/HuggingFace/`TestsetGenerator.generate` dùng fake hoặc monkeypatch —
-không gọi dịch vụ ngoài, không dựng KG/sinh câu hỏi thật (evaluation_spec.md mục 4.3, 8).
-Chữ ký `prepare_combinations` của 3 synthesizer và `calculate_split_values` là của
-`ragas==0.4.3` cài thật (test gọi thẳng code ragas để phát hiện khi nâng version).
+Mọi interaction Groq/HuggingFace, dựng KG, sinh persona/scenario/sample đều dùng fake hoặc
+monkeypatch — không gọi dịch vụ ngoài, không dựng KG/sinh câu hỏi thật (evaluation_spec.md
+mục 3.3, 4.3, 8). Chữ ký `prepare_combinations` của 3 synthesizer, `calculate_split_values`,
+`generate_personas_from_kg`, `generate_scenarios`/`generate_sample` là của `ragas==0.4.3`
+cài thật (test gọi thẳng code ragas để phát hiện khi nâng version).
 
 `ragas` chỉ nằm trong dependency-group `eval` (venv mặc định không cài, xem
 `[dependency-groups]` trong `pyproject.toml`), nên module này được skip nếu thiếu
@@ -14,6 +15,10 @@ Chữ ký `prepare_combinations` của 3 synthesizer và `calculate_split_values
 from __future__ import annotations
 
 import asyncio
+import inspect
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +31,8 @@ pytest.importorskip(
 )
 
 from langchain_core.documents import Document
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.prompt_values import StringPromptValue
 from openai import (
     APIConnectionError,
@@ -37,10 +44,11 @@ from openai import (
     PermissionDeniedError,
     RateLimitError,
 )
+from ragas.dataset_schema import SingleTurnSample
 from ragas.prompt.mixin import PromptMixin
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType
-from ragas.testset.persona import Persona
-from ragas.testset.synthesizers.base import QueryStyle
+from ragas.testset.persona import Persona, generate_personas_from_kg
+from ragas.testset.synthesizers.base import BaseSynthesizer, QueryStyle
 from ragas.testset.synthesizers.utils import calculate_split_values
 from ragas.testset.transforms import default_transforms
 
@@ -51,7 +59,12 @@ from production_legal_qa_rag.evaluation.groq_round_robin import (
     DailyQuotaExhaustedError,
     GroqRoundRobinChatModel,
 )
-from production_legal_qa_rag.evaluation.testset_generator import QuestionQuota
+from production_legal_qa_rag.evaluation.models import GoldenTestCase
+from production_legal_qa_rag.evaluation.testset_generator import (
+    QuestionQuota,
+    UnitGenerationError,
+    UnitResult,
+)
 from production_legal_qa_rag.evaluation.unit_splitter import EvalUnit
 
 
@@ -212,9 +225,108 @@ def test_multi_hop_ep_perfect_grammar_voi_chu_ky_keyword_cua_ragas(
 # ==========================================================================
 
 
+_NAME_OF_KIND = {
+    "single_hop": "single_hop_specific_query_synthesizer",
+    "abstract": "multi_hop_abstract_query_synthesizer",
+    "specific": "multi_hop_specific_query_synthesizer",
+}
+
+
+@dataclass(frozen=True)
+class _FakeScenario:
+    kind: str
+    index: int
+
+
+class _FakeSample:
+    """Giống `SingleTurnSample` ở đúng phần runner đọc: `model_dump(exclude_none=True)`."""
+
+    def __init__(self, fields: dict[str, Any]) -> None:
+        self._fields = fields
+
+    def model_dump(self, *, exclude_none: bool = False) -> dict[str, Any]:
+        # `synthesizer_name` không do sample của ragas trả: runner tự gắn từ `synthesizer.name`.
+        fields = {k: v for k, v in self._fields.items() if k != "synthesizer_name"}
+        if exclude_none:
+            fields = {k: v for k, v in fields.items() if v is not None}
+        return fields
+
+
+def _default_sample(name: str, index: int) -> dict[str, Any]:
+    return {
+        "user_input": f"Câu hỏi {name} {index}?",
+        "reference": f"Đáp án {index}.",
+        "reference_contexts": [f"Ngữ cảnh {index}"],
+        # Trường thừa có thật ở sample của ragas; GoldenTestCase bỏ qua.
+        "persona_name": "An",
+    }
+
+
 class _FakeSynthesizer:
-    def __init__(self, name: str) -> None:
+    """Synthesizer giả theo đúng API công khai runner dùng (mục 3.3).
+
+    `outcomes[i]` là kết quả của scenario thứ `i`: dict các trường của sample, hoặc exception
+    để ném; thiếu thì sinh sample mặc định. Mặc định không nhường event loop nên các sample
+    chạy tuần tự, tất định; đặt `yield_in_sample` để đo mức đồng thời.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        outcomes: list[Any] | None = None,
+        *,
+        scenario_error: BaseException | None = None,
+        probe: Callable[[], Any] | None = None,
+    ) -> None:
         self.name = name
+        self.outcomes = outcomes or []
+        self.scenario_error = scenario_error
+        self.probe = probe
+        self.scenario_requests: list[int] = []
+        self.graphs: list[Any] = []
+        self.persona_lists: list[Any] = []
+        self.sampled: list[_FakeScenario] = []
+        self.probed: list[Any] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self.yield_in_sample = False
+
+    def _record_probe(self) -> None:
+        if self.probe is not None:
+            self.probed.append(self.probe())
+
+    async def generate_scenarios(
+        self, n: int, knowledge_graph: Any, persona_list: Any, callbacks: Any = None
+    ) -> list[_FakeScenario]:
+        self.scenario_requests.append(n)
+        self.graphs.append(knowledge_graph)
+        self.persona_lists.append(persona_list)
+        self._record_probe()
+        if self.scenario_error is not None:
+            raise self.scenario_error
+        return [_FakeScenario(self.name, index) for index in range(n)]
+
+    async def generate_sample(
+        self, scenario: _FakeScenario, callbacks: Any = None
+    ) -> _FakeSample:
+        self.sampled.append(scenario)
+        self._record_probe()
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            if self.yield_in_sample:
+                await asyncio.sleep(0)
+        finally:
+            self.in_flight -= 1
+        outcome = self._outcome(scenario.index)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return _FakeSample(outcome)
+
+    def _outcome(self, index: int) -> Any:
+        if index < len(self.outcomes):
+            return self.outcomes[index]
+        return _default_sample(self.name, index)
 
 
 @pytest.mark.parametrize(
@@ -302,14 +414,6 @@ def test_query_distribution_bo_loai_khong_co_cum_va_khong_bu(
 # ==========================================================================
 
 
-class _FakeTestset:
-    def __init__(self, samples: list[dict[str, Any]]) -> None:
-        self._samples = samples
-
-    def to_list(self) -> list[dict[str, Any]]:
-        return self._samples
-
-
 def _sample(index: int, **overrides: Any) -> dict[str, Any]:
     sample = {
         "user_input": f"Câu hỏi {index}?",
@@ -338,37 +442,51 @@ def _patch_generation(
     monkeypatch: pytest.MonkeyPatch,
     runner: ragas_runner.RagasUnitRunner,
     *,
-    samples: list[dict[str, Any]],
-    error: Exception | None = None,
+    samples: list[Any] | None = None,
+    error: BaseException | None = None,
+    outcomes: dict[str, list[Any]] | None = None,
+    scenario_errors: dict[str, BaseException] | None = None,
 ) -> dict[str, Any]:
-    """Thay dựng KG + `TestsetGenerator` bằng fake; trả dict ghi lại các lần gọi."""
-    seen: dict[str, Any] = {"built": 0, "generate_calls": []}
+    """Thay dựng KG, persona và 3 synthesizer bằng fake; trả dict ghi lại các lần gọi.
+
+    `samples`/`error` là viết tắt cho loại single-hop: kết quả từng scenario / lỗi khi sinh
+    scenario. `outcomes`/`scenario_errors` chỉ định theo loại (`single_hop`/`abstract`/
+    `specific`). Mỗi phần tử `outcomes` là dict trường của sample hoặc exception để ném.
+    """
+    seen: dict[str, Any] = {"built": 0, "persona_calls": []}
     graph = _FakeGraph()
+    per_kind = dict(outcomes or {})
+    if samples is not None:
+        per_kind["single_hop"] = samples
+    errors_per_kind = dict(scenario_errors or {})
+    if error is not None:
+        errors_per_kind["single_hop"] = error
+    personas = list(_PERSONAS)
 
     def _build(unit: EvalUnit) -> _FakeGraph:
         seen["built"] += 1
         return graph
 
-    class _FakeGenerator:
-        def __init__(self, **_kwargs: Any) -> None:
-            self.knowledge_graph: Any = None
+    def _personas(**kwargs: Any) -> list[Persona]:
+        effort = runner.router.current_reasoning_effort
+        seen["persona_calls"].append({**kwargs, "effort": effort})
+        seen["kg_used"] = kwargs["kg"]
+        return personas
 
-        def generate(self, **kwargs: Any) -> _FakeTestset:
-            seen["generate_calls"].append(kwargs)
-            seen["kg_used"] = self.knowledge_graph
-            if error is not None:
-                raise error
-            return _FakeTestset(samples)
-
-    monkeypatch.setattr(runner, "_build_knowledge_graph", _build)
-    monkeypatch.setattr(ragas_runner, "TestsetGenerator", _FakeGenerator)
-    runner._synthesizers = {
-        "single_hop": _FakeSynthesizer("single_hop"),  # type: ignore[dict-item]
-        "abstract": _FakeSynthesizer("abstract"),  # type: ignore[dict-item]
-        "specific": _FakeSynthesizer("specific"),  # type: ignore[dict-item]
+    synthesizers = {
+        kind: _FakeSynthesizer(
+            _NAME_OF_KIND[kind],
+            per_kind.get(kind),
+            scenario_error=errors_per_kind.get(kind),
+            probe=lambda: runner.router.current_reasoning_effort,
+        )
+        for kind in ("single_hop", "abstract", "specific")
     }
+    monkeypatch.setattr(runner, "_build_knowledge_graph", _build)
+    monkeypatch.setattr(ragas_runner, "generate_personas_from_kg", _personas)
     monkeypatch.setattr(ragas_runner, "_has_clusters", lambda *_args: True)
-    seen["graph"] = graph
+    runner._synthesizers = synthesizers  # type: ignore[assignment]
+    seen.update(graph=graph, personas=personas, synthesizers=synthesizers)
     return seen
 
 
@@ -386,11 +504,15 @@ def test_run_unit_dung_kg_rieng_sinh_cau_va_luu_kg(
         reuse_knowledge_graph=False,
     )
 
+    single = seen["synthesizers"]["single_hop"]
+    persona_call = seen["persona_calls"][0]
     assert [c.user_input for c in result.cases] == ["Câu hỏi 1?", "Câu hỏi 2?"]
     assert seen["built"] == 1
     assert seen["kg_used"] is seen["graph"]
-    assert seen["generate_calls"][0]["testset_size"] == 2
-    assert seen["generate_calls"][0]["run_config"] is runner.run_config
+    assert persona_call["llm"] is runner.llm
+    assert persona_call["num_personas"] == ragas_runner.NUM_PERSONAS
+    assert single.scenario_requests == [2]
+    assert single.graphs == [seen["graph"]]
     assert kg_path.exists()
 
 
@@ -398,14 +520,16 @@ def test_run_unit_loi_sinh_cau_van_giu_kg_da_dung_xong_khong_de_lai_file_tam(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
-    _patch_generation(monkeypatch, runner, samples=[], error=RuntimeError("429"))
+    failure = RuntimeError("429")
+    _patch_generation(monkeypatch, runner, error=failure)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(UnitGenerationError) as excinfo:
         runner.run_unit(
             _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
         )
 
+    assert excinfo.value.__cause__ is failure
     assert kg_path.exists()
     assert list(kg_path.parent.glob("*.tmp")) == []
 
@@ -509,7 +633,7 @@ def test_run_unit_reuse_nhung_chua_co_file_kg_thi_van_dung_kg(
     assert kg_path.exists()
 
 
-def test_run_unit_quota_bang_0_khong_goi_generate_van_luu_kg(
+def test_run_unit_quota_bang_0_khong_sinh_persona_hay_scenario_van_luu_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
@@ -520,7 +644,8 @@ def test_run_unit_quota_bang_0_khong_goi_generate_van_luu_kg(
     )
 
     assert result.cases == []
-    assert seen["generate_calls"] == []
+    assert seen["persona_calls"] == []
+    assert all(s.scenario_requests == [] for s in seen["synthesizers"].values())
     assert (tmp_path / "A__01.json").exists()
 
 
@@ -619,6 +744,8 @@ def _raise_from_all_clients(
     for client in runner.router.clients:
         client._generate = _generate  # type: ignore[method-assign]
     runner.llm.run_config.max_wait = 0  # test không được ngủ thật giữa các lần thử
+    # Cả 9 tài khoản cùng cooldown phút thì router chờ (mục 3.2 A): không ngủ thật ở đây.
+    runner.router.sleep = lambda _seconds: None
 
 
 def _ask(runner: ragas_runner.RagasUnitRunner) -> None:
@@ -827,10 +954,8 @@ def test_run_unit_loi_o_buoc_sinh_cau_thi_lan_sau_tai_dung_kg_khong_dung_lai(
 ):
     runner = _runner(monkeypatch)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
-    first = _patch_generation(
-        monkeypatch, runner, samples=[], error=RuntimeError("429")
-    )
-    with pytest.raises(RuntimeError):
+    first = _patch_generation(monkeypatch, runner, error=RuntimeError("429"))
+    with pytest.raises(UnitGenerationError):
         runner.run_unit(
             _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
         )
@@ -919,3 +1044,391 @@ def test_file_kg_hong_bat_ke_dang_hong_thi_dung_lai_thay_vi_crash(
 
     assert seen["built"] == 1
     assert kg_path.read_text("utf-8") == "{}"  # đã ghi đè bằng KG mới dựng
+
+
+# ==========================================================================
+# Sinh từng sample, giữ phần đã xong khi lỗi giữa đơn vị (mục 3.3)
+# ==========================================================================
+
+_SINGLE = _NAME_OF_KIND["single_hop"]
+_ABSTRACT = _NAME_OF_KIND["abstract"]
+_SPECIFIC = _NAME_OF_KIND["specific"]
+
+
+def _run(
+    runner: ragas_runner.RagasUnitRunner, tmp_path: Path, quota: QuestionQuota
+) -> UnitResult:
+    return runner.run_unit(
+        _unit(), quota, tmp_path / "A__01.json", reuse_knowledge_graph=False
+    )
+
+
+def test_sinh_dung_so_scenario_tung_loai_theo_quota_va_giu_thu_tu_loai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner)
+    quota = QuestionQuota(single_hop=7, abstract=3, specific=3)
+
+    result = _run(runner, tmp_path, quota)
+
+    synthesizers = seen["synthesizers"]
+    names = [case.synthesizer_name for case in result.cases]
+    expected = [_SINGLE] * 7 + [_ABSTRACT] * 3 + [_SPECIFIC] * 3
+    assert synthesizers["single_hop"].scenario_requests == [7]
+    assert synthesizers["abstract"].scenario_requests == [3]
+    assert synthesizers["specific"].scenario_requests == [3]
+    assert names == expected
+    assert result.interruption is None
+    assert result.skipped_samples == 0
+
+
+def test_persona_sinh_mot_lan_va_kg_cung_persona_duoc_truyen_cho_moi_loai(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner)
+    quota = QuestionQuota(single_hop=2, abstract=1, specific=1)
+
+    _run(runner, tmp_path, quota)
+
+    assert len(seen["persona_calls"]) == 1
+    for synthesizer in seen["synthesizers"].values():
+        assert synthesizer.graphs == [seen["graph"]]
+        assert synthesizer.persona_lists == [seen["personas"]]
+
+
+def test_breaker_bat_giua_luc_sinh_thi_giu_sample_da_xong_va_dung_ngay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    quota_error = DailyQuotaExhaustedError("Hết quota ngày cả 9 tài khoản Groq")
+    outcomes = [_sample(0), _sample(1), quota_error, _sample(3)]
+    seen = _patch_generation(monkeypatch, runner, samples=outcomes)
+    quota = QuestionQuota(single_hop=4, abstract=2)
+
+    result = _run(runner, tmp_path, quota)
+
+    synthesizers = seen["synthesizers"]
+    assert [c.user_input for c in result.cases] == ["Câu hỏi 0?", "Câu hỏi 1?"]
+    assert result.interruption is quota_error
+    assert result.skipped_samples == 0
+    # Sample thứ tư không được đưa thêm sau khi breaker bật, và không sang loại kế tiếp.
+    assert len(synthesizers["single_hop"].sampled) == 3
+    assert synthesizers["abstract"].scenario_requests == []
+    assert (tmp_path / "A__01.json").exists()  # KG đã dựng xong vẫn được giữ
+
+
+def test_loi_sinh_scenario_cua_mot_loai_giu_cac_loai_da_xong_truoc_do(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    failure = RuntimeError("lỗi sinh scenario")
+    errors = {"abstract": failure}
+    seen = _patch_generation(monkeypatch, runner, scenario_errors=errors)
+    quota = QuestionQuota(single_hop=4, abstract=2, specific=2)
+
+    result = _run(runner, tmp_path, quota)
+
+    synthesizers = seen["synthesizers"]
+    assert len(result.cases) == 4
+    assert {case.synthesizer_name for case in result.cases} == {_SINGLE}
+    assert result.interruption is failure
+    assert synthesizers["abstract"].scenario_requests == [2]
+    assert synthesizers["specific"].scenario_requests == []
+
+
+def test_sample_loi_bi_bo_va_dem_dung_ke_ca_sample_thieu_cot_bat_buoc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    outcomes = [
+        _sample(0),
+        ValueError("nội dung bí mật"),
+        _sample(2, reference=""),
+        {"user_input": "thiếu cột"},
+        _sample(4),
+    ]
+    _patch_generation(monkeypatch, runner, samples=outcomes)
+
+    result = _run(runner, tmp_path, QuestionQuota(single_hop=5))
+
+    assert [c.user_input for c in result.cases] == ["Câu hỏi 0?", "Câu hỏi 4?"]
+    # 1 sample ném lỗi + 2 sample thiếu cột bắt buộc (reference rỗng, thiếu hẳn cột).
+    assert result.skipped_samples == 3
+    assert result.interruption is None
+
+
+def test_moi_sample_deu_loi_thi_raise_unit_generation_error_va_van_giu_kg(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    outcomes = [ValueError("sample 0"), ValueError("sample 1")]
+    _patch_generation(monkeypatch, runner, samples=outcomes)
+    kg_path = tmp_path / "A__01.json"
+
+    with pytest.raises(UnitGenerationError, match="2 sample bị bỏ") as excinfo:
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+        )
+
+    assert isinstance(excinfo.value.__cause__, ValueError)
+    assert kg_path.exists()
+
+
+def test_khong_sinh_duoc_cau_nao_thi_loi_goc_uu_tien_loi_quota_hon_loi_parse(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    quota_error = DailyQuotaExhaustedError("Hết quota ngày cả 9 tài khoản Groq")
+    outcomes = [ValueError("parse"), quota_error, _sample(2)]
+    _patch_generation(monkeypatch, runner, samples=outcomes)
+
+    with pytest.raises(UnitGenerationError) as excinfo:
+        _run(runner, tmp_path, QuestionQuota(single_hop=3))
+
+    assert excinfo.value.__cause__ is quota_error
+
+
+def test_chi_con_sample_thieu_cot_bat_buoc_thi_van_raise_nhung_khong_co_loi_goc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    _patch_generation(monkeypatch, runner, samples=[_sample(0, reference="")])
+
+    with pytest.raises(UnitGenerationError) as excinfo:
+        _run(runner, tmp_path, QuestionQuota(single_hop=1))
+
+    assert excinfo.value.__cause__ is None
+    assert "1 sample bị bỏ" in str(excinfo.value)
+
+
+def test_log_loi_sample_chi_co_ten_synthesizer_va_ten_loai_loi_khong_co_noi_dung(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+):
+    runner = _runner(monkeypatch)
+    outcomes = [ValueError("NỘI DUNG BÍ MẬT: Điều 5"), _sample(1)]
+    _patch_generation(monkeypatch, runner, samples=outcomes)
+
+    with caplog.at_level(logging.INFO, logger=ragas_runner.logger.name):
+        _run(runner, tmp_path, QuestionQuota(single_hop=2))
+
+    skipped = [r for r in caplog.records if "Bỏ 1 sample" in r.getMessage()]
+    assert len(skipped) == 1
+    assert _SINGLE in skipped[0].getMessage()
+    assert "ValueError" in skipped[0].getMessage()
+    assert "BÍ MẬT" not in caplog.text
+    assert "Điều 5" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_sample_chay_dong_thoi_nhieu_hon_1_nhung_khong_qua_max_workers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner)
+    single = seen["synthesizers"]["single_hop"]
+    single.yield_in_sample = True
+
+    result = _run(runner, tmp_path, QuestionQuota(single_hop=12))
+
+    assert len(result.cases) == 12
+    assert 2 <= single.peak_in_flight <= ragas_runner.MAX_WORKERS
+
+
+# ==========================================================================
+# Token thật theo đơn vị (mục 3.2 B) và reasoning_effort=low chỉ khi dựng KG (mục 3.2 C)
+# ==========================================================================
+
+
+def _usage_result(prompt: int, completion: int, reasoning: int) -> ChatResult:
+    usage = {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "completion_tokens_details": {"reasoning_tokens": reasoning},
+    }
+    return ChatResult(
+        generations=[ChatGeneration(message=AIMessage(content="ok"))],
+        llm_output={"token_usage": usage},
+    )
+
+
+def _spend_tokens_while_building(
+    monkeypatch: pytest.MonkeyPatch, runner: ragas_runner.RagasUnitRunner
+) -> None:
+    """Đơn vị tiêu 60 token (vào 50, ra 10, suy luận 5) ngay lúc dựng KG: 35 ở tài khoản 1, 25 ở 2."""
+    router = runner.router
+    # Token tiêu từ trước đơn vị này không được tính vào đơn vị.
+    router._record_usage(0, _usage_result(100, 50, 10))
+    original_build = runner._build_knowledge_graph
+
+    def _build_and_spend(unit: EvalUnit) -> Any:
+        router._record_usage(1, _usage_result(20, 5, 2))
+        router._record_usage(0, _usage_result(30, 5, 3))
+        return original_build(unit)
+
+    monkeypatch.setattr(runner, "_build_knowledge_graph", _build_and_spend)
+
+
+def test_run_unit_tokens_la_hieu_so_token_that_cua_router_khong_tinh_luot_truoc_do(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    _patch_generation(monkeypatch, runner)
+    _spend_tokens_while_building(monkeypatch, runner)
+
+    result = _run(runner, tmp_path, QuestionQuota(single_hop=1))
+
+    assert result.tokens == 60
+    assert result.reasoning_tokens == 5
+
+
+@pytest.mark.parametrize("unit_fails", [False, True], ids=["ok", "don-vi-loi"])
+def test_log_token_cuoi_don_vi_co_tong_va_theo_tai_khoan_ke_ca_khi_don_vi_loi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    unit_fails: bool,
+):
+    runner = _runner(monkeypatch)
+    failure = RuntimeError("429") if unit_fails else None
+    _patch_generation(monkeypatch, runner, error=failure)
+    _spend_tokens_while_building(monkeypatch, runner)
+
+    with caplog.at_level(logging.INFO, logger=ragas_runner.logger.name):
+        if unit_fails:
+            with pytest.raises(UnitGenerationError):
+                _run(runner, tmp_path, QuestionQuota(single_hop=1))
+        else:
+            _run(runner, tmp_path, QuestionQuota(single_hop=1))
+
+    messages = [record.getMessage() for record in caplog.records]
+    records = [message for message in messages if "Token A.md#1" in message]
+    assert len(records) == 1
+    assert "tổng 60 (vào 50, ra 10, suy luận 5)" in records[0]
+    assert "theo tài khoản: #1=35, #2=25, #3=0" in records[0]
+    assert "key-" not in caplog.text  # chỉ số thứ tự và số, không lộ key
+
+
+def test_dung_kg_chay_trong_reasoning_effort_low_con_persona_va_sample_thi_khong(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    runner = _runner(monkeypatch)
+    seen = _patch_generation(monkeypatch, runner)
+    # Bỏ bản fake để `run_unit` dùng hàm dựng KG thật (chỉ thay transforms).
+    monkeypatch.delattr(runner, "_build_knowledge_graph")
+    build_efforts: list[str | None] = []
+
+    def _spy_apply(graph: Any, transforms: Any, **_kwargs: Any) -> None:
+        build_efforts.append(runner.router.current_reasoning_effort)
+
+    monkeypatch.setattr(ragas_runner, "default_transforms", lambda **_kwargs: [])
+    monkeypatch.setattr(ragas_runner, "apply_transforms", _spy_apply)
+
+    _run(runner, tmp_path, QuestionQuota(single_hop=2))
+
+    single = seen["synthesizers"]["single_hop"]
+    assert build_efforts == ["low"]
+    assert seen["persona_calls"][0]["effort"] is None
+    assert single.probed == [None, None, None]  # 1 lần sinh scenario + 2 sample
+    assert runner.router.current_reasoning_effort is None
+
+
+def test_dung_kg_loi_giua_chung_van_go_reasoning_effort(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runner = _runner(monkeypatch)
+
+    def _failing_apply(graph: Any, transforms: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("429 giữa lúc dựng KG")
+
+    monkeypatch.setattr(ragas_runner, "default_transforms", lambda **_kwargs: [])
+    monkeypatch.setattr(ragas_runner, "apply_transforms", _failing_apply)
+
+    with pytest.raises(RuntimeError):
+        runner._build_knowledge_graph(_unit())
+
+    assert runner.router.current_reasoning_effort is None
+
+
+def test_adapt_prompts_khong_ha_reasoning_effort(monkeypatch: pytest.MonkeyPatch):
+    runner = _runner(monkeypatch)
+    efforts: list[str | None] = []
+
+    async def _fake_adapt(self: Any, language: str, llm: Any, *_a: Any) -> Any:
+        efforts.append(runner.router.current_reasoning_effort)
+        return dict(self.get_prompts())
+
+    monkeypatch.setattr(PromptMixin, "adapt_prompts", _fake_adapt)
+
+    runner._get_synthesizers()
+
+    assert efforts == [None, None, None]
+
+
+# ==========================================================================
+# Khoá hành vi ragas 0.4.3 mà bước sinh câu tự lặp phụ thuộc (mục 3.3)
+# ==========================================================================
+
+
+def test_khoa_api_ragas_ma_buoc_sinh_persona_scenario_sample_phu_thuoc():
+    persona_params = inspect.signature(generate_personas_from_kg).parameters
+    scenario_params = inspect.signature(BaseSynthesizer.generate_scenarios).parameters
+    sample_params = inspect.signature(BaseSynthesizer.generate_sample).parameters
+
+    assert {"kg", "llm", "num_personas"} <= set(persona_params)
+    assert not inspect.iscoroutinefunction(generate_personas_from_kg)
+    scenario_names = list(scenario_params)[:4]
+    assert scenario_names == ["self", "n", "knowledge_graph", "persona_list"]
+    assert list(sample_params)[:2] == ["self", "scenario"]
+    assert inspect.iscoroutinefunction(BaseSynthesizer.generate_scenarios)
+    assert inspect.iscoroutinefunction(BaseSynthesizer.generate_sample)
+
+
+@pytest.mark.parametrize(
+    "synthesizer_class",
+    [
+        ragas_runner.CleanSingleHopSynthesizer,
+        ragas_runner.CleanMultiHopAbstractSynthesizer,
+        ragas_runner.CleanMultiHopSpecificSynthesizer,
+    ],
+)
+def test_ba_synthesizer_thuc_te_giu_coroutine_va_ten_khop_khoa_progress(
+    monkeypatch: pytest.MonkeyPatch, synthesizer_class: type
+):
+    runner = _runner(monkeypatch)
+
+    synthesizer = synthesizer_class(llm=runner.llm)
+
+    assert inspect.iscoroutinefunction(synthesizer.generate_scenarios)
+    assert inspect.iscoroutinefunction(synthesizer.generate_sample)
+    assert synthesizer.name in testset_generator.SYNTHESIZER_TYPES
+
+
+def test_ten_synthesizer_trong_fake_khop_bang_synthesizer_types_cua_generator():
+    types = testset_generator.SYNTHESIZER_TYPES
+    inverse = {kind: name for name, kind in types.items()}
+
+    assert _NAME_OF_KIND == inverse
+
+
+def test_calculate_split_values_lam_tron_len_tich_tong_voi_trong_so():
+    splits, _ = calculate_split_values([0.75, 0.25], 4)
+
+    assert splits == [3, 1]
+
+
+def test_sample_that_cua_ragas_dump_exclude_none_hop_le_voi_golden_test_case():
+    sample = SingleTurnSample(
+        user_input="Câu hỏi?", reference="Đáp án.", reference_contexts=["Ngữ cảnh"]
+    )
+    row = sample.model_dump(exclude_none=True)
+    row["synthesizer_name"] = _SINGLE
+
+    case = GoldenTestCase.model_validate(row)
+
+    assert (case.user_input, case.reference) == ("Câu hỏi?", "Đáp án.")
+    assert case.reference_contexts == ["Ngữ cảnh"]
+    assert case.empty_required_fields() == []

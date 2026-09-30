@@ -19,7 +19,7 @@ data/                          raw -> markdown -> chunks -> embeddings, bm25/ ch
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
 deploy/                        Docker compose production (chỉ phục vụ end-user) + docs (deploy/deploy_spec.md), scripts/ (backup, reset cache); không phải code import được
 dev/                           observability/ (Langfuse/Prometheus/Grafana compose, dev only) — tách khỏi deploy/ (2026-09-29) vì không phục vụ end-user
-docs/                          Tài liệu tổng quan hệ thống (vd. online_flow.md — activity diagram 1 câu hỏi)
+docs/                          Tài liệu tổng quan hệ thống (luồng xử lý 1 câu hỏi, kiến trúc)
 .claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
 

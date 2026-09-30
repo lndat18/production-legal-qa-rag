@@ -37,7 +37,7 @@ Người dùng ─HTTPS─► Cloudflare Tunnel ─► OpenWebUI (UI, đăng nh�
 - Không tự viết UI (OpenWebUI); không auth/quản lý user riêng (OpenWebUI lo).
 - Không tự host LLM (vLLM); LLM vẫn là Groq qua config.
 - Không Prometheus/Grafana/Langfuse/tracing (làm ở phase cuối, sau RAGAS: tracing,
-  tracking & CI — xem hình `docs/images/architecture.png`), không autoscale/Kubernetes, không nhiều worker (bản
+  tracking & CI — xem hình `docs/architecture.png`), không autoscale/Kubernetes, không nhiều worker (bản
   đầu 1 worker, mục 8), không WebSocket, không API riêng cho client khác OpenWebUI.
 
 **Tiêu chí quan trọng nhất:** người dùng đăng nhập OpenWebUI, hỏi nhiều lượt, thấy câu trả

@@ -85,7 +85,8 @@ def generate(
     """Sinh golden testset theo từng đơn vị.
 
     Mã thoát: 0 xong; 1 một đơn vị lỗi giữa chừng (quota...), chạy lại để làm tiếp;
-    2 đầu vào/cấu hình sai (không gọi LLM).
+    2 đầu vào/cấu hình sai (không gọi LLM). Câu đã sinh xong trước lúc lỗi được giữ: đơn
+    vị ở trạng thái "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3).
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
