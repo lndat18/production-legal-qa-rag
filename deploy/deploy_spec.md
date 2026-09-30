@@ -1,305 +1,132 @@
 # Deploy — Chạy toàn bộ chatbot trên máy cá nhân, public qua Cloudflare Tunnel
 
+> Cô đọng 2026-09-30 (giữ số mục vì code/spec khác tham chiếu). Bản đầy đủ: git history.
+
 ## 1. Mục tiêu & phạm vi
 
-Đóng gói và chạy cả hệ thống chatbot (`api/api_spec.md`) bằng **một lệnh
-`docker compose up -d`** trên máy của tác giả (Windows + WSL2), cho người khác truy cập
-qua Internet bằng URL HTTPS do **Cloudflare Tunnel** cấp — không thuê VPS, không mở cổng
-router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
+Đóng gói và chạy cả hệ thống (`api/api_spec.md`) bằng **một lệnh** trên máy tác giả (Windows + WSL2), cho người khác truy cập qua URL
+HTTPS của **Cloudflare Tunnel** — không VPS, không mở cổng router. Máy tắt thì dịch vụ tắt (chấp nhận, mục 10).
 
-**Trong phạm vi:**
+**Làm:** `deploy/` (ngoài `src/`): Dockerfile, compose, mẫu env, script khởi tạo DB, backup, `deploy/up.sh` (tự dò GPU, mục 4.1); 5
+service `cloudflared`, `open-webui`, `api`, `redis`, `postgres` (Postgres chỉ cho OpenWebUI); **một entrypoint cho hai use case**: tác giả
+chạy trên laptop (thường có GPU) rồi public URL, và người khác `git clone` chạy tự lo (thường CPU-only) — cùng một lệnh, không cần biết
+trước có GPU; chính sách truy cập public, cô lập mạng, bí mật, vận hành cơ bản.
+**Không làm:** VPS/PaaS, Kubernetes, Caddy/nginx, nhiều replica, HA; CD tự deploy (CI chỉ chạy test/lint; deploy là thao tác tay);
+monitoring/alert trong compose production (stack observe là compose riêng `dev/observability/`, `observability_spec.md` mục 7); tự host
+LLM/Pinecone. Reranker **không** còn là dịch vụ ngoài — chạy in-process trong `api` (`retrieval_spec.md` mục 6.1).
 
-- `deploy/` (ngoài `src/`, vì không phải code import được): Dockerfile, compose, mẫu biến
-  môi trường, script khởi tạo DB, script backup, script khởi động tự dò GPU
-  (`deploy/up.sh`, mục 4.1).
-- 5 service: `cloudflared`, `open-webui`, `api`, `redis`, `postgres` (Postgres chỉ phục vụ
-  OpenWebUI, `api` không dùng Postgres).
-- Hai use case dùng chung một entrypoint (`deploy/up.sh`): (1) tác giả tự chạy trên máy
-  laptop cá nhân (thường có GPU) rồi public URL qua Cloudflare Tunnel cho người khác dùng
-  thử; (2) người khác tự `git clone` rồi tự chạy trên máy của họ (thường CPU-only). Cả hai
-  chạy đúng cùng một lệnh, không cần biết trước máy có GPU hay không.
-- Chính sách truy cập public (đăng ký mở), cô lập mạng, quản lý bí mật, vận hành cơ bản.
-
-**Không làm:**
-
-- Không VPS/PaaS, không Kubernetes, không Caddy/nginx (Cloudflare lo HTTPS), không nhiều
-  replica/worker, không HA.
-- Không CI/CD tự deploy (CI hiện có chỉ chạy test/lint); deploy là thao tác tay.
-- Không monitoring/alert (Prometheus, Grafana, Langfuse) — thuộc phase cuối sau RAGAS
-  (tracing, tracking & CI); stack observe là compose riêng ở `dev/observability/`
-  (`observability_spec.md` mục 7). Nhật ký từng lượt hỏi-đáp nằm ở trace Langfuse
-  (`observability_spec.md` mục 4.5) khi stack đó chạy; nếu không thì chỉ còn
-  `docker compose logs`.
-- Không tự host LLM/Pinecone: vẫn dùng dịch vụ ngoài như hiện nay. Reranker **không**
-  còn trong nhóm này — chạy in-process trong `api`, không host tách rời qua
-  LightningAI/ngrok nữa (`retrieval_spec.md` mục 6.1, xem mục 4.1 dưới đây).
-
-**Tiêu chí quan trọng nhất:** clone repo + điền `.env` (root) + `docker compose up -d` →
-người dùng bên ngoài mở URL, đăng ký, hỏi đáp nhiều lượt được; ngoài Cloudflare Tunnel
-không có cổng nào của hệ thống lộ ra ngoài; bí mật không nằm trong image hay git.
+**Tiêu chí số 1:** clone + điền `.env` (root) + chạy → người bên ngoài mở URL, đăng ký, hỏi đáp nhiều lượt được; ngoài Cloudflare Tunnel
+không có cổng nào lộ ra ngoài; bí mật không nằm trong image hay git.
 
 ## 2. Kiến trúc
 
-```
-Internet ─HTTPS─► Cloudflare ◄─(kết nối ra do cloudflared tự mở)─ cloudflared
-                                                                       │ mạng compose `internal`
-                                                                       ▼
-                                                                  open-webui ──► postgres (DB openwebui)
-                                                                       │
-                                                                       ▼  Bearer CHATBOT_API_KEY
-                                                                      api
-                                                                       │  ├────► redis
-                                                                       │  └────► reranker (in-process, GPU khuyến nghị/CPU fallback)
-                                                                       ▼
-                                                              Groq · HF · Pinecone
-```
-
-`cloudflared` chỉ **kết nối ra** Cloudflare (outbound), nên không cần mở cổng vào trên
-router/firewall. Chỉ `cloudflared` nói chuyện được với `open-webui`; chỉ `open-webui` (và
-script vận hành) nói chuyện được với `api`.
+Internet ─HTTPS─► Cloudflare ◄─(kết nối ra do `cloudflared` tự mở)─ `cloudflared` ─(mạng compose `internal`)─► `open-webui` ─► `postgres`
+(DB openwebui); `open-webui` ─Bearer `CHATBOT_API_KEY`─► `api` ─► `redis`, reranker in-process (GPU khuyến nghị/CPU fallback), Groq/HF/Pinecone.
+`cloudflared` chỉ **kết nối ra** nên không mở cổng vào; chỉ `cloudflared` nói chuyện được với `open-webui`, chỉ `open-webui` (và script vận
+hành) nói chuyện được với `api`.
 
 ## 3. Cloudflare Tunnel
 
-Hai chế độ, cùng một service `cloudflared`:
-
-| Chế độ                | Cần                          | URL                                   | Dùng khi                     |
-| --------------------- | ---------------------------- | ------------------------------------- | ---------------------------- |
-| **Quick tunnel** (mặc định bản đầu) | Không cần tài khoản/domain | Ngẫu nhiên `*.trycloudflare.com`, **đổi mỗi lần khởi động lại** | Chạy thử, demo |
-| **Named tunnel**      | Tài khoản Cloudflare + 1 domain | Cố định, vd. `chat.tenban.com`    | Khi muốn URL ổn định         |
-
-- Quick tunnel: `cloudflared tunnel --no-autoupdate --url http://open-webui:8080`. URL in ra
-  log của service (`docker compose logs cloudflared`); Cloudflare không cam kết uptime cho
-  chế độ này.
-- Named tunnel: `cloudflared tunnel --no-autoupdate run` với `TUNNEL_TOKEN` (trong `.env`
-  root); trỏ hostname tới `http://open-webui:8080` trong dashboard Cloudflare.
-  Chuyển từ quick sang named **chỉ đổi cấu hình compose/biến**, không đổi code. Chọn qua
-  compose profile: `quick` (mặc định) và `named`.
-- HTTPS/TLS do Cloudflare đảm nhiệm (kết thúc TLS ở edge); trong mạng compose dùng HTTP.
-- Đặt `WEBUI_URL` của OpenWebUI theo URL thật khi dùng named tunnel (quick tunnel: bỏ qua,
-  chấp nhận link dạng tương đối).
+Hai chế độ, cùng service `cloudflared`, chọn bằng compose profile (`quick` mặc định, `named`):
+- **Quick tunnel** (không cần tài khoản/domain): URL ngẫu nhiên `*.trycloudflare.com`, **đổi mỗi lần khởi động lại**, Cloudflare không cam
+  kết uptime; `cloudflared tunnel --no-autoupdate --url http://open-webui:8080`, URL in ra `docker compose logs cloudflared`.
+- **Named tunnel** (cần tài khoản + domain): URL cố định; `cloudflared tunnel --no-autoupdate run` với `TUNNEL_TOKEN` (`.env` root), trỏ
+  hostname tới `http://open-webui:8080` trong dashboard. Chuyển quick → named **chỉ đổi cấu hình/biến**, không đổi code.
+TLS kết thúc ở edge Cloudflare, trong mạng compose dùng HTTP. Đặt `WEBUI_URL` theo URL thật khi dùng named tunnel.
 
 ## 4. Services (`deploy/docker-compose.yml`)
 
-Một network `internal` (bridge). **Không service nào publish cổng ra host** ngoại trừ
-tuỳ chọn dev `127.0.0.1:3000 → open-webui:8080` và `127.0.0.1:8000 → api:8000` (chỉ loopback,
-trên máy tác giả: mở thử UI, gọi API bằng `curl`/Swagger `/docs` — vẫn không ra Internet).
+Một network `internal` (bridge). **Không service nào publish cổng ra host**, trừ tuỳ chọn dev chỉ loopback `127.0.0.1:3000 → open-webui:8080`
+và `127.0.0.1:8000 → api:8000`. `cloudflared` (image ghim tag; phụ thuộc `open-webui` healthy), `open-webui` (ghim tag; cấu hình
+`api_spec.md` mục 9; volume `openwebui_data`), `api` (build `deploy/Dockerfile`; mount `data/bm25/` read-only + volume `hf_cache`; `env_file:
+../.env`), `redis:7-alpine` (`--requirepass`, `--appendonly yes`, `--maxmemory 256mb --maxmemory-policy allkeys-lru`), `postgres:17-alpine`
+(mount `deploy/initdb/`, chạy 1 lần lúc tạo volume).
 
-| Service       | Image                                        | Ghi chú                                                                 |
-| ------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
-| `cloudflared` | `cloudflare/cloudflared:<tag ghim>`          | Phụ thuộc `open-webui` healthy; xem mục 3                               |
-| `open-webui`  | `ghcr.io/open-webui/open-webui:<tag ghim>`   | Cấu hình `api_spec.md` mục 9 + mục 5 dưới đây; volume `openwebui_data` (cache/ảnh; dữ liệu chính ở Postgres) |
-| `api`         | build từ `deploy/Dockerfile`                 | Mount `data/bm25/` (read-only) + volume `hf_cache` (cache model reranker); `env_file: ../.env`; xem mục 4.1, 6 |
-| `redis`       | `redis:7-alpine`                             | `--requirepass`, `--appendonly yes`, `--maxmemory 256mb --maxmemory-policy allkeys-lru`; volume `redis_data` |
-| `postgres`    | `postgres:17-alpine`                         | Mount `deploy/initdb/` (chạy 1 lần lúc tạo volume); volume `postgres_data` |
-
-Quy tắc chung:
-
-- `restart: unless-stopped` cho mọi service; **ghim tag phiên bản** (không dùng `latest`),
-  ghi lại phiên bản OpenWebUI đã nghiệm thu.
-- Healthcheck: `postgres` (`pg_isready`), `redis` (`redis-cli ping` có mật khẩu), `api`
-  (`GET /readyz` bằng `python -c "urllib…"`, không cần curl), `open-webui` (endpoint
-  health của nó). `depends_on: condition: service_healthy` theo chuỗi
-  `redis → api → open-webui → cloudflared` (và `postgres → open-webui`; `api` không phụ thuộc
-  `postgres`).
-- Giới hạn tài nguyên: `mem_limit` cho từng service (`api` 3g — đo thật 2026-09-27: 1.5g bị
-  kernel OOM-killer giết ngay lượt hỏi retrieval+rerank đầu tiên, reranker model + torch
-  CUDA context + tải checkpoint qua hf-xet cộng dồn chạm ~1.53GB; `open-webui` 1g,
-  `postgres` 512m, `redis` 320m) để không nuốt hết RAM của WSL2; điều chỉnh tiếp nếu đo
-  thấy cần.
-- Log: driver `json-file` với `max-size: 10m`, `max-file: 3`.
+Quy tắc chung: `restart: unless-stopped`; **ghim tag** (không `latest`), ghi phiên bản OpenWebUI đã nghiệm thu; healthcheck (`pg_isready`,
+`redis-cli ping` có mật khẩu, `GET /readyz` bằng `python -c "urllib…"` không cần curl, health của open-webui) với `depends_on:
+service_healthy` theo chuỗi `redis → api → open-webui → cloudflared` (`postgres → open-webui`; `api` không phụ thuộc `postgres`); log
+`json-file` `max-size: 10m`, `max-file: 3`. **`mem_limit`:** `api` **3g** (đo thật 2026-09-27: 1.5g bị OOM-killer giết ngay lượt hỏi
+retrieval+rerank đầu tiên — reranker model + CUDA context + tải checkpoint qua hf-xet cộng dồn ~1.53GB), `open-webui` 1g, `postgres` 512m,
+`redis` 320m, để không nuốt hết RAM WSL2.
 
 ### 4.1 GPU passthrough cho reranker (tự động qua `deploy/up.sh`)
 
-`api` chạy reranker in-process (`retrieval_spec.md` mục 6.1), tự phát hiện
-`cuda`/`cpu`. Không cần biết trước máy có GPU hay không: `deploy/up.sh` là
-entrypoint duy nhất, dùng chung cho cả 2 use case ở mục 1 — chạy
-`./deploy/up.sh` (từ đâu cũng được, script tự `cd` vào `deploy/`).
+`api` chạy reranker in-process, tự phát hiện `cuda`/`cpu`. `deploy/up.sh` là entrypoint duy nhất, chạy `./deploy/up.sh` từ đâu cũng được (tự
+`cd` vào `deploy/`). Cần hai việc tách biệt, script lo cả hai:
 
-Hai việc tách biệt, cả hai đều cần cho GPU thật hoạt động trong container, và
-`deploy/up.sh` tự lo cả hai:
+1. **Build đúng biến thể torch:** `deploy/Dockerfile` nhận build arg `TORCH_VARIANT` (mặc định `cpu` → `--index-url .../whl/cpu`; `cu126` trở
+   lên → CUDA). **PHẢI `cu126` trở lên:** kênh `cu121`/`cu124` đã ngừng ở torch 2.5.1/2.6.0, không có wheel Python 3.14 (`cp314`) — Dockerfile
+   dùng `python:3.14-slim` nên build lỗi "no wheels with matching Python ABI tag" nếu nhầm.
+2. **Cấp GPU cho container:** `deploy.resources.reservations.devices` (driver nvidia, count 1, capabilities gpu) nằm trong file override riêng
+   `deploy/docker-compose.gpu.yml` — **không sửa `docker-compose.yml` gốc** để máy không GPU vẫn `up -d` thẳng được. Cần NVIDIA Container
+   Toolkit trên host (Docker Desktop WSL2 đã hỗ trợ sẵn, chỉ bật GPU support).
 
-1. **Build image đúng biến thể torch**: `deploy/Dockerfile` nhận build arg
-   `TORCH_VARIANT` (mặc định `cpu`, dùng
-   `--index-url https://download.pytorch.org/whl/cpu`; giá trị `cu126` trở
-   lên dùng `--index-url https://download.pytorch.org/whl/cu126` để cài wheel
-   CUDA). PHẢI `cu126` trở lên: kênh `cu121`/`cu124` đã ngừng cập nhật (dừng ở
-   torch 2.5.1/2.6.0), không có wheel cho Python 3.14 (`cp314`) — Dockerfile
-   dùng `python:3.14-slim`, build sẽ lỗi "no wheels with matching Python ABI
-   tag" nếu dùng nhầm `cu121`/`cu124`.
-2. **Cấp GPU cho container lúc chạy**: khai báo `deploy.resources.reservations.devices`
-   cho service `api` — override tách riêng file (`deploy/docker-compose.gpu.yml`),
-   không sửa `docker-compose.yml` gốc, để máy không GPU vẫn `docker compose up -d`
-   thẳng được nếu ai gọi tay không qua script:
-   ```yaml
-   services:
-     api:
-       deploy:
-         resources:
-           reservations:
-             devices:
-               - driver: nvidia
-                 count: 1
-                 capabilities: [gpu]
-   ```
-   Cần **NVIDIA Container Toolkit** cài trên host (Docker Desktop dùng WSL2
-   backend đã hỗ trợ sẵn CUDA passthrough, chỉ cần bật GPU support trong
-   Docker Desktop settings; Linux thuần cài Container Toolkit theo tài liệu
-   NVIDIA).
-
-`deploy/up.sh` tự dò để quyết định dùng biến thể nào, dựa trên 2 điều kiện —
-**cả hai đúng** mới build/chạy bản GPU, thiếu 1 trong 2 thì build/chạy bản CPU
-(không lỗi, không cần người dùng biết trước máy có GPU hay không):
-
-- `nvidia-smi` chạy được (driver GPU có thật, kể cả trong WSL2 của Docker
-  Desktop khi đã bật GPU support).
-- `docker info` báo có runtime `nvidia` (NVIDIA Container Toolkit đã đăng ký
-  với Docker).
-
-Theo kết quả dò, script chạy tương ứng:
-
-```bash
-# Không có GPU (hoặc thiếu 1 trong 2 điều kiện trên) — nhánh mặc định
-docker compose build --build-arg TORCH_VARIANT=cpu api
-docker compose up -d
-
-# Có GPU (cả 2 điều kiện đúng)
-docker compose build --build-arg TORCH_VARIANT=cu126 api
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
-```
-
-Dò sai kiểu build CPU + override GPU không xảy ra được qua script (script tự
-build đúng biến thể khớp với việc có ghép override hay không); chỉ có thể xảy
-ra khi ai đó tự gọi tay hai lệnh lệch nhau — tự chịu rủi ro, xem mục 10.4.
-
-VRAM nhỏ (2GB) vẫn có thể CUDA OOM ở batch lớn; hành vi khi đó là fallback
-`rerank_score=None` (`retrieval_spec.md` mục 8), retrieval vẫn trả kết quả,
-không crash service.
+`up.sh` dò: **cả hai đúng** mới chạy bản GPU — `nvidia-smi` chạy được VÀ `docker info` báo runtime `nvidia`; thiếu 1 trong 2 → bản CPU (không
+lỗi). CPU: `docker compose build --build-arg TORCH_VARIANT=cpu api && docker compose up -d`; GPU: `build --build-arg TORCH_VARIANT=cu126 api`
+rồi `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d`. Script tự build đúng biến thể khớp với việc có ghép override; lệch chỉ
+xảy ra khi ai đó gọi tay hai lệnh lệch nhau (tự chịu rủi ro, mục 10.4). VRAM nhỏ (2GB) vẫn có thể CUDA OOM ở batch lớn → fallback
+`rerank_score=None` (`retrieval_spec.md` mục 8), service không crash.
 
 ## 5. Chính sách truy cập public
 
-- **Đăng ký mở (đã chốt 2026-09-21):** `ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=user`; ai có
-  URL đều tự tạo tài khoản dùng ngay. Lý do: máy chạy mới có dịch vụ nên quy mô tự bị
-  giới hạn; không muốn duyệt tay.
-- **Tài khoản đầu tiên được đăng ký trên OpenWebUI thường thành admin** (docs chưa nêu rõ, xác nhận khi chạy thử) → tác giả phải
-  đăng ký tài khoản admin **trước khi công bố URL**. Sau đó tắt các tính năng dành cho
-  admin không cần thiết đối với người dùng thường (xem `api_spec.md` mục 9).
-- Vì đăng ký mở, hạn mức Groq được bảo vệ bằng **ngân sách toàn cục**
-  (`GLOBAL_DAILY_LLM_ANSWERS`), quota theo user/ngày và rate limit theo phút
-  (`conversation_spec.md` mục 8, `api_spec.md` mục 5). Lưu ý: một người tạo nhiều tài
-  khoản vượt được quota theo user, **chỉ ngân sách toàn cục chặn được** — khi cạn, mọi
-  người nhận thông báo `quota_exceeded` (chấp nhận, ưu tiên bảo vệ hạn mức).
-- Nếu bị lạm dụng: đóng đăng ký bằng cách đặt `ENABLE_SIGNUP=false` rồi
-  `docker compose up -d open-webui`, hoặc tắt `cloudflared`.
+- **Đăng ký mở (chốt 2026-09-21):** `ENABLE_SIGNUP=true`, `DEFAULT_USER_ROLE=user`; máy chạy mới có dịch vụ nên quy mô tự giới hạn, không muốn
+  duyệt tay. **Tài khoản đầu tiên thường thành admin** (xác nhận khi chạy thử) → đăng ký admin **trước khi công bố URL**, rồi tắt tính năng
+  admin không cần thiết (`api_spec.md` mục 9).
+- Hạn mức Groq được bảo vệ bằng **ngân sách toàn cục** (`GLOBAL_DAILY_LLM_ANSWERS`), quota theo user/ngày và rate limit phút
+  (`conversation_spec.md` mục 8, `api_spec.md` mục 5). **Một người tạo nhiều tài khoản vượt được quota theo user; chỉ ngân sách toàn cục chặn
+  được** — khi cạn, mọi người nhận `quota_exceeded` (ưu tiên bảo vệ hạn mức).
+- Bị lạm dụng: `ENABLE_SIGNUP=false` rồi `docker compose up -d open-webui`, hoặc tắt `cloudflared`.
 
 ## 6. Image API (`deploy/Dockerfile`)
 
-- Base `python:3.14-slim`; cài `uv` (copy từ `ghcr.io/astral-sh/uv`); tầng dependency riêng:
-  copy `pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev --no-install-project`,
-  rồi copy `src/`, `README.md` → cài project (tận dụng cache tầng Docker).
-- `torch`: cài theo build arg `TORCH_VARIANT` (mặc định `cpu`) — xem mục 4.1 để build
-  bản GPU (`cu126` trở lên — `cu121`/`cu124` không có wheel cho Python 3.14). Mặc định
-  `cpu` để image build được trên mọi máy không cần driver GPU và nhẹ hơn cho người không
-  dùng GPU.
-- Model checkpoint (`AITeamVN/Vietnamese_Reranker`) tải từ HF Hub ở lần chạy đầu, không
-  bake vào image (tránh build image nặng hơn và cứng phiên bản model). Mount volume
-  `hf_cache` vào thư mục cache Hugging Face của user chạy container để không tải lại
-  (~1GB) mỗi lần recreate container.
-- Chạy bằng user không phải root.
-- `data/bm25/` **không** đóng gói vào image (file sinh ra, đã `.gitignore`); mount từ host
-  read-only. Thiếu file → `api` lỗi rõ ràng lúc khởi động, không chạy nửa vời.
-- Lệnh chạy:
-  `uvicorn production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`
-  (không còn migration: chatlog/Alembic đã gỡ 2026-09-29).
-- **1 worker**: semaphore của admission là in-process (`conversation_spec.md` mục 8).
-- `.dockerignore`: `.venv/`, `.git/`, `data/`, `tests/`, `.env`, cache của mypy/ruff/pytest.
+Base `python:3.14-slim`; `uv` copy từ `ghcr.io/astral-sh/uv`; tầng dependency riêng (`pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev
+--no-install-project`, rồi copy `src/`, `README.md` → cài project để tận dụng cache tầng). `torch` theo `TORCH_VARIANT` (mặc định `cpu` để build
+được mọi máy, nhẹ). Checkpoint reranker (`AITeamVN/Vietnamese_Reranker`, ~1GB) tải từ HF Hub ở lần chạy đầu, **không bake vào image**, mount volume
+`hf_cache` để không tải lại mỗi lần recreate. Chạy user không root. `data/bm25/` **không** vào image (file sinh ra, `.gitignore`), mount
+read-only; thiếu file → `api` lỗi rõ lúc khởi động, không chạy nửa vời. Lệnh chạy `uvicorn production_legal_qa_rag.api.app:create_app --factory
+--host 0.0.0.0 --port 8000 --workers 1` (**1 worker** vì semaphore admission in-process; không còn migration). `.dockerignore`: `.venv/`, `.git/`, `data/`,
+`tests/`, `.env`, cache mypy/ruff/pytest.
 
 ## 7. Biến môi trường & bí mật (`.env` ở repo root, không commit)
 
-**Chỉ 1 cặp file `.env`/`.env.example` cho toàn bộ project, ở repo root** (không còn
-`deploy/.env` riêng) — chốt lại 2026-09-29 để tránh rải rác nhiều `.env` khó kiểm soát.
-`api` container đọc nguyên file này qua `env_file: ../.env` (`docker-compose.yml`), cùng
-file mà `config.py` đọc khi chạy trên host. Root `.env.example` chia 3 block bằng comment:
-**APP** (dùng chung cho cả dev-trên-host lẫn container `api`), **DEPLOY** (chỉ container
-production dùng), **OBSERVABILITY** (chỉ stack Langfuse/Prometheus/Grafana dev — mục 10,
-`observability_spec.md`).
+**Chỉ 1 cặp `.env`/`.env.example` cho toàn project, ở repo root** (chốt 2026-09-29 để tránh rải rác nhiều `.env`). `api` container đọc nguyên file qua
+`env_file: ../.env`, cùng file `config.py` đọc trên host. `.env.example` chia 3 block bằng comment: **APP** (dev-trên-host lẫn container `api`),
+**DEPLOY** (chỉ container production), **OBSERVABILITY** (chỉ stack dev — `observability_spec.md` mục 7). Prefix `DEPLOY_` chỉ cho
+`POSTGRES_USER`/`POSTGRES_PASSWORD` (Postgres riêng cho production, trùng tên với Postgres của OBSERVABILITY nếu không prefix).
 
-Biến của block DEPLOY, prefix `DEPLOY_` chỉ áp dụng cho `POSTGRES_USER`/`POSTGRES_PASSWORD`
-(Postgres RIÊNG cho production, khác Postgres riêng của OBSERVABILITY — trùng tên nếu không
-prefix):
-
-| Nhóm        | Biến                                                                                              |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| LLM/dịch vụ (dùng chung block APP) | `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3`, `GROQ_API_KEY_4`, `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY` |
-| Backend     | `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL` cho container `api` do `docker-compose.yml` tự dựng từ `REDIS_PASSWORD`, không đọc trực tiếp từ `.env`) |
-| Postgres (production) | `DEPLOY_POSTGRES_USER`, `DEPLOY_POSTGRES_PASSWORD`                                                              |
-| OpenWebUI   | `WEBUI_SECRET_KEY` (cố định, để phiên đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn) |
-| Tunnel      | `TUNNEL_TOKEN` (chỉ khi dùng named tunnel)                                                        |
-
-- `.env` đã nằm trong `.gitignore` (khớp mọi thư mục); nếu thêm file khác chứa bí mật, thêm
-  vào `.gitignore` trước.
-- Không truyền bí mật bằng `build args` hay bake vào image.
+Nhóm biến: LLM/dịch vụ (dùng chung APP) `GROQ_API_KEY_1`…`_4` (production; `_5`–`_9` chỉ evaluation), `HF_TOKEN`, `PINECONE_API_KEY`,
+`PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY`; backend `COMPOSE_PROFILES`, `REDIS_PASSWORD` (`REDIS_URL` cho container
+do compose tự dựng từ `REDIS_PASSWORD`); Postgres `DEPLOY_POSTGRES_USER`/`DEPLOY_POSTGRES_PASSWORD`; OpenWebUI `WEBUI_SECRET_KEY` (**cố định** để phiên
+đăng nhập không mất khi khởi động lại), `WEBUI_URL` (tuỳ chọn); tunnel `TUNNEL_TOKEN` (chỉ named). `.env` nằm trong `.gitignore` (bài học
+2026-09-29: dòng `.env` từng bị comment nhầm, không thực sự ignore — đã bật lại); file khác chứa bí mật thì thêm `.gitignore` trước; **không truyền bí mật bằng
+build args hay bake vào image**.
 
 ## 8. Vận hành cơ bản
 
-- **Khởi động / dừng:** `./deploy/up.sh` (tự dò GPU, build đúng biến thể, `up -d`, rồi tự in
-  URL quick tunnel ra terminal — mục 4.1) / `docker compose down` (không có `-v`, để giữ
-  volume; chạy trong `deploy/`). Lần chạy đầu chưa có `.env` ở root: script tự
-  `cp ../.env.example ../.env` rồi dừng, điền giá trị thật rồi chạy lại `./deploy/up.sh`.
-  Named tunnel: script không dò URL (đã cố định theo `WEBUI_URL`); cần xem log tay dùng
-  `docker compose logs cloudflared-named`.
-- **Máy Windows:** Docker Desktop (WSL2 backend) bật cùng Windows; tắt chế độ ngủ/hibernate
-  khi cắm điện, nếu không tunnel đứt và người dùng không vào được.
-- **Backup:** `deploy/scripts/backup.sh` chạy `pg_dump` cho database `openwebui`
-  ra `deploy/backups/<ngày>/` (thư mục này vào `.gitignore`), giữ 7 bản gần nhất; chạy tay
-  hoặc bằng cron/Task Scheduler. Redis không cần backup (dữ liệu tính lại được).
-- **Cập nhật:** `git pull` → `./deploy/up.sh` (tự build lại đúng biến thể + `up -d`). Đổi
-  phiên bản OpenWebUI: sửa tag, nghiệm thu lại mục 9 trước khi dùng.
-- **Xem nhật ký:** `docker compose logs -f api`; phân tích từng lượt hỏi qua trace Langfuse
-  (`observability_spec.md` mục 4.5). DB `chatbot` cũ (nếu volume `postgres_data` đã có từ
-  trước 2026-09-29) không tự biến mất — drop tay: `DROP DATABASE chatbot;`.
+- **Khởi động/dừng:** `./deploy/up.sh` (dò GPU, build đúng biến thể, `up -d`, tự in URL quick tunnel) / `docker compose down` (không `-v`, giữ volume;
+  chạy trong `deploy/`). Lần đầu chưa có `.env`: script `cp ../.env.example ../.env` rồi dừng, điền giá trị thật rồi chạy lại. Named tunnel: script không dò
+  URL (cố định theo `WEBUI_URL`); xem log tay `docker compose logs cloudflared-named`.
+- **Máy Windows:** Docker Desktop (WSL2) bật cùng Windows; tắt sleep/hibernate khi cắm điện, nếu không tunnel đứt.
+- **Backup:** `deploy/scripts/backup.sh` `pg_dump` DB `openwebui` ra `deploy/backups/<ngày>/` (`.gitignore`), giữ 7 bản; Redis không cần backup.
+- **Cập nhật:** `git pull` → `./deploy/up.sh`; đổi phiên bản OpenWebUI: sửa tag, nghiệm thu lại mục 9.
+- **Nhật ký:** `docker compose logs -f api`; phân tích từng lượt qua trace Langfuse (`observability_spec.md` mục 4.5). DB `chatbot` cũ (volume từ trước
+  2026-09-29) không tự biến mất: `DROP DATABASE chatbot;`.
 
 ## 9. Nghiệm thu thủ công
 
-1. Máy sạch (không có volume, không có `.env` ở root): `./deploy/up.sh` → tự tạo
-   `.env` từ mẫu rồi dừng; điền giá trị thật; chạy lại `./deploy/up.sh` → mọi
-   service `healthy`, không có cổng nào lắng nghe ngoài `127.0.0.1` (kiểm tra `docker
-   compose ps`, `ss -ltn`). Kiểm tra log script in đúng nhánh CPU/GPU khớp với máy đang
-   chạy (mục 4.1).
-2. Lấy URL từ `cloudflared`, mở bằng điện thoại (mạng 4G, ngoài LAN): thấy trang đăng nhập
-   HTTPS; đăng ký tài khoản admin đầu tiên, rồi 1 tài khoản thường; hỏi câu hỏi luật.
-3. Từ ngoài mạng, không truy cập được `api`, `redis`, `postgres` (chỉ có URL của
-   OpenWebUI).
-4. `docker compose down && docker compose up -d` → tài khoản, lịch sử chat, dòng
-   cache đều còn (volume giữ dữ liệu); phiên đăng nhập không bị đăng xuất
-   (`WEBUI_SECRET_KEY` cố định).
-5. `deploy/scripts/backup.sh` tạo file dump khôi phục được vào Postgres tạm.
-6. Tắt Redis → chat vẫn trả lời, `/readyz` báo 503 (khớp `api_spec.md` mục 13). Tắt Postgres →
-   OpenWebUI mất DB (không đăng nhập/lưu lịch sử được), `api` không bị ảnh hưởng.
-7. Kiểm tra image: `docker history` / `grep` không thấy bí mật; chạy bằng user không root.
-8. (Chỉ khi máy chạy thử có GPU NVIDIA, để `deploy/up.sh` tự chọn nhánh GPU theo mục 4.1)
-   `docker compose exec api python -c "import torch; print(torch.cuda.is_available())"`
-   trả `True`; hỏi thử nhiều lượt liên tiếp không thấy log cảnh báo CUDA OOM. Nếu máy
-   không có GPU, bỏ qua bước này (nhánh CPU-only vẫn phải nghiệm thu qua các bước 1-7).
+1. Máy sạch: `./deploy/up.sh` → tự tạo `.env` rồi dừng; điền; chạy lại → mọi service `healthy`, không cổng nào lắng nghe ngoài `127.0.0.1`
+   (`docker compose ps`, `ss -ltn`); log script in đúng nhánh CPU/GPU. 2. Lấy URL từ `cloudflared`, mở bằng điện thoại 4G: thấy trang đăng nhập HTTPS; đăng
+   ký admin rồi 1 tài khoản thường; hỏi câu luật. 3. Từ ngoài mạng không truy cập được `api`, `redis`, `postgres`. 4. `down && up -d` → tài khoản, lịch sử,
+   dòng cache còn; phiên đăng nhập không mất (`WEBUI_SECRET_KEY` cố định). 5. `backup.sh` tạo dump khôi phục được vào Postgres tạm. 6. Tắt Redis → chat vẫn
+   trả lời, `/readyz` 503; tắt Postgres → OpenWebUI mất DB, `api` không ảnh hưởng. 7. `docker history`/`grep` không thấy bí mật; chạy không root. 8. (Máy có
+   GPU NVIDIA) `docker compose exec api python -c "import torch; print(torch.cuda.is_available())"` trả `True`; hỏi nhiều lượt không thấy cảnh báo CUDA OOM.
 
 ## 10. Rủi ro / điểm mở
 
-1. **Máy tắt/ngủ/mất mạng = dịch vụ ngừng**; quick tunnel đổi URL sau mỗi lần khởi động
-   lại (người dùng cũ phải lấy link mới). Khi cần URL ổn định: named tunnel (cần domain,
-   khoảng 10 USD/năm) — **chưa có domain**, làm sau.
-2. Đăng ký mở + quota theo user không chặn được người tạo nhiều tài khoản; chỉ ngân sách
-   toàn cục bảo vệ hạn mức (mục 5). Nếu vẫn bị lạm dụng: đóng đăng ký (mục 5) hoặc thêm
-   Cloudflare Turnstile/Access phía trước — chưa làm.
-3. Máy cá nhân chứa dữ liệu hội thoại của người dùng khác: mã hoá đĩa (BitLocker) và cập
-   nhật hệ điều hành là trách nhiệm của tác giả; nội dung câu hỏi/trả lời còn nằm trong trace Langfuse
-   (chưa có cơ chế xoá tự động — `observability_spec.md` mục 4.5).
-4. Reranker giờ chạy in-process trong `api` (mục 4.1): image mặc định chỉ cài `torch` CPU,
-   nên nếu máy không có GPU (hoặc thiếu Container Toolkit), rerank chậm hơn GPU nhưng
-   không phụ thuộc dịch vụ ngoài nào còn ngừng bất kỳ lúc nào như bản LightningAI/ngrok cũ.
-   `deploy/up.sh` tự dò nên không còn rủi ro build/override lệch tay như trước; chỉ còn rủi
-   ro nếu ai đó tự gọi tay `docker compose` lệch với kết quả dò (mục 4.1) — kiểm tra kỹ
-   trước khi làm vậy.
-5. Điều khoản dịch vụ Cloudflare cho quick tunnel (không cam kết uptime, dành cho thử
-   nghiệm); tác giả tự đối chiếu trước khi chia sẻ rộng.
-6. Image nặng hơn do `transformers`/`pyvi`/`torch` + tải checkpoint reranker (~1GB) lần
-   chạy đầu; RAM/disk WSL2 mặc định có thể không đủ cho 5 service — chỉnh `.wslconfig` nếu
-   cần (gợi ý ≥ 6 GB cho WSL2, cân nhắc thêm cho volume `hf_cache`).
+1. **Máy tắt/ngủ/mất mạng = dịch vụ ngừng;** quick tunnel đổi URL sau mỗi lần khởi động (cần named tunnel + domain ~10 USD/năm — chưa có). 2. Đăng ký mở + quota theo user không
+   chặn được người tạo nhiều tài khoản; chỉ ngân sách toàn cục bảo vệ (mục 5); nếu vẫn lạm dụng: đóng đăng ký hoặc thêm Cloudflare Turnstile/Access — chưa làm. 3. Máy cá
+   nhân chứa hội thoại của người dùng khác: mã hoá đĩa (BitLocker) + cập nhật OS là trách nhiệm tác giả; nội dung còn nằm trong trace Langfuse (chưa có xoá tự động,
+   `observability_spec.md` mục 4.5). 4. Reranker in-process: image mặc định chỉ có `torch` CPU nên máy không GPU (hoặc thiếu Container Toolkit) rerank chậm hơn nhưng không phụ thuộc dịch
+   vụ ngoài; `up.sh` tự dò nên hết rủi ro lệch tay, trừ khi ai đó gọi tay `docker compose` lệch kết quả dò. 5. Quick tunnel dành cho thử nghiệm (không cam kết uptime): đối
+   chiếu điều khoản Cloudflare trước khi chia sẻ rộng. 6. Image nặng (`transformers`/`pyvi`/`torch` + ~1GB checkpoint lần đầu); RAM/disk WSL2 mặc định có thể thiếu cho 5 service:
+   chỉnh `.wslconfig` (gợi ý ≥ 6 GB, cân nhắc thêm cho `hf_cache`).
