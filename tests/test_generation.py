@@ -1240,9 +1240,15 @@ def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
 def test_guardrail_prompt_uses_evidence_scope_policy() -> None:
     """Prompt chỉ chặn injection/tác vụ không tra cứu, không lọc topical scope."""
     assert "Luôn chọn injection" in GUARDRAIL_SYSTEM_PROMPT
+    assert "kể cả khi câu hỏi có tên hoặc số hiệu văn bản pháp luật" in (
+        GUARDRAIL_SYSTEM_PROMPT
+    )
     assert (
         "chỉ cho yêu cầu rõ ràng không phải tra cứu thông tin"
         in GUARDRAIL_SYSTEM_PROMPT
+    )
+    assert "chào hỏi thuần túy, viết code, dịch, hoặc sáng tác" in (
+        GUARDRAIL_SYSTEM_PROMPT
     )
     assert "mọi câu hỏi tìm thông tin hoặc phân tích" in GUARDRAIL_SYSTEM_PROMPT
     assert "địa danh, cơ quan, đơn vị hành chính, phụ lục/bảng, giấy phép" in (
