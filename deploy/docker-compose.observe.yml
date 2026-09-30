@@ -1,4 +1,4 @@
-# Override nối `api` production vào stack observability dev (dev/observability/), để trace
+# Override nối `api` production vào stack observability (observability/), để trace
 # Langfuse + metrics Prometheus lấy được từ traffic end-user thật (observability_spec.md).
 # ./deploy/up.sh tự ghép file này khi network `legal-qa-observe` đã tồn tại (tức stack
 # observe đang chạy); chưa chạy stack thì bỏ qua, production dựng bình thường không trace.

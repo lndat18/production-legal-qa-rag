@@ -12,7 +12,7 @@ service `cloudflared`, `open-webui`, `api`, `redis`, `postgres` (Postgres chỉ 
 chạy trên laptop (thường có GPU) rồi public URL, và người khác `git clone` chạy tự lo (thường CPU-only) — cùng một lệnh, không cần biết
 trước có GPU; chính sách truy cập public, cô lập mạng, bí mật, vận hành cơ bản.
 **Không làm:** VPS/PaaS, Kubernetes, Caddy/nginx, nhiều replica, HA; CD tự deploy (CI chỉ chạy test/lint; deploy là thao tác tay);
-monitoring/alert trong compose production (stack observe là compose riêng `dev/observability/`, `observability_spec.md` mục 7); tự host
+monitoring/alert trong compose production (stack observe là compose riêng `observability/`, `observability_spec.md` mục 7); tự host
 LLM/Pinecone. Reranker **không** còn là dịch vụ ngoài — chạy in-process trong `api` (`retrieval_spec.md` mục 6.1).
 
 **Tiêu chí số 1:** clone + điền `.env` (root) + chạy → người bên ngoài mở URL, đăng ký, hỏi đáp nhiều lượt được; ngoài Cloudflare Tunnel
@@ -40,7 +40,7 @@ Một network `internal` (bridge). **Không service nào publish cổng ra host*
 và `127.0.0.1:8000 → api:8000`. `cloudflared` (image ghim tag; phụ thuộc `open-webui` healthy), `open-webui` (ghim tag; cấu hình
 `api_spec.md` mục 9; volume `openwebui_data`), `api` (build `deploy/Dockerfile`; mount `data/bm25/` read-only + volume `hf_cache`; `env_file:
 ../.env`), `redis:7-alpine` (`--requirepass`, `--appendonly yes`, `--maxmemory 256mb --maxmemory-policy allkeys-lru`), `postgres:17-alpine`
-(mount `deploy/initdb/`, chạy 1 lần lúc tạo volume).
+(`POSTGRES_DB=openwebui` — image tự tạo DB lúc khởi tạo volume; không còn `deploy/initdb/` vì chỉ có 1 DB).
 
 Quy tắc chung: `restart: unless-stopped`; **ghim tag** (không `latest`), ghi phiên bản OpenWebUI đã nghiệm thu; healthcheck (`pg_isready`,
 `redis-cli ping` có mật khẩu, `GET /readyz` bằng `python -c "urllib…"` không cần curl, health của open-webui) với `depends_on:
@@ -80,7 +80,7 @@ xảy ra khi ai đó gọi tay hai lệnh lệch nhau (tự chịu rủi ro, m�
 ## 6. Image API (`deploy/Dockerfile`)
 
 Base `python:3.14-slim`; `uv` copy từ `ghcr.io/astral-sh/uv`; tầng dependency riêng (`pyproject.toml` + `uv.lock` → `uv sync --frozen --no-dev
---no-install-project`, rồi copy `src/`, `README.md` → cài project để tận dụng cache tầng). `torch` theo `TORCH_VARIANT` (mặc định `cpu` để build
+--no-install-project`, rồi copy `src/`, `README.md` → cài project để tận dụng cache tầng; các `RUN uv ...` dùng `--mount=type=cache` cho cache wheel của uv nên tầng bị vô hiệu vẫn không tải lại torch). `torch` theo `TORCH_VARIANT` (mặc định `cpu` để build
 được mọi máy, nhẹ). Checkpoint reranker (`AITeamVN/Vietnamese_Reranker`, ~1GB) tải từ HF Hub ở lần chạy đầu, **không bake vào image**, mount volume
 `hf_cache` để không tải lại mỗi lần recreate. Chạy user không root. `data/bm25/` **không** vào image (file sinh ra, `.gitignore`), mount
 read-only; thiếu file → `api` lỗi rõ lúc khởi động, không chạy nửa vời. Lệnh chạy `uvicorn production_legal_qa_rag.api.app:create_app --factory
@@ -103,11 +103,10 @@ build args hay bake vào image**.
 
 ## 8. Vận hành cơ bản
 
-- **Khởi động/dừng:** `./deploy/up.sh` (dò GPU, build đúng biến thể, `up -d`, tự in URL quick tunnel) / `docker compose down` (không `-v`, giữ volume;
-  chạy trong `deploy/`). Lần đầu chưa có `.env`: script `cp ../.env.example ../.env` rồi dừng, điền giá trị thật rồi chạy lại. Named tunnel: script không dò
+- **Khởi động/dừng:** `./deploy/up.sh` (dò GPU, build đúng biến thể, `up -d`, tự in URL quick tunnel) / `./deploy/down.sh` (`down --profile '*'`, không `-v`, giữ volume). Lần đầu chưa có `.env`: script `cp ../.env.example ../.env` rồi dừng, điền giá trị thật rồi chạy lại. Named tunnel: script không dò
   URL (cố định theo `WEBUI_URL`); xem log tay `docker compose logs cloudflared-named`.
 - **Máy Windows:** Docker Desktop (WSL2) bật cùng Windows; tắt sleep/hibernate khi cắm điện, nếu không tunnel đứt.
-- **Backup:** `deploy/scripts/backup.sh` `pg_dump` DB `openwebui` ra `deploy/backups/<ngày>/` (`.gitignore`), giữ 7 bản; Redis không cần backup.
+- **Backup:** `deploy/backup.sh` `pg_dump` DB `openwebui` ra `deploy/backups/<ngày>/` (`.gitignore`), giữ 7 bản; Redis không cần backup.
 - **Cập nhật:** `git pull` → `./deploy/up.sh`; đổi phiên bản OpenWebUI: sửa tag, nghiệm thu lại mục 9.
 - **Nhật ký:** `docker compose logs -f api`; phân tích từng lượt qua trace Langfuse (`observability_spec.md` mục 4.5). DB `chatbot` cũ (volume từ trước
   2026-09-29) không tự biến mất: `DROP DATABASE chatbot;`.

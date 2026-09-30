@@ -286,7 +286,7 @@ class LangfuseSettings(BaseSettings):
     (mục 4.1), không cần cờ bật/tắt riêng. `api` khi dev luôn chạy trực tiếp
     trên host (`uv run uvicorn`), không nằm cùng network Docker với
     `langfuse-web` — base_url mặc định trỏ vào cổng `langfuse-web` publish ra
-    host (`dev/observability/docker-compose.yml`: `127.0.0.1:3001:3000`),
+    host (`observability/docker-compose.yml`: `127.0.0.1:3001:3000`),
     không phải tên service nội bộ Docker.
     """
 

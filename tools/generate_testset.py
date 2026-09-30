@@ -77,6 +77,11 @@ def generate(
             "(sinh bù). Bắt buộc đi kèm --only."
         ),
     ),
+    retry_skipped: bool = typer.Option(
+        False,
+        "--retry-skipped",
+        help="Chạy lại một unit `skipped`; bắt buộc đi kèm --only.",
+    ),
     testset_size: int | None = typer.Option(
         None,
         help="Ghi đè tổng số câu (mặc định 240), chia cho các đơn vị đã chọn.",
@@ -84,9 +89,10 @@ def generate(
 ) -> None:
     """Sinh golden testset theo từng đơn vị.
 
-    Mã thoát: 0 xong; 1 một đơn vị lỗi giữa chừng (quota...), chạy lại để làm tiếp;
-    2 đầu vào/cấu hình sai (không gọi LLM). Câu đã sinh xong trước lúc lỗi được giữ: đơn
-    vị ở trạng thái "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3).
+    Mã thoát: 0 khi phạm vi sạch; 1 khi hết quota ngày, systemic breaker hoặc lỗi không
+    phân loại; 2 khi đầu vào/cấu hình sai; 3 khi chạy xong nhưng dữ liệu suy giảm vì có
+    unit/type/sample bị bỏ. Câu đã sinh trước khi hết quota được giữ: unit ở trạng thái
+    "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3/3.4).
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -99,6 +105,7 @@ def generate(
                     output_dir,
                     only=only,
                     append=append,
+                    retry_skipped=retry_skipped,
                     testset_size=testset_size,
                 )
             )
@@ -109,6 +116,7 @@ def generate(
             only=only,
             reuse_knowledge_graph=reuse_knowledge_graph,
             append=append,
+            retry_skipped=retry_skipped,
             testset_size=testset_size,
         )
     except EvalInputError as error:
@@ -118,13 +126,23 @@ def generate(
         typer.echo(f"{error}", err=True)
         typer.echo(summarize_progress(markdown_dir, output_dir), err=True)
         typer.echo(
-            "Chạy lại đúng lệnh này khi quota Groq được reset để làm tiếp.", err=True
+            "Đã dừng để tránh tốn token thêm; xem last_failure trước khi chạy lại.",
+            err=True,
         )
         raise typer.Exit(1) from error
     typer.echo(
         f"Xong {len(report.generated_units)} đơn vị, +{report.new_questions} câu "
-        f"(bỏ qua {len(report.skipped_units)}). {summarize_progress(markdown_dir, output_dir)}"
+        f"(đã xong từ trước {len(report.already_done_units)}, bỏ unit lần này "
+        f"{len(report.skipped_units)}, bỏ unit từ trước {len(report.existing_skipped_units)}, "
+        f"bỏ {report.skipped_question_types} loại câu và {report.skipped_samples} sample). "
+        f"{summarize_progress(markdown_dir, output_dir)}"
     )
+    if report.has_degradation:
+        typer.echo(
+            "Job hoàn tất nhưng dữ liệu suy giảm; cần kiểm tra checkpoint skipped.",
+            err=True,
+        )
+        raise typer.Exit(3)
 
 
 @app.command()

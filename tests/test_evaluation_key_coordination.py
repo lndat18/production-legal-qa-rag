@@ -270,6 +270,19 @@ def test_ca_n_tai_khoan_cung_cooldown_phut_thi_cho_den_khi_tai_khoan_som_nhat_he
     assert rig.calls == [1, 2, 1]
 
 
+def test_key_da_disable_khong_lam_bo_qua_cooldown_cua_key_con_hoat_dong():
+    """401/403 để lại cooldown=0, nhưng không được khiến router bỏ qua `retry-after`."""
+    rig = _Rig(2)
+    rig.router._disable(0)
+    rig.router._mark_minute_limited(1, _rate_limit(_PER_MINUTE, "10"))
+
+    result = rig.router._generate(messages=[])
+
+    assert result.generations[0].text == "ok"
+    assert rig.sleeper.calls == [pytest.approx(10.0)]
+    assert rig.calls == [0, 1]
+
+
 def test_thoi_gian_cho_bi_kep_toi_da_60_giay_du_retry_after_rat_lon():
     rig = _Rig(3)
     rig.behaviours = [_minute_limited("3600")] * 3

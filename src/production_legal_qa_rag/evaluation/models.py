@@ -43,7 +43,7 @@ class GoldenTestCase(BaseModel):
 
 
 class UnitProgress(BaseModel):
-    """Tiến độ của một đơn vị: đã sinh xong (`done`) hoặc dừng dở giữa chừng (`partial`).
+    """Tiến độ của một đơn vị: xong, dừng do hết quota, hoặc bị bỏ qua có chủ đích.
 
     Các trường thêm sau (`status`, `skipped_samples`, `tokens`, `reasoning_tokens`) đều có
     mặc định để đọc được `generation_progress.json` của các đơn vị ghi từ trước
@@ -62,10 +62,18 @@ class UnitProgress(BaseModel):
     completed_at: datetime
     # `partial`: đã có một phần câu trong raw nhưng dừng giữa chừng (hết quota ngày...), đơn vị
     # nằm trong danh sách chờ và chỉ sinh phần còn thiếu (mục 3.3).
-    status: Literal["done", "partial"] = "done"
+    status: Literal["done", "partial", "skipped"] = "done"
     skipped_samples: int = (
         0  # sample lỗi không phải hết quota (parse...) bị bỏ, cộng dồn
     )
+    # Một loại câu có thể bị bỏ sau hai lần tạo scenario/persona lỗi. Không ghi nội dung
+    # prompt hoặc exception để progress vẫn an toàn khi commit.
+    skipped_question_types: set[str] = Field(default_factory=set)
+    # `skipped` ở cấp đơn vị chỉ dùng cho lỗi dựng KG; generation lỗi được thu hẹp xuống
+    # loại câu/sample để vẫn lấy được phần còn lại của đơn vị.
+    skipped_stage: Literal["knowledge_graph", "generation"] | None = None
+    error_type: str | None = None
+    attempts: int = 0
     # Token thật từ `usage` của Groq (prompt + completion; reasoning là phần con của completion).
     # `None` = không có số đo (đơn vị ghi trước khi có tính năng đếm token).
     tokens: int | None = None

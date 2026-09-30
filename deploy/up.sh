@@ -33,13 +33,13 @@ else
     echo "Không phát hiện GPU NVIDIA sẵn dùng cho Docker — build/chạy bản CPU."
 fi
 
-# Stack observability dev (dev/observability/) đang chạy thì nối `api` vào để trace/track
+# Stack observability (observability/) đang chạy thì nối `api` vào để trace/track
 # traffic end-user thật; chưa chạy thì bỏ qua, production vẫn dựng bình thường.
 if docker network inspect legal-qa-observe >/dev/null 2>&1; then
     echo "Phát hiện stack observability đang chạy — nối api vào để trace/metrics (docker-compose.observe.yml)."
     compose_files+=(-f docker-compose.observe.yml)
 else
-    echo "Stack observability chưa chạy — api chạy không trace (bật: docker compose -f dev/observability/docker-compose.yml up -d rồi chạy lại ./deploy/up.sh)."
+    echo "Stack observability chưa chạy — api chạy không trace (bật: ./observability/up.sh rồi chạy lại ./deploy/up.sh)."
 fi
 
 # Chỉ định rõ --env-file thay vì để Compose tự dò .env theo cwd — tránh phụ thuộc hành vi

@@ -9,10 +9,10 @@
 # ./deploy/up.sh một lần rồi thử lại — sau đó không cần lặp lại bước đó nữa.
 #
 # Dùng:
-#   deploy/scripts/reset_cache.sh                          # xoá toàn bộ cache
-#   deploy/scripts/reset_cache.sh --pattern 'rag:ans:*'    # chỉ xoá answer cache
+#   ./deploy/reset_cache.sh                          # xoá toàn bộ cache
+#   ./deploy/reset_cache.sh --pattern 'rag:ans:*'    # chỉ xoá answer cache
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
-docker compose --env-file .env -f docker-compose.yml exec -T api \
+cd "$(dirname "${BASH_SOURCE[0]}")"
+docker compose --env-file ../.env -f docker-compose.yml exec -T api \
     python tools/cache.py flush --yes "$@"

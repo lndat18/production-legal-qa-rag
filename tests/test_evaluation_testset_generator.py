@@ -11,12 +11,15 @@ import os
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from typer.testing import CliRunner
 
 from production_legal_qa_rag.evaluation import testset_generator as tg
+from production_legal_qa_rag.evaluation.groq_round_robin import (
+    DailyQuotaExhaustedError,
+)
 from production_legal_qa_rag.evaluation.models import (
     GenerationProgress,
     GoldenTestCase,
@@ -82,7 +85,12 @@ class FakeUnitRunner:
         self.kg_paths.append(knowledge_graph_path)
         self.reuse_flags.append(reuse_knowledge_graph)
         if key == self.fail_on:
-            raise RuntimeError("Groq hết quota: nội dung bí mật không được log")
+            raise tg.UnitGenerationError(
+                key,
+                "lỗi RAGAS đã phân loại",
+                stage="knowledge_graph",
+                error_type="ValueError",
+            )
         cases = []
         for kind in tg.QUESTION_TYPES:
             for _ in range(getattr(quota, kind)):
@@ -99,6 +107,143 @@ class FakeUnitRunner:
         knowledge_graph_path.parent.mkdir(parents=True, exist_ok=True)
         knowledge_graph_path.write_text("{}", encoding="utf-8")
         return tg.UnitResult(cases=cases, llm_calls=self.llm_calls)
+
+
+class DailyQuotaRunner(FakeUnitRunner):
+    """Fake riêng cho ngoại lệ duy nhất phải dừng toàn bộ job."""
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        if tg.unit_key(unit) == self.fail_on:
+            self.calls.append(tg.unit_key(unit))
+            raise DailyQuotaExhaustedError("hết quota ngày")
+        return super().run_unit(
+            unit,
+            quota,
+            knowledge_graph_path,
+            reuse_knowledge_graph=reuse_knowledge_graph,
+        )
+
+
+class ClassifiedFailureRunner(FakeUnitRunner):
+    """Giả lỗi RAGAS đã phân loại sau khi KG đã được lưu, như runner thật."""
+
+    def __init__(
+        self,
+        failure_keys: set[str],
+        *,
+        stage: Literal["knowledge_graph", "generation"] = "generation",
+        skipped_samples: int = 0,
+        skipped_question_types: set[str] | None = None,
+    ) -> None:
+        super().__init__()
+        self.failure_keys = failure_keys
+        self.stage = stage
+        self.skipped_samples = skipped_samples
+        self.skipped_question_types = skipped_question_types or set()
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key not in self.failure_keys:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        self.kg_paths.append(knowledge_graph_path)
+        self.reuse_flags.append(reuse_knowledge_graph)
+        knowledge_graph_path.parent.mkdir(parents=True, exist_ok=True)
+        knowledge_graph_path.write_text("{}", encoding="utf-8")
+        raise tg.UnitGenerationError(
+            key,
+            "lỗi RAGAS đã phân loại",
+            stage=self.stage,
+            error_type="ValueError",
+            skipped_samples=self.skipped_samples,
+            skipped_question_types=self.skipped_question_types,
+        )
+
+
+class UnclassifiedFailureRunner(FakeUnitRunner):
+    """Giả lỗi I/O/code không được chuyển thành checkpoint `skipped`."""
+
+    def __init__(self, key: str, error: BaseException) -> None:
+        super().__init__()
+        self.key = key
+        self.error = error
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key != self.key:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        raise self.error
+
+
+class DuplicateValidCaseRunner(ClassifiedFailureRunner):
+    """Trả một case hợp lệ đã tồn tại trong raw để `append_raw_cases` bỏ trùng."""
+
+    def __init__(self, success_key: str, failure_keys: set[str]) -> None:
+        super().__init__(failure_keys)
+        self.success_key = success_key
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key != self.success_key:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        self.kg_paths.append(knowledge_graph_path)
+        self.reuse_flags.append(reuse_knowledge_graph)
+        return tg.UnitResult(
+            cases=[
+                GoldenTestCase(
+                    user_input="Câu trùng?",
+                    reference="Đáp án",
+                    reference_contexts=["Ngữ cảnh"],
+                    synthesizer_name=SINGLE,
+                )
+            ],
+            llm_calls=1,
+        )
 
 
 def _unit(document: str, index: int, chars: int) -> EvalUnit:
@@ -282,7 +427,7 @@ def test_generate_lan_hai_bo_qua_don_vi_da_xong_ke_ca_khi_xoa_het_dong_trong_raw
 
     assert second.calls == []
     assert report.generated_units == []
-    assert len(report.skipped_units) == 5
+    assert len(report.already_done_units) == 5
     assert json.loads(raw_path.read_text("utf-8")) == kept  # không đụng vào raw
 
 
@@ -302,63 +447,204 @@ def test_generate_khong_dung_runner_khi_khong_con_gi_de_chay(
     assert report.generated_units == []
 
 
-def test_generate_loi_giua_don_vi_dung_ngay_ghi_last_failure_khong_ghi_raw_don_vi_do(
+def test_generate_loi_khong_quota_bo_qua_unit_va_chay_tiep(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
     runner = FakeUnitRunner(fail_on="B.md#1")
 
+    report = tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1", "A.md#1", "C.md#1"]
+    assert report.skipped_units == ["B.md#1"]
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["B.md#1"].status == "skipped"
+    assert progress.units["B.md#1"].skipped_stage == "knowledge_graph"
+    assert progress.units["B.md#1"].error_type == "ValueError"
+    assert progress.last_failure is None
+    rows = json.loads((output_dir / tg.RAW_TESTSET_FILENAME).read_text("utf-8"))
+    assert {r["source_document"] for r in rows} == {"A.md", "B.md", "C.md"}
+    assert not any(
+        row["source_document"] == "B.md"
+        and row["source_section"] == "Chương I. TIÊU ĐỀ I"
+        for row in rows
+    )
+
+
+def test_generate_het_quota_ngay_dung_ngay_va_ghi_last_failure(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = DailyQuotaRunner(fail_on="B.md#1")
+
     with pytest.raises(tg.UnitGenerationError) as excinfo:
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     assert excinfo.value.unit_key == "B.md#1"
-    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1"]  # không thử đơn vị kế
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1"]
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
-    assert set(progress.units) == {"A.md#2", "B.md#2"}
     assert progress.last_failure is not None
     assert progress.last_failure.unit == "B.md#1"
-    assert (
-        progress.last_failure.error == "RuntimeError"
-    )  # không kèm nội dung thông điệp
-    rows = json.loads((output_dir / tg.RAW_TESTSET_FILENAME).read_text("utf-8"))
-    assert {(r["source_document"], r["source_section"]) for r in rows} == {
-        ("A.md", "Chương II. TIÊU ĐỀ II"),
-        ("B.md", "Chương II. TIÊU ĐỀ II"),
-    }
 
 
-def test_generate_chay_lai_sau_loi_tiep_tuc_dung_don_vi_do_va_xoa_last_failure(
+def test_generate_chi_chay_lai_unit_skipped_khi_retry_skipped_va_only(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(
-            markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="B.md#1")
-        )
+    tg.generate_testset(
+        markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="B.md#1")
+    )
     resumed = FakeUnitRunner()
 
-    tg.generate_testset(markdown_dir, output_dir, unit_runner=resumed)
+    tg.generate_testset(
+        markdown_dir,
+        output_dir,
+        only=["B.md#1"],
+        retry_skipped=True,
+        unit_runner=resumed,
+    )
 
-    assert resumed.calls == ["B.md#1", "A.md#1", "C.md#1"]
+    assert resumed.calls == ["B.md#1"]
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
     assert len(progress.units) == 5
     assert progress.last_failure is None
+    assert progress.units["B.md#1"].status == "done"
 
 
-def test_generate_loi_khi_don_vi_dau_tien_van_ghi_last_failure(
+def test_generate_loi_khong_quota_o_unit_dau_tien_ghi_skipped_khong_last_failure(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
 
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(
-            markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="A.md#2")
-        )
+    tg.generate_testset(
+        markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="A.md#2")
+    )
 
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["A.md#2"].status == "skipped"
+    assert progress.last_failure is None
+    assert (output_dir / tg.RAW_TESTSET_FILENAME).exists()
+
+
+def test_generation_khong_co_case_checkpoint_skipped_va_retry_dung_lai_kg(
+    dirs: tuple[Path, Path],
+):
+    """Không được ghi `done` rỗng khi RAGAS bỏ toàn bộ sample của một unit."""
+    markdown_dir, output_dir = dirs
+    failed = ClassifiedFailureRunner(
+        {"A.md#2"},
+        skipped_samples=2,
+        skipped_question_types={"single_hop"},
+    )
+
+    report = tg.generate_testset(markdown_dir, output_dir, unit_runner=failed)
+
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    skipped = progress.units["A.md#2"]
+    assert report.has_degradation
+    assert report.skipped_units == ["A.md#2"]
+    assert skipped.status == "skipped"
+    assert skipped.skipped_stage == "generation"
+    assert skipped.skipped_samples == 2
+    assert skipped.skipped_question_types == {"single_hop"}
+    assert (output_dir / "knowledge_graph" / "A__02.json").exists()
+
+    resumed = FakeUnitRunner()
+    tg.generate_testset(
+        markdown_dir,
+        output_dir,
+        only=["A.md#2"],
+        retry_skipped=True,
+        unit_runner=resumed,
+    )
+
+    assert resumed.calls == ["A.md#2"]
+    assert resumed.reuse_flags == [True]
+    assert (
+        tg.load_progress(output_dir / tg.PROGRESS_FILENAME).units["A.md#2"].status
+        == "done"
+    )
+
+
+def test_hai_unit_skipped_cung_chu_ky_lien_tiep_dung_truoc_unit_thu_ba(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = ClassifiedFailureRunner({"A.md#2", "B.md#2"})
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert runner.calls == ["A.md#2", "B.md#2"]
+    assert excinfo.value.unit_key == "B.md#2"
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["A.md#2"].status == "skipped"
+    assert progress.units["B.md#2"].status == "skipped"
+    assert progress.last_failure is not None
+    assert progress.last_failure.unit == "B.md#2"
+
+
+def test_unit_thanh_cong_reset_systemic_breaker_giua_hai_skipped_cung_chu_ky(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = ClassifiedFailureRunner({"A.md#2", "B.md#1"})
+
+    report = tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1", "A.md#1", "C.md#1"]
+    assert report.skipped_units == ["A.md#2", "B.md#1"]
+    assert report.has_degradation
+    assert tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure is None
+
+
+def test_case_hop_le_bi_deduplicate_van_reset_systemic_breaker(
+    dirs: tuple[Path, Path],
+):
+    """`added=[]` không có nghĩa unit thất bại: `result.cases` hợp lệ phải reset breaker."""
+    markdown_dir, output_dir = dirs
+    tg.append_raw_cases(
+        output_dir / tg.RAW_TESTSET_FILENAME,
+        [
+            GoldenTestCase(
+                user_input="Câu trùng?",
+                reference="Đáp án",
+                reference_contexts=["Ngữ cảnh"],
+                synthesizer_name=SINGLE,
+            )
+        ],
+    )
+    runner = DuplicateValidCaseRunner("B.md#2", {"A.md#2", "B.md#1", "A.md#1"})
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    # A#2 lỗi đầu tiên; B#2 có case nhưng bị dedupe nên added=0 vẫn reset; B#1 chỉ là
+    # lỗi đầu tiên của chuỗi mới, đến A#1 mới là lỗi thứ hai phải dừng.
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1", "A.md#1"]
+    assert excinfo.value.unit_key == "A.md#1"
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["B.md#2"].status == "done"
+    assert progress.last_failure is not None
+    assert progress.last_failure.unit == "A.md#1"
+
+
+@pytest.mark.parametrize("error", [OSError("disk"), TypeError("bug")])
+def test_loi_io_hoac_typeerror_khong_bi_doi_thanh_skipped(
+    dirs: tuple[Path, Path], error: BaseException
+):
+    markdown_dir, output_dir = dirs
+    runner = UnclassifiedFailureRunner("A.md#2", error)
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert excinfo.value.__cause__ is error
+    assert runner.calls == ["A.md#2"]
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
     assert progress.units == {}
     assert progress.last_failure is not None
-    assert not (output_dir / tg.RAW_TESTSET_FILENAME).exists()
+    assert progress.last_failure.error.startswith(type(error).__name__)
 
 
 def test_generate_chet_giua_hai_buoc_don_vi_co_dong_trong_raw_coi_la_da_xong(
@@ -379,7 +665,7 @@ def test_generate_chet_giua_hai_buoc_don_vi_co_dong_trong_raw_coi_la_da_xong(
     report = tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     assert "A.md#2" not in runner.calls
-    assert "A.md#2" in report.skipped_units
+    assert "A.md#2" in report.already_done_units
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
     assert progress.units["A.md#2"].questions == {
         "single_hop": 1,
@@ -486,21 +772,17 @@ def test_generate_append_chay_lai_don_vi_da_xong_noi_them_va_cong_don(
     assert new.llm_calls == old.llm_calls + 7
 
 
-def test_generate_don_vi_chua_xong_tu_dung_lai_kg_con_sot_don_vi_da_xong_chi_khi_co_co(
+def test_generate_skipped_khong_tu_chay_lai_con_done_chi_reuse_khi_co_co(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
     first = FakeUnitRunner(fail_on="B.md#2")
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(markdown_dir, output_dir, unit_runner=first)
-    # lần đầu chưa có gì đã xong -> tất cả đơn vị đều "chưa xong" -> tự cho phép dùng lại KG
+    tg.generate_testset(markdown_dir, output_dir, unit_runner=first)
     assert first.reuse_flags == [True] * len(first.calls)
 
     second = FakeUnitRunner()
     tg.generate_testset(markdown_dir, output_dir, unit_runner=second)
-    assert second.calls[0] == "B.md#2"  # làm tiếp đúng đơn vị lỗi
-    assert "A.md#2" not in second.calls
-    assert all(second.reuse_flags)
+    assert second.calls == []  # skipped không tự chạy lại
 
     appended = FakeUnitRunner()
     tg.generate_testset(
@@ -529,6 +811,10 @@ def test_append_khong_kem_only_bao_loi_dau_vao_truoc_khi_dung_runner(
         tg.generate_testset(markdown_dir, output_dir, append=True, unit_runner=runner)
     with pytest.raises(tg.EvalInputError, match="--only"):
         tg.plan_generation(markdown_dir, output_dir, append=True)
+    with pytest.raises(tg.EvalInputError, match="--only"):
+        tg.generate_testset(
+            markdown_dir, output_dir, retry_skipped=True, unit_runner=runner
+        )
 
     assert runner.calls == []
     assert not output_dir.exists()
@@ -577,6 +863,26 @@ def test_cli_dry_run_append_khong_kem_only_cung_thoat_ma_2_con_co_only_thi_in_ke
     assert with_only.exit_code == 0, with_only.output
     assert "A.md#2" in with_only.output
     assert not output_dir.exists()  # dry-run không tạo gì
+
+
+def test_cli_retry_skipped_khong_kem_only_thoat_ma_2(dirs: tuple[Path, Path]):
+    from tools import generate_testset
+
+    markdown_dir, output_dir = dirs
+    result = CliRunner().invoke(
+        generate_testset.app,
+        [
+            "generate",
+            "--retry-skipped",
+            "--markdown-dir",
+            str(markdown_dir),
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "--only" in result.output
 
 
 def test_append_khong_kem_only_bi_chan_du_progress_da_co_khong_chay_lai_50_don_vi(
@@ -686,10 +992,9 @@ def test_plan_generation_in_thu_tu_trang_thai_va_tom_tat_khong_can_key(
     dirs: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
 ):
     markdown_dir, output_dir = dirs
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(
-            markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="B.md#1")
-        )
+    tg.generate_testset(
+        markdown_dir, output_dir, unit_runner=FakeUnitRunner(fail_on="B.md#1")
+    )
 
     def _khong_duoc_goi(*_args: Any, **_kwargs: Any) -> Any:
         raise AssertionError("dry-run không được dựng runner/đọc key Groq")
@@ -704,10 +1009,9 @@ def test_plan_generation_in_thu_tu_trang_thai_va_tom_tat_khong_can_key(
     keys_in_order = [line.split("|")[2].strip() for line in lines[2:7]]
     assert keys_in_order == ["A.md#2", "B.md#2", "B.md#1", "A.md#1", "C.md#1"]
     assert "xong" in lines[2]
-    assert "lỗi lần cuối" in lines[4]
-    assert "CHẠY TIẾP THEO" in lines[4]
-    assert "CHẠY TIẾP THEO" not in plan.replace(lines[4], "")
-    assert "Đã xong 2/5 đơn vị, còn 3 đơn vị" in plan
+    assert "bỏ qua knowledge_graph" in lines[4]
+    assert "CHẠY TIẾP THEO" not in plan
+    assert "Đã xong 4/5 đơn vị, còn 0 đơn vị; bỏ qua 1 unit" in plan
     assert "ngày" in plan
 
 
@@ -915,6 +1219,7 @@ def test_cli_only_lap_lai_duoc_va_truyen_dung_tham_so(
             "B",
             "--reuse-knowledge-graph",
             "--append",
+            "--retry-skipped",
             "--testset-size",
             "12",
             "--output-dir",
@@ -926,6 +1231,7 @@ def test_cli_only_lap_lai_duoc_va_truyen_dung_tham_so(
     assert list(captured["only"]) == ["A.md#1", "B"]
     assert captured["reuse_knowledge_graph"] is True
     assert captured["append"] is True
+    assert captured["retry_skipped"] is True
     assert captured["testset_size"] == 12
     assert captured["output_dir"] == tmp_path
     assert "+3 câu" in result.output
@@ -948,6 +1254,45 @@ def test_cli_don_vi_loi_thoat_ma_khac_0_va_in_tom_tat(
     assert result.exit_code == 1
     assert "A.md#1" in result.output
     assert "TÓM TẮT" in result.output
+
+
+@pytest.mark.parametrize(
+    ("report", "expected_exit"),
+    [
+        (
+            tg.GenerationReport(
+                generated_units=[], already_done_units=["A.md#1"], new_questions=0
+            ),
+            0,
+        ),
+        (
+            tg.GenerationReport(generated_units=[], skipped_samples=1, new_questions=0),
+            3,
+        ),
+    ],
+    ids=["pham-vi-da-xong-sach", "du-lieu-suy-giam"],
+)
+def test_cli_chi_tra_3_khi_report_co_du_lieu_suy_giam(
+    monkeypatch: pytest.MonkeyPatch,
+    report: tg.GenerationReport,
+    expected_exit: int,
+):
+    from tools import generate_testset
+
+    monkeypatch.setattr(
+        generate_testset, "generate_testset", lambda *_args, **_kwargs: report
+    )
+    monkeypatch.setattr(
+        generate_testset, "summarize_progress", lambda *_args: "TÓM TẮT"
+    )
+
+    result = CliRunner().invoke(generate_testset.app, ["generate"])
+
+    assert result.exit_code == expected_exit, result.output
+    if expected_exit == 3:
+        assert "dữ liệu suy giảm" in result.output
+    else:
+        assert "đã xong từ trước 1" in result.output
 
 
 def test_cli_loi_dau_vao_thoat_ma_2(dirs: tuple[Path, Path]):

@@ -11,7 +11,7 @@ data/bm25/
 # Model artifacts tải cục bộ để chạy offline; không đưa weights lớn vào Git.
 models/
 
-# Backup pg_dump sinh bởi deploy/scripts/backup.sh (deploy_spec.md mục 8) — chứa dữ liệu người dùng.
+# Backup pg_dump sinh bởi deploy/backup.sh (deploy_spec.md mục 8) — chứa dữ liệu người dùng.
 deploy/backups/
 
 # Sinh ra bởi tools/generate_testset.py (evaluation_spec.md mục 4.5): KG chứa embedding nên rất
