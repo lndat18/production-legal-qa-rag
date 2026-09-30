@@ -70,6 +70,8 @@ _CLEAR_NON_RESEARCH_PREFIXES: Final = (
     "lập trình",
     "hãy lập trình",
     "sáng tác",
+    "hãy sáng tác",
+    "vui lòng sáng tác",
     "viết thơ",
     "làm thơ",
     "kể chuyện",
