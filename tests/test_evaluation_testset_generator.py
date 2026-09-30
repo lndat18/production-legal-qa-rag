@@ -207,6 +207,45 @@ class UnclassifiedFailureRunner(FakeUnitRunner):
         raise self.error
 
 
+class DuplicateValidCaseRunner(ClassifiedFailureRunner):
+    """Trả một case hợp lệ đã tồn tại trong raw để `append_raw_cases` bỏ trùng."""
+
+    def __init__(self, success_key: str, failure_keys: set[str]) -> None:
+        super().__init__(failure_keys)
+        self.success_key = success_key
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key != self.success_key:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        self.kg_paths.append(knowledge_graph_path)
+        self.reuse_flags.append(reuse_knowledge_graph)
+        return tg.UnitResult(
+            cases=[
+                GoldenTestCase(
+                    user_input="Câu trùng?",
+                    reference="Đáp án",
+                    reference_contexts=["Ngữ cảnh"],
+                    synthesizer_name=SINGLE,
+                )
+            ],
+            llm_calls=1,
+        )
+
+
 def _unit(document: str, index: int, chars: int) -> EvalUnit:
     return EvalUnit(
         source_document=document, index=index, title=f"Chương {index}", text="a" * chars
@@ -557,6 +596,39 @@ def test_unit_thanh_cong_reset_systemic_breaker_giua_hai_skipped_cung_chu_ky(
     assert report.skipped_units == ["A.md#2", "B.md#1"]
     assert report.has_degradation
     assert tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure is None
+
+
+def test_case_hop_le_bi_deduplicate_van_reset_systemic_breaker(
+    dirs: tuple[Path, Path],
+):
+    """`added=[]` không có nghĩa unit thất bại: `result.cases` hợp lệ phải reset breaker."""
+    markdown_dir, output_dir = dirs
+    tg.append_raw_cases(
+        output_dir / tg.RAW_TESTSET_FILENAME,
+        [
+            GoldenTestCase(
+                user_input="Câu trùng?",
+                reference="Đáp án",
+                reference_contexts=["Ngữ cảnh"],
+                synthesizer_name=SINGLE,
+            )
+        ],
+    )
+    runner = DuplicateValidCaseRunner(
+        "B.md#2", {"A.md#2", "B.md#1", "A.md#1"}
+    )
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    # A#2 lỗi đầu tiên; B#2 có case nhưng bị dedupe nên added=0 vẫn reset; B#1 chỉ là
+    # lỗi đầu tiên của chuỗi mới, đến A#1 mới là lỗi thứ hai phải dừng.
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1", "A.md#1"]
+    assert excinfo.value.unit_key == "A.md#1"
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["B.md#2"].status == "done"
+    assert progress.last_failure is not None
+    assert progress.last_failure.unit == "A.md#1"
 
 
 @pytest.mark.parametrize("error", [OSError("disk"), TypeError("bug")])
