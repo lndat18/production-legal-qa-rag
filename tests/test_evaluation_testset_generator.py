@@ -614,9 +614,7 @@ def test_case_hop_le_bi_deduplicate_van_reset_systemic_breaker(
             )
         ],
     )
-    runner = DuplicateValidCaseRunner(
-        "B.md#2", {"A.md#2", "B.md#1", "A.md#1"}
-    )
+    runner = DuplicateValidCaseRunner("B.md#2", {"A.md#2", "B.md#1", "A.md#1"})
 
     with pytest.raises(tg.UnitGenerationError) as excinfo:
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
