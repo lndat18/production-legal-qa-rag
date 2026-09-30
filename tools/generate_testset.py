@@ -89,9 +89,10 @@ def generate(
 ) -> None:
     """Sinh golden testset theo từng đơn vị.
 
-    Mã thoát: 0 khi hoàn tất hoặc bỏ qua unit không-quota; 1 chỉ khi hết quota ngày;
-    2 đầu vào/cấu hình sai (không gọi LLM). Câu đã sinh xong trước khi hết quota được giữ:
-    unit ở trạng thái "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3/3.4).
+    Mã thoát: 0 khi phạm vi sạch; 1 khi hết quota ngày, systemic breaker hoặc lỗi không
+    phân loại; 2 khi đầu vào/cấu hình sai; 3 khi chạy xong nhưng dữ liệu suy giảm vì có
+    unit/type/sample bị bỏ. Câu đã sinh trước khi hết quota được giữ: unit ở trạng thái
+    "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3/3.4).
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -125,13 +126,23 @@ def generate(
         typer.echo(f"{error}", err=True)
         typer.echo(summarize_progress(markdown_dir, output_dir), err=True)
         typer.echo(
-            "Chạy lại đúng lệnh này khi quota Groq được reset để làm tiếp.", err=True
+            "Đã dừng để tránh tốn token thêm; xem last_failure trước khi chạy lại.",
+            err=True,
         )
         raise typer.Exit(1) from error
     typer.echo(
         f"Xong {len(report.generated_units)} đơn vị, +{report.new_questions} câu "
-        f"(bỏ qua {len(report.skipped_units)}). {summarize_progress(markdown_dir, output_dir)}"
+        f"(đã xong từ trước {len(report.already_done_units)}, bỏ unit lần này "
+        f"{len(report.skipped_units)}, bỏ unit từ trước {len(report.existing_skipped_units)}, "
+        f"bỏ {report.skipped_question_types} loại câu và {report.skipped_samples} sample). "
+        f"{summarize_progress(markdown_dir, output_dir)}"
     )
+    if report.has_degradation:
+        typer.echo(
+            "Job hoàn tất nhưng dữ liệu suy giảm; cần kiểm tra checkpoint skipped.",
+            err=True,
+        )
+        raise typer.Exit(3)
 
 
 @app.command()

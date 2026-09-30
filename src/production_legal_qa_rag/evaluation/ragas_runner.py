@@ -25,7 +25,7 @@ from typing import Any, Final
 
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
 from pydantic import ValidationError
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
@@ -109,12 +109,78 @@ def _filter_persona_item_mapping(
     }
 
 
+def _exception_chain(error: BaseException) -> list[BaseException]:
+    """Lấy `cause`/`context` không lặp để phân biệt lỗi HTTP với lỗi semantic RAGAS."""
+    pending = [error]
+    seen: set[int] = set()
+    chain: list[BaseException] = []
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    return chain
+
+
+def _has_transport_error(error: BaseException) -> bool:
+    """True khi request đã là lỗi API/network, không được RAGAS retry lần nữa."""
+    transport_types = (
+        DailyQuotaExhaustedError,
+        APIStatusError,
+        APIConnectionError,
+        APITimeoutError,
+        RateLimitError,
+    )
+    return any(isinstance(item, transport_types) for item in _exception_chain(error))
+
+
+def _is_semantic_ragas_error(error: BaseException) -> bool:
+    """Chỉ các lỗi parse/validation sau HTTP 200 mới đủ điều kiện retry tầng RAGAS."""
+    if _has_transport_error(error):
+        return False
+    return any(
+        isinstance(item, (ValueError, KeyError, ValidationError))
+        for item in _exception_chain(error)
+    )
+
+
+def _is_classified_ragas_error(error: BaseException) -> bool:
+    """Lỗi RAGAS/API biết trước; `OSError`/`TypeError`/bug phải fail-fast."""
+    return _has_transport_error(error) or _is_semantic_ragas_error(error)
+
+
+def _error_type(error: BaseException | None) -> str:
+    """Tên nguyên nhân sâu nhất có ích cho checkpoint, không chứa message người dùng."""
+    if error is None:
+        return "InvalidSample"
+    return type(_exception_chain(error)[-1]).__name__
+
+
 @dataclass
 class CleanSingleHopSynthesizer(SingleHopSpecificQuerySynthesizer):
     """Single-hop luôn dùng `QueryStyle.PERFECT_GRAMMAR` (mục 4.3)."""
 
-    def prepare_combinations(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        return _force_perfect_grammar(super().prepare_combinations(*args, **kwargs))
+    def prepare_combinations(
+        self,
+        node: Node,
+        terms: list[str],
+        personas: list[Persona],
+        persona_concepts: dict[str, list[str]],
+    ) -> list[dict[str, Any]]:
+        """Ép grammar và bỏ persona lạ trước lookup `PersonaList` của RAGAS 0.4.3."""
+        return _force_perfect_grammar(
+            super().prepare_combinations(
+                node,
+                terms,
+                personas,
+                _filter_persona_item_mapping(personas, persona_concepts),
+            )
+        )
 
 
 @dataclass
@@ -360,14 +426,22 @@ class RagasUnitRunner:
             personas = _generate_personas_once_more(graph, self.llm)
         except DailyQuotaExhaustedError:
             raise
-        except Exception as error:  # noqa: BLE001 - bỏ toàn bộ loại câu, không dựng lại KG
+        except Exception as error:
+            if not _is_classified_ragas_error(error):
+                raise
             skipped_types = {_question_type(synthesizer) for synthesizer, _ in planned}
             logger.warning(
-                "Bỏ %d loại câu vì generate_personas lỗi hai lần: %s.",
+                "Bỏ %d loại câu vì generate_personas không dùng được: %s.",
                 len(skipped_types),
                 type(error).__name__,
             )
-            return _Generation(skipped_question_types=skipped_types)
+            return _finish_generation(
+                unit,
+                _Sampling(
+                    skipped_question_types=skipped_types,
+                    last_error=error,
+                ),
+            )
         sampling = asyncio.run(_sample_all(planned, graph, personas))
         return _finish_generation(unit, sampling)
 
@@ -391,6 +465,8 @@ class RagasUnitRunner:
             except DailyQuotaExhaustedError:
                 raise
             except Exception as error:
+                if not _is_classified_ragas_error(error):
+                    raise
                 usage = _token_delta(tokens_before, self.router.token_totals)
                 raise UnitGenerationError(
                     unit_key(unit),
@@ -402,11 +478,34 @@ class RagasUnitRunner:
                     reasoning_tokens=sum(item.reasoning_tokens for item in usage),
                 ) from error
             distribution, total = self._query_distribution(graph, quota)
-            generation = (
-                self._generate_cases(unit, graph, distribution, total)
-                if total > 0
-                else _Generation()
+            if total > 0:
+                generation = self._generate_cases(unit, graph, distribution, total)
+            elif quota.total > 0:
+                skipped_types = {
+                    kind
+                    for kind in ("single_hop", "abstract", "specific")
+                    if getattr(quota, kind) > 0
+                }
+                generation = _finish_generation(
+                    unit,
+                    _Sampling(skipped_question_types=skipped_types),
+                )
+            else:
+                generation = _Generation()
+        except UnitGenerationError as error:
+            usage = _token_delta(tokens_before, self.router.token_totals)
+            enriched = UnitGenerationError(
+                error.unit_key,
+                "không sinh được câu hợp lệ",
+                stage=error.stage,
+                error_type=error.error_type,
+                attempts=sum(self.router.call_counts) - calls_before,
+                tokens=sum(item.total_tokens for item in usage),
+                reasoning_tokens=sum(item.reasoning_tokens for item in usage),
+                skipped_samples=error.skipped_samples,
+                skipped_question_types=error.skipped_question_types,
             )
+            raise enriched from error
         finally:
             # Ghi cả khi đơn vị lỗi: token đã đốt vẫn cần thấy được trong log.
             usage = _token_delta(tokens_before, self.router.token_totals)
@@ -429,9 +528,9 @@ class _Sampling:
     rows: list[dict[str, Any]] = field(default_factory=list)
     skipped: int = 0
     skipped_question_types: set[str] = field(default_factory=set)
-    last_error: Exception | None = None
+    last_error: BaseException | None = None
     quota_error: DailyQuotaExhaustedError | None = None
-    interruption: Exception | None = None  # lỗi sinh scenario của một loại
+    interruption: BaseException | None = None  # lỗi sinh scenario của một loại
 
 
 @dataclass
@@ -441,7 +540,7 @@ class _Generation:
     cases: list[GoldenTestCase] = field(default_factory=list)
     skipped: int = 0
     skipped_question_types: set[str] = field(default_factory=set)
-    interruption: Exception | None = None
+    interruption: BaseException | None = None
 
 
 async def _sample_one(
@@ -460,13 +559,15 @@ async def _sample_one(
             except DailyQuotaExhaustedError as error:
                 sampling.quota_error = error
                 return None
-            except Exception as error:  # noqa: BLE001 - sample hỏng không được huỷ cả unit
-                if attempt == 0:
+            except Exception as error:
+                if _is_semantic_ragas_error(error) and attempt == 0:
                     continue
+                if not _is_classified_ragas_error(error):
+                    raise
                 sampling.skipped += 1
                 sampling.last_error = error
                 logger.warning(
-                    "Bỏ 1 sample của %s sau 2 lần thử: %s.",
+                    "Bỏ 1 sample của %s sau lỗi đã phân loại: %s.",
                     synthesizer.name,
                     type(error).__name__,
                 )
@@ -498,7 +599,9 @@ async def _sample_all(
         except DailyQuotaExhaustedError as error:
             sampling.quota_error = error
             break
-        except Exception as error:  # noqa: BLE001 - thu hẹp lỗi vào đúng loại câu
+        except Exception as error:
+            if not _is_classified_ragas_error(error):
+                raise
             kind = _question_type(synthesizer)
             sampling.skipped_question_types.add(kind)
             sampling.last_error = error
@@ -518,13 +621,22 @@ async def _sample_all(
 
 
 def _finish_generation(unit: EvalUnit, sampling: _Sampling) -> _Generation:
-    """Đổi sample thành câu; không có câu nào mà có lỗi thì raise, có câu thì trả kèm `interruption`."""
+    """Đổi sample thành câu; quota dương không bao giờ được checkpoint `done` rỗng."""
     cases = _to_cases(sampling.rows)
     skipped = sampling.skipped + len(sampling.rows) - len(cases)
     interruption = sampling.quota_error or sampling.interruption
-    if not cases and isinstance(interruption, DailyQuotaExhaustedError):
+    if not cases and (
+        skipped
+        or sampling.skipped_question_types
+        or isinstance(interruption, DailyQuotaExhaustedError)
+    ):
         raise UnitGenerationError(
-            unit_key(unit), f"không sinh được câu nào ({skipped} sample bị bỏ)"
+            unit_key(unit),
+            f"không sinh được câu nào ({skipped} sample bị bỏ)",
+            stage="generation",
+            error_type=_error_type(sampling.last_error or interruption),
+            skipped_samples=skipped,
+            skipped_question_types=sampling.skipped_question_types,
         ) from (interruption or sampling.last_error)
     return _Generation(
         cases=cases,
@@ -555,10 +667,8 @@ def _generate_personas_once_more(graph: KnowledgeGraph, llm: Any) -> list[Person
             return generate_personas_from_kg(
                 kg=graph, llm=llm, num_personas=NUM_PERSONAS
             )
-        except DailyQuotaExhaustedError:
-            raise
-        except Exception:
-            if attempt == 1:
+        except Exception as error:
+            if not _is_semantic_ragas_error(error) or attempt == 1:
                 raise
     raise AssertionError("vòng retry persona phải return hoặc raise")
 
@@ -573,10 +683,8 @@ async def _generate_scenarios_once_more(
     for attempt in range(2):
         try:
             return await synthesizer.generate_scenarios(count, graph, personas)
-        except DailyQuotaExhaustedError:
-            raise
-        except Exception:
-            if attempt == 1:
+        except Exception as error:
+            if not _is_semantic_ragas_error(error) or attempt == 1:
                 raise
     raise AssertionError("vòng retry scenario phải return hoặc raise")
 
