@@ -112,7 +112,7 @@ def test_build_groq_clients_tao_dung_9_client_doc_lap_tai_khoan():
     assert all(client.model_name == "openai/gpt-oss-120b" for client in clients)
 
 
-def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
+def test_build_groq_clients_tro_dung_groq_base_url_va_tat_sdk_retry():
     clients = ragas_runner._build_groq_clients(
         _settings(max_retries=5, timeout_seconds=90)
     )
@@ -121,7 +121,7 @@ def test_build_groq_clients_tro_dung_groq_base_url_va_forward_retry_timeout():
         client.openai_api_base == ragas_runner._GROQ_OPENAI_BASE_URL
         for client in clients
     )
-    assert all(client.max_retries == 5 for client in clients)
+    assert all(client.max_retries == 0 for client in clients)
     assert all(client.request_timeout == 90.0 for client in clients)
 
 
@@ -218,6 +218,35 @@ def test_multi_hop_ep_perfect_grammar_voi_chu_ky_keyword_cua_ragas(
     assert len(combinations) == 1
     assert combinations[0]["styles"] == [QueryStyle.PERFECT_GRAMMAR]
     assert len(combinations[0]["nodes"]) == 2
+
+
+@pytest.mark.parametrize(
+    ("synthesizer_class", "property_name"),
+    [
+        (ragas_runner.CleanMultiHopAbstractSynthesizer, "themes"),
+        (ragas_runner.CleanMultiHopSpecificSynthesizer, "entities"),
+    ],
+)
+def test_multi_hop_bo_mapping_persona_khong_duoc_ragas_sinh(
+    monkeypatch: pytest.MonkeyPatch, synthesizer_class: type, property_name: str
+):
+    """Ragas 0.4.3 ném KeyError nếu prompt trả key persona lạ."""
+    runner = _runner(monkeypatch)
+    synthesizer = synthesizer_class(llm=runner.llm)
+    nodes = [_node(**{property_name: ["thử việc"]})]
+
+    combinations = synthesizer.prepare_combinations(
+        nodes,
+        [["thử việc"]],
+        personas=_PERSONAS,
+        persona_item_mapping={"An": ["thử việc"], "Persona bịa": ["thử việc"]},
+        property_name=property_name,
+    )
+
+    assert combinations
+    assert [
+        [persona.name for persona in item["personas"]] for item in combinations
+    ] == [["An"]]
 
 
 # ==========================================================================
@@ -524,12 +553,12 @@ def test_run_unit_loi_sinh_cau_van_giu_kg_da_dung_xong_khong_de_lai_file_tam(
     _patch_generation(monkeypatch, runner, error=failure)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    with pytest.raises(UnitGenerationError) as excinfo:
-        runner.run_unit(
-            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
-        )
+    result = runner.run_unit(
+        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+    )
 
-    assert excinfo.value.__cause__ is failure
+    assert result.cases == []
+    assert result.skipped_question_types == {"single_hop"}
     assert kg_path.exists()
     assert list(kg_path.parent.glob("*.tmp")) == []
 
@@ -546,11 +575,13 @@ def test_run_unit_loi_khi_dung_kg_thi_khong_de_lai_file_kg(
     monkeypatch.setattr(runner, "_build_knowledge_graph", _build_fails)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(UnitGenerationError) as excinfo:
         runner.run_unit(
             _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
         )
 
+    assert excinfo.value.stage == "knowledge_graph"
+    assert excinfo.value.error_type == "RuntimeError"
     assert not kg_path.exists()
 
 
@@ -702,27 +733,15 @@ def _status_error(cls: type[Any], status: int, message: str = "lỗi") -> Any:
     return cls(message, response=httpx.Response(status, request=request), body=None)
 
 
-def test_run_config_chi_retry_loi_tam_thoi_voi_so_lan_va_thoi_gian_cho_han_che():
+def test_run_config_tat_retry_de_router_la_chu_so_huu_duy_nhat():
     config = ragas_runner.build_run_config()
 
-    assert config.max_retries == ragas_runner.MAX_RETRIES == 3
-    assert config.max_wait == ragas_runner.MAX_WAIT_SECONDS == 30
+    assert config.max_retries == ragas_runner.MAX_RETRIES == 0
+    assert config.max_wait == ragas_runner.MAX_WAIT_SECONDS == 0
     assert config.max_workers == ragas_runner.MAX_WORKERS
     types = config.exception_types
     assert isinstance(types, tuple)
-    for transient in (
-        RateLimitError,
-        APIConnectionError,
-        APITimeoutError,
-        InternalServerError,
-    ):
-        assert issubclass(transient, types)
-    for deterministic in (
-        BadRequestError,
-        AuthenticationError,
-        DailyQuotaExhaustedError,
-    ):
-        assert not issubclass(deterministic, types)
+    assert types == (RateLimitError,)
 
 
 def test_llm_dung_chung_run_config_cua_runner_ngay_tu_khoi_tao(
@@ -731,8 +750,8 @@ def test_llm_dung_chung_run_config_cua_runner_ngay_tu_khoi_tao(
     runner = _runner(monkeypatch)
 
     assert runner.llm.run_config is runner.run_config
-    assert runner.llm.run_config.exception_types == ragas_runner.RETRYABLE_EXCEPTIONS
-    assert runner.llm.run_config.max_retries == ragas_runner.MAX_RETRIES
+    assert runner.llm.run_config.exception_types == (RateLimitError,)
+    assert runner.llm.run_config.max_retries == 0
 
 
 def _raise_from_all_clients(
@@ -764,7 +783,7 @@ def test_llm_loi_tat_dinh_400_khong_bi_ragas_thu_lai_ngay_ca_khi_chua_goi_genera
     assert sum(runner.router.call_counts) == 1
 
 
-def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_9_tai_khoan(
+def test_llm_429_theo_phut_chi_thu_moi_credential_mot_lan_khong_nhan_retry(
     monkeypatch: pytest.MonkeyPatch,
 ):
     runner = _runner(monkeypatch)
@@ -778,7 +797,7 @@ def test_llm_429_theo_phut_bi_thu_lai_dung_max_retries_lan_moi_lan_du_9_tai_khoa
     with pytest.raises(RateLimitError):
         _ask(runner)
 
-    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES * 9
+    assert sum(runner.router.call_counts) == 9
 
 
 def test_llm_het_quota_ngay_dung_sau_mot_vong_va_tu_choi_moi_luot_sau_do(
@@ -941,7 +960,7 @@ def test_llm_loi_tam_thoi_5xx_ket_noi_timeout_bi_thu_lai_dung_max_retries_lan(
     with pytest.raises((InternalServerError, APIConnectionError)):
         _ask(runner)
 
-    assert sum(runner.router.call_counts) == ragas_runner.MAX_RETRIES
+    assert sum(runner.router.call_counts) == 2
 
 
 # ==========================================================================
@@ -955,10 +974,10 @@ def test_run_unit_loi_o_buoc_sinh_cau_thi_lan_sau_tai_dung_kg_khong_dung_lai(
     runner = _runner(monkeypatch)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
     first = _patch_generation(monkeypatch, runner, error=RuntimeError("429"))
-    with pytest.raises(UnitGenerationError):
-        runner.run_unit(
-            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
-        )
+    first_result = runner.run_unit(
+        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
+    )
+    assert first_result.skipped_question_types == {"single_hop"}
     saved_after_failure = kg_path.read_text("utf-8")
     reloaded = _FakeGraph()
     monkeypatch.setattr(KnowledgeGraph, "load", staticmethod(lambda _p: reloaded))
@@ -1131,11 +1150,11 @@ def test_loi_sinh_scenario_cua_mot_loai_giu_cac_loai_da_xong_truoc_do(
     result = _run(runner, tmp_path, quota)
 
     synthesizers = seen["synthesizers"]
-    assert len(result.cases) == 4
-    assert {case.synthesizer_name for case in result.cases} == {_SINGLE}
-    assert result.interruption is failure
-    assert synthesizers["abstract"].scenario_requests == [2]
-    assert synthesizers["specific"].scenario_requests == []
+    assert len(result.cases) == 6
+    assert result.skipped_question_types == {"abstract"}
+    assert result.interruption is None
+    assert synthesizers["abstract"].scenario_requests == [2, 2]
+    assert synthesizers["specific"].scenario_requests == [2]
 
 
 def test_sample_loi_bi_bo_va_dem_dung_ke_ca_sample_thieu_cot_bat_buoc(
@@ -1159,7 +1178,7 @@ def test_sample_loi_bi_bo_va_dem_dung_ke_ca_sample_thieu_cot_bat_buoc(
     assert result.interruption is None
 
 
-def test_moi_sample_deu_loi_thi_raise_unit_generation_error_va_van_giu_kg(
+def test_moi_sample_deu_loi_thi_bo_sau_hai_lan_va_van_giu_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
@@ -1167,12 +1186,12 @@ def test_moi_sample_deu_loi_thi_raise_unit_generation_error_va_van_giu_kg(
     _patch_generation(monkeypatch, runner, samples=outcomes)
     kg_path = tmp_path / "A__01.json"
 
-    with pytest.raises(UnitGenerationError, match="2 sample bị bỏ") as excinfo:
-        runner.run_unit(
-            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
-        )
+    result = runner.run_unit(
+        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+    )
 
-    assert isinstance(excinfo.value.__cause__, ValueError)
+    assert result.cases == []
+    assert result.skipped_samples == 2
     assert kg_path.exists()
 
 
@@ -1190,17 +1209,16 @@ def test_khong_sinh_duoc_cau_nao_thi_loi_goc_uu_tien_loi_quota_hon_loi_parse(
     assert excinfo.value.__cause__ is quota_error
 
 
-def test_chi_con_sample_thieu_cot_bat_buoc_thi_van_raise_nhung_khong_co_loi_goc(
+def test_chi_con_sample_thieu_cot_bat_buoc_thi_done_voi_so_cau_it_hon(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
     _patch_generation(monkeypatch, runner, samples=[_sample(0, reference="")])
 
-    with pytest.raises(UnitGenerationError) as excinfo:
-        _run(runner, tmp_path, QuestionQuota(single_hop=1))
+    result = _run(runner, tmp_path, QuestionQuota(single_hop=1))
 
-    assert excinfo.value.__cause__ is None
-    assert "1 sample bị bỏ" in str(excinfo.value)
+    assert result.cases == []
+    assert result.skipped_samples == 1
 
 
 def test_log_loi_sample_chi_co_ten_synthesizer_va_ten_loai_loi_khong_co_noi_dung(
@@ -1298,11 +1316,7 @@ def test_log_token_cuoi_don_vi_co_tong_va_theo_tai_khoan_ke_ca_khi_don_vi_loi(
     _spend_tokens_while_building(monkeypatch, runner)
 
     with caplog.at_level(logging.INFO, logger=ragas_runner.logger.name):
-        if unit_fails:
-            with pytest.raises(UnitGenerationError):
-                _run(runner, tmp_path, QuestionQuota(single_hop=1))
-        else:
-            _run(runner, tmp_path, QuestionQuota(single_hop=1))
+        _run(runner, tmp_path, QuestionQuota(single_hop=1))
 
     messages = [record.getMessage() for record in caplog.records]
     records = [message for message in messages if "Token A.md#1" in message]

@@ -77,6 +77,11 @@ def generate(
             "(sinh bù). Bắt buộc đi kèm --only."
         ),
     ),
+    retry_skipped: bool = typer.Option(
+        False,
+        "--retry-skipped",
+        help="Chạy lại một unit `skipped`; bắt buộc đi kèm --only.",
+    ),
     testset_size: int | None = typer.Option(
         None,
         help="Ghi đè tổng số câu (mặc định 240), chia cho các đơn vị đã chọn.",
@@ -84,9 +89,9 @@ def generate(
 ) -> None:
     """Sinh golden testset theo từng đơn vị.
 
-    Mã thoát: 0 xong; 1 một đơn vị lỗi giữa chừng (quota...), chạy lại để làm tiếp;
-    2 đầu vào/cấu hình sai (không gọi LLM). Câu đã sinh xong trước lúc lỗi được giữ: đơn
-    vị ở trạng thái "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3).
+    Mã thoát: 0 khi hoàn tất hoặc bỏ qua unit không-quota; 1 chỉ khi hết quota ngày;
+    2 đầu vào/cấu hình sai (không gọi LLM). Câu đã sinh xong trước khi hết quota được giữ:
+    unit ở trạng thái "dở" và lần chạy sau chỉ sinh phần còn thiếu (mục 3.3/3.4).
     """
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -99,6 +104,7 @@ def generate(
                     output_dir,
                     only=only,
                     append=append,
+                    retry_skipped=retry_skipped,
                     testset_size=testset_size,
                 )
             )
@@ -109,6 +115,7 @@ def generate(
             only=only,
             reuse_knowledge_graph=reuse_knowledge_graph,
             append=append,
+            retry_skipped=retry_skipped,
             testset_size=testset_size,
         )
     except EvalInputError as error:

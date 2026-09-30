@@ -14,6 +14,7 @@ from __future__ import annotations
 import itertools
 import logging
 import math
+import random
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -26,7 +27,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
 from pydantic import BaseModel, Field, PrivateAttr
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 _DAILY_LIMIT_MARKERS: Final = ("per day", "(tpd)", "(rpd)")
 
 # TPD của Groq là cửa sổ trượt nên tài khoản đã cạn thường hồi lại sau vài phút; trong
-# khoảng này ưu tiên các tài khoản khác thay vì tốn `1 + max_retries` request 429 mỗi lượt.
+# khoảng này ưu tiên các tài khoản khác thay vì tốn request 429 vô ích.
 _DAILY_COOLDOWN_SECONDS: Final = 300.0
 
 # 429 theo phút (TPM/RPM): chờ là hết. Nếu không có `retry-after` thì tạm nghỉ tài khoản đó 15
@@ -45,6 +46,11 @@ _DAILY_COOLDOWN_SECONDS: Final = 300.0
 _MINUTE_COOLDOWN_DEFAULT: Final = 15.0
 _MINUTE_COOLDOWN_MIN: Final = 1.0
 _MINUTE_COOLDOWN_MAX: Final = 60.0
+# Một lỗi mạng/5xx có thể xảy ra trước khi Groq nhận request, nên cho đúng một lượt thử nữa.
+# Không giao retry này cho SDK/RAGAS vì chúng không biết trạng thái từng credential.
+_MAX_TRANSIENT_RETRIES: Final = 1
+_TRANSIENT_RETRY_SECONDS: Final = 1.0
+_TRANSIENT_RETRY_JITTER_SECONDS: Final = 0.25
 
 
 class DailyQuotaExhaustedError(RuntimeError):
@@ -157,6 +163,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
     _cooldown_until: list[float] = PrivateAttr()
     # Tách riêng phần cooldown do hết quota NGÀY: bằng chứng ngày khác bản chất với 429 theo phút.
     _daily_cooldown_until: list[float] = PrivateAttr()
+    _disabled: list[bool] = PrivateAttr()
     _daily_quota_message: str | None = PrivateAttr(default=None)
     _token_totals: list[TokenTotals] = PrivateAttr()
     _missing_usage_warned: bool = PrivateAttr(default=False)
@@ -170,6 +177,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
         self._call_counts = [0] * count
         self._cooldown_until = [0.0] * count
         self._daily_cooldown_until = [0.0] * count
+        self._disabled = [False] * count
         self._token_totals = [TokenTotals() for _ in range(count)]
 
     def _now(self) -> float:
@@ -232,9 +240,8 @@ class GroqRoundRobinChatModel(BaseChatModel):
         """Thứ tự thử `n` client khác nhau cho MỘT lượt gọi; raise nếu breaker đã bật.
 
         Điểm bắt đầu lấy đúng một lần từ vòng round-robin, rồi duyệt
-        `(start + offset) % n`. Client đang cooldown (vừa báo hết quota ngày) xếp
-        CUỐI (sắp xếp ổn định) nhưng vẫn nằm trong danh sách: cần bằng chứng mới của
-        cả `n` client mới bật được breaker, và client đã hồi lại vẫn dùng được.
+        `(start + offset) % n`. Credential đang cooldown xếp cuối nhưng vẫn nằm trong danh
+        sách để mỗi lượt có bằng chứng mới trước khi bật breaker quota ngày.
         """
         with self._lock:
             if self._daily_quota_message is not None:
@@ -242,7 +249,13 @@ class GroqRoundRobinChatModel(BaseChatModel):
             count = len(self.clients)
             start = next(self._cycle)
             now = self._now()
-            order = [(start + offset) % count for offset in range(count)]
+            order = [
+                (start + offset) % count
+                for offset in range(count)
+                if not self._disabled[(start + offset) % count]
+            ]
+            if not order:
+                raise RuntimeError("Không còn credential Groq hoạt động.")
             order.sort(key=lambda index: self._cooldown_until[index] > now)
             return order
 
@@ -250,8 +263,8 @@ class GroqRoundRobinChatModel(BaseChatModel):
         with self._lock:
             self._call_counts[index] += 1
 
-    def _mark_result(self, index: int, *, daily_limited: bool) -> None:
-        """Ghi kết quả: hết quota ngày thì cooldown 5 phút; ngược lại (thành công) xoá cooldown."""
+    def _mark_result(self, index: int, *, daily_limited: bool = False) -> None:
+        """Ghi kết quả: quota ngày cooldown ngắn; thành công xoá cooldown."""
         with self._lock:
             if daily_limited:
                 until = self._now() + _DAILY_COOLDOWN_SECONDS
@@ -267,11 +280,16 @@ class GroqRoundRobinChatModel(BaseChatModel):
         with self._lock:
             self._cooldown_until[index] = max(self._cooldown_until[index], until)
 
+    def _disable(self, index: int) -> None:
+        """Không dùng lại credential bị từ chối xác thực/quyền trong process hiện tại."""
+        with self._lock:
+            self._disabled[index] = True
+
     def _minute_wait_seconds(self) -> float:
         """Số giây cần chờ khi CẢ `n` tài khoản đều đang cooldown phút; 0 trong mọi trường hợp khác.
 
-        Không chờ khi breaker đã bật (lượt gọi sẽ bị từ chối ngay) hay khi có bất kỳ cooldown
-        NGÀY nào còn hiệu lực: khi đó phải thử thật để lấy bằng chứng mới cho breaker (mục 3.1).
+        Không chờ khi breaker đã bật hay khi có cooldown ngày: cần probe thật để lấy bằng
+        chứng mới cho breaker.
         """
         with self._lock:
             now = self._now()
@@ -308,6 +326,26 @@ class GroqRoundRobinChatModel(BaseChatModel):
             self._daily_quota_message = message
         return DailyQuotaExhaustedError(message)
 
+    @staticmethod
+    def _is_transient(error: Exception) -> bool:
+        """Các lỗi an toàn để router thử đúng một credential sẵn sàng khác."""
+        if isinstance(error, (APIConnectionError, APITimeoutError)):
+            return True
+        return isinstance(error, APIStatusError) and (
+            error.status_code == 498 or 500 <= error.status_code <= 599
+        )
+
+    @staticmethod
+    def _is_auth_error(error: Exception) -> bool:
+        """401/403 là lỗi credential, không gửi lại cùng credential trong lượt chạy."""
+        return isinstance(error, APIStatusError) and error.status_code in (401, 403)
+
+    def _transient_retry_delay(self) -> float:
+        """Backoff ngắn có jitter để các worker không retry đồng thời."""
+        return _TRANSIENT_RETRY_SECONDS + random.uniform(
+            0.0, _TRANSIENT_RETRY_JITTER_SECONDS
+        )
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -317,10 +355,10 @@ class GroqRoundRobinChatModel(BaseChatModel):
     ) -> ChatResult:
         """Gọi client kế tiếp trong vòng round-robin; bounded fallback khi 429.
 
-        Thử tối đa `len(clients)` client KHÁC NHAU cho MỘT lượt gọi (xem
-        `_plan_attempts`); hết vòng vẫn lỗi thì raise nguyên lỗi cuối, không giữ vòng
-        lặp vô hạn, không tự ý bỏ qua lượt gọi. Lỗi khác 429 (400/401/403/413...) là
-        lỗi tất định, không thử sang tài khoản khác.
+        429 chỉ chuyển sang credential `ready` khác và áp cooldown theo `retry-after`.
+        Timeout/kết nối/5xx/498 chỉ có MỘT retry (backoff + jitter); 400/413 không retry,
+        401/403 disable credential cho phần còn lại của process. SDK/RAGAS đều được cấu
+        hình `max_retries=0`, nên đây là tầng retry HTTP duy nhất.
 
         Khi CẢ `n` tài khoản đang cooldown vì 429 theo phút (và không có cooldown ngày), chờ
         tới lúc tài khoản sớm nhất hết cooldown (tối đa 60 giây) trước khi thử, thay vì bắn
@@ -332,7 +370,6 @@ class GroqRoundRobinChatModel(BaseChatModel):
         task lỗi, nên không chặn ở đây thì mỗi task còn lại vẫn tự đốt
         `len(clients)` x (retry SDK) request vô ích và ăn RPD của các tài khoản.
         """
-        # Chờ TRƯỚC khi chốt thứ tự để tài khoản vừa hết cooldown được xếp đầu; không giữ lock.
         wait = self._minute_wait_seconds()
         if wait > 0:
             self._sleep(wait)
@@ -342,6 +379,8 @@ class GroqRoundRobinChatModel(BaseChatModel):
             kwargs if effort is None else {"reasoning_effort": effort, **kwargs}
         )
         errors: list[RateLimitError] = []
+        transient_retries = 0
+        last_transient_error: Exception | None = None
         for index in order:
             self._record_attempt(index)
             try:
@@ -354,12 +393,31 @@ class GroqRoundRobinChatModel(BaseChatModel):
                     self._mark_result(index, daily_limited=True)
                 else:
                     self._mark_minute_limited(index, error)
+            except Exception as error:
+                last_transient_error = error
+                if self._is_auth_error(error):
+                    self._disable(index)
+                if (
+                    not self._is_transient(error)
+                    or transient_retries >= _MAX_TRANSIENT_RETRIES
+                ):
+                    raise
+                transient_retries += 1
+                self._sleep(self._transient_retry_delay())
             else:
                 self._mark_result(index, daily_limited=False)
                 self._record_usage(index, result)
                 return result
 
-        # `model_post_init` đã chặn `clients` rỗng nên `errors` có đủ `n` phần tử khác nhau.
-        if all(_is_daily_limit(error) for error in errors):
+        # `errors` chỉ chứa 429; credential disabled không phải bằng chứng quota ngày.
+        if (
+            errors
+            and len(errors) == len(order)
+            and all(_is_daily_limit(error) for error in errors)
+        ):
             raise self._trip_breaker(errors) from errors[-1]
-        raise errors[-1]
+        if errors:
+            raise errors[-1]
+        if last_transient_error is not None:
+            raise last_transient_error
+        raise RuntimeError("Router Groq không gửi được request.")

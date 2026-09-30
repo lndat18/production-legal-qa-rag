@@ -188,17 +188,13 @@ def test_loi_http_chi_ghi_dong_dau_da_cat_ngan_va_khong_lo_noi_dung(
     message = "Rate limit reached " + "x" * 500 + "\nNỘI DUNG BÍ MẬT của câu hỏi"
     runner = Runner(fail_on="A.md#2", error=HttpLikeError(message))
 
-    with (
-        caplog.at_level(logging.INFO, logger=tg.logger.name),
-        pytest.raises(tg.UnitGenerationError) as excinfo,
-    ):
+    with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
-    failure = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure
-    assert failure is not None
-    assert failure.error.startswith("HttpLikeError (HTTP 429): Rate limit reached")
-    assert len(failure.error) <= len("HttpLikeError (HTTP 429): ") + 200
-    for text in (failure.error, str(excinfo.value), caplog.text):
+    unit = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).units["A.md#2"]
+    assert unit.status == "skipped"
+    assert unit.error_type == "HttpLikeError"
+    for text in (caplog.text,):
         assert "BÍ MẬT" not in text
 
 
@@ -208,15 +204,12 @@ def test_loi_khong_co_status_http_chi_ghi_ten_loai_khong_ghi_thong_diep(
     markdown_dir, output_dir = dirs
     runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
 
-    with (
-        caplog.at_level(logging.INFO, logger=tg.logger.name),
-        pytest.raises(tg.UnitGenerationError),
-    ):
+    with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
-    failure = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure
-    assert failure is not None
-    assert failure.error == "ValueError"
+    unit = tg.load_progress(output_dir / tg.PROGRESS_FILENAME).units["A.md#2"]
+    assert unit.status == "skipped"
+    assert unit.error_type == "ValueError"
     assert "bí mật" not in caplog.text
 
 
@@ -226,13 +219,12 @@ def test_log_loi_don_vi_co_ten_loai_loi_va_frame_nhung_khong_co_noi_dung_loi(
     markdown_dir, output_dir = dirs
     runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
 
-    with (
-        caplog.at_level(logging.INFO, logger=tg.logger.name),
-        pytest.raises(tg.UnitGenerationError),
-    ):
+    with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
-    records = [r for r in caplog.records if "lỗi, dừng" in r.getMessage()]
+    records = [
+        r for r in caplog.records if "bỏ qua ở knowledge_graph" in r.getMessage()
+    ]
     assert len(records) == 1
     message = records[0].getMessage()
     assert "traceback: ValueError @ " in message
@@ -245,20 +237,19 @@ def test_hai_lan_loi_lien_tiep_last_failure_tro_sang_don_vi_moi(
     dirs: tuple[Path, Path],
 ):
     markdown_dir, output_dir = dirs
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(
-            markdown_dir, output_dir, unit_runner=Runner(fail_on="B.md#1")
-        )
+    tg.generate_testset(markdown_dir, output_dir, unit_runner=Runner(fail_on="B.md#1"))
 
-    with pytest.raises(tg.UnitGenerationError):
-        tg.generate_testset(
-            markdown_dir, output_dir, unit_runner=Runner(fail_on="A.md#1")
-        )
+    tg.generate_testset(
+        markdown_dir,
+        output_dir,
+        only=["B.md#1"],
+        retry_skipped=True,
+        unit_runner=Runner(fail_on="B.md#1"),
+    )
 
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
-    assert set(progress.units) == {"A.md#2", "B.md#2", "B.md#1"}
-    assert progress.last_failure is not None
-    assert progress.last_failure.unit == "A.md#1"
+    assert progress.units["B.md#1"].status == "skipped"
+    assert progress.last_failure is None
 
 
 # ==========================================================================

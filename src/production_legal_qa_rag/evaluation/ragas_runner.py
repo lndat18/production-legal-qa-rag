@@ -3,11 +3,11 @@
 Toàn bộ code chạm `ragas` nằm ở đây (import ở mức module) để `testset_generator.py`
 không cần dependency-group `eval`; chỉ import module này qua `build_unit_runner`.
 
-Chữ ký ragas đã đọc trực tiếp trên `ragas==0.4.3` cài thật: cả 3 synthesizer
-(`prepare_combinations` của single-hop nhận `(node, terms, personas, persona_concepts)`,
-của multi-hop nhận `(nodes, combinations, personas, persona_item_mapping,
-property_name)`) đều trả `list[dict]` có khoá `"styles"` — nên một hàm ép
-`PERFECT_GRAMMAR` dùng chung, bọc bằng `*args, **kwargs`, đúng cho cả ba.
+Chữ ký ragas đã đọc trực tiếp trên `ragas==0.4.3` cài thật: `prepare_combinations`
+của single-hop nhận `(node, terms, personas, persona_concepts)`, còn multi-hop nhận
+`(nodes, combinations, personas, persona_item_mapping, property_name)` và đều trả
+`list[dict]` có khoá `"styles"`. Multi-hop dùng chữ ký tường minh để lọc mapping
+persona không khớp trước khi gọi API Ragas.
 
 Bước sinh câu KHÔNG gọi `TestsetGenerator.generate` (huỷ cả lô khi một sample lỗi, mà
 `raise_exceptions=False` làm ragas 0.4.3 crash trên `NaN`) mà tự lặp theo API công khai của
@@ -25,7 +25,7 @@ from typing import Any, Final
 
 from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI
-from openai import APIConnectionError, InternalServerError, RateLimitError
+from openai import RateLimitError
 from pydantic import ValidationError
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
@@ -75,14 +75,10 @@ NUM_PERSONAS: Final = 3
 # không đổi (mục 3.2 C).
 _KG_REASONING_EFFORT: Final = "low"
 
-# Retry của ragas (mục 3.1, 8). Mặc định `RunConfig` là 10 lần với MỌI `Exception`: lỗi tất
-# định (400/401/413) bị thử lại vô ích và khi hết quota mỗi lượt gọi đốt hàng trăm request
-# (mỗi lượt đã là 9 tài khoản x retry SDK). Chỉ thử lại lỗi tạm thời, ít lần, chờ ngắn.
-MAX_RETRIES: Final = 3
-MAX_WAIT_SECONDS: Final = 30
-# 429 (`RateLimitError`, theo phút), timeout + lỗi kết nối (`APIConnectionError`), 5xx
-# (`InternalServerError`). Cố ý không có `DailyQuotaExhaustedError`, 400/401/403/413.
-RETRYABLE_EXCEPTIONS: Final = (RateLimitError, APIConnectionError, InternalServerError)
+# Retry HTTP chỉ do `GroqRoundRobinChatModel` sở hữu. SDK/RAGAS retry đồng thời sẽ nhân
+# request/token khi một phản hồi đã lỗi sau khi Groq nhận prompt (mục 3.4).
+MAX_RETRIES: Final = 0
+MAX_WAIT_SECONDS: Final = 0
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8),
 # cùng pattern với generation/generator.py.
@@ -94,6 +90,23 @@ def _force_perfect_grammar(combinations: list[dict[str, Any]]) -> list[dict[str,
     for combination in combinations:
         combination["styles"] = [QueryStyle.PERFECT_GRAMMAR]
     return combinations
+
+
+def _filter_persona_item_mapping(
+    personas: list[Persona], persona_item_mapping: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    """Chỉ giữ mapping cho persona thực sự đã được Ragas sinh.
+
+    Prompt ghép theme-persona đôi khi trả một key persona không thuộc `personas`.
+    Ragas 0.4.3 tra key đó qua `PersonaList.__getitem__` và ném `KeyError`, làm hỏng
+    cả đơn vị dù các mapping còn lại dùng được.
+    """
+    persona_names = {persona.name for persona in personas}
+    return {
+        name: concepts
+        for name, concepts in persona_item_mapping.items()
+        if name in persona_names
+    }
 
 
 @dataclass
@@ -108,25 +121,57 @@ class CleanSingleHopSynthesizer(SingleHopSpecificQuerySynthesizer):
 class CleanMultiHopAbstractSynthesizer(MultiHopAbstractQuerySynthesizer):
     """Multi-hop abstract luôn dùng `QueryStyle.PERFECT_GRAMMAR`."""
 
-    def prepare_combinations(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        return _force_perfect_grammar(super().prepare_combinations(*args, **kwargs))
+    def prepare_combinations(
+        self,
+        nodes: Any,
+        combinations: list[list[str]],
+        personas: list[Persona],
+        persona_item_mapping: dict[str, list[str]],
+        property_name: str,
+    ) -> list[dict[str, Any]]:
+        """Ép grammar sạch và bỏ mapping persona không khớp trước khi gọi Ragas."""
+        return _force_perfect_grammar(
+            super().prepare_combinations(
+                nodes,
+                combinations,
+                personas,
+                _filter_persona_item_mapping(personas, persona_item_mapping),
+                property_name,
+            )
+        )
 
 
 @dataclass
 class CleanMultiHopSpecificSynthesizer(MultiHopSpecificQuerySynthesizer):
     """Multi-hop specific luôn dùng `QueryStyle.PERFECT_GRAMMAR`."""
 
-    def prepare_combinations(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        return _force_perfect_grammar(super().prepare_combinations(*args, **kwargs))
+    def prepare_combinations(
+        self,
+        nodes: Any,
+        combinations: list[list[str]],
+        personas: list[Persona],
+        persona_item_mapping: dict[str, list[str]],
+        property_name: str,
+    ) -> list[dict[str, Any]]:
+        """Ép grammar sạch và bỏ mapping persona không khớp trước khi gọi Ragas."""
+        return _force_perfect_grammar(
+            super().prepare_combinations(
+                nodes,
+                combinations,
+                personas,
+                _filter_persona_item_mapping(personas, persona_item_mapping),
+                property_name,
+            )
+        )
 
 
 def build_run_config() -> RunConfig:
-    """`RunConfig` dùng chung cho dựng KG, `adapt_prompts` và sinh câu (chỉ retry lỗi tạm thời)."""
+    """`RunConfig` không retry: router là chủ sở hữu retry HTTP duy nhất."""
     return RunConfig(
         max_workers=MAX_WORKERS,
         max_retries=MAX_RETRIES,
         max_wait=MAX_WAIT_SECONDS,
-        exception_types=RETRYABLE_EXCEPTIONS,
+        exception_types=(RateLimitError,),
     )
 
 
@@ -160,7 +205,7 @@ def _build_groq_clients(settings: TestsetGeneratorSettings) -> list[ChatOpenAI]:
             base_url=_GROQ_OPENAI_BASE_URL,
             api_key=api_key,
             model=settings.model_name,
-            max_retries=settings.max_retries,
+            max_retries=0,
             timeout=float(settings.timeout_seconds),
         )
         for api_key in api_keys
@@ -304,9 +349,6 @@ class RagasUnitRunner:
         Raises:
             UnitGenerationError: Không sinh được câu nào mà có lỗi.
         """
-        personas = generate_personas_from_kg(
-            kg=graph, llm=self.llm, num_personas=NUM_PERSONAS
-        )
         splits, _ = calculate_split_values(
             [weight for _, weight in distribution], total
         )
@@ -314,6 +356,18 @@ class RagasUnitRunner:
             (synthesizer, count)
             for (synthesizer, _), count in zip(distribution, splits, strict=True)
         ]
+        try:
+            personas = _generate_personas_once_more(graph, self.llm)
+        except DailyQuotaExhaustedError:
+            raise
+        except Exception as error:  # noqa: BLE001 - bỏ toàn bộ loại câu, không dựng lại KG
+            skipped_types = {_question_type(synthesizer) for synthesizer, _ in planned}
+            logger.warning(
+                "Bỏ %d loại câu vì generate_personas lỗi hai lần: %s.",
+                len(skipped_types),
+                type(error).__name__,
+            )
+            return _Generation(skipped_question_types=skipped_types)
         sampling = asyncio.run(_sample_all(planned, graph, personas))
         return _finish_generation(unit, sampling)
 
@@ -330,9 +384,23 @@ class RagasUnitRunner:
         calls_before = sum(self.router.call_counts)
         tokens_before = self.router.token_totals
         try:
-            graph = self._obtain_knowledge_graph(
-                unit, knowledge_graph_path, reuse=reuse_knowledge_graph
-            )
+            try:
+                graph = self._obtain_knowledge_graph(
+                    unit, knowledge_graph_path, reuse=reuse_knowledge_graph
+                )
+            except DailyQuotaExhaustedError:
+                raise
+            except Exception as error:
+                usage = _token_delta(tokens_before, self.router.token_totals)
+                raise UnitGenerationError(
+                    unit_key(unit),
+                    "dựng knowledge graph thất bại",
+                    stage="knowledge_graph",
+                    error_type=type(error).__name__,
+                    attempts=sum(self.router.call_counts) - calls_before,
+                    tokens=sum(item.total_tokens for item in usage),
+                    reasoning_tokens=sum(item.reasoning_tokens for item in usage),
+                ) from error
             distribution, total = self._query_distribution(graph, quota)
             generation = (
                 self._generate_cases(unit, graph, distribution, total)
@@ -349,6 +417,7 @@ class RagasUnitRunner:
             tokens=sum(item.total_tokens for item in usage),
             reasoning_tokens=sum(item.reasoning_tokens for item in usage),
             skipped_samples=generation.skipped,
+            skipped_question_types=generation.skipped_question_types,
             interruption=generation.interruption,
         )
 
@@ -359,6 +428,7 @@ class _Sampling:
 
     rows: list[dict[str, Any]] = field(default_factory=list)
     skipped: int = 0
+    skipped_question_types: set[str] = field(default_factory=set)
     last_error: Exception | None = None
     quota_error: DailyQuotaExhaustedError | None = None
     interruption: Exception | None = None  # lỗi sinh scenario của một loại
@@ -370,6 +440,7 @@ class _Generation:
 
     cases: list[GoldenTestCase] = field(default_factory=list)
     skipped: int = 0
+    skipped_question_types: set[str] = field(default_factory=set)
     interruption: Exception | None = None
 
 
@@ -383,18 +454,25 @@ async def _sample_one(
     async with semaphore:
         if sampling.quota_error is not None:
             return None  # breaker đã bật: không đưa sample mới
-        try:
-            sample = await synthesizer.generate_sample(scenario)
-        except DailyQuotaExhaustedError as error:
-            sampling.quota_error = error
-            return None
-        except Exception as error:  # noqa: BLE001 - một sample hỏng không được huỷ cả đơn vị
-            sampling.skipped += 1
-            sampling.last_error = error
-            logger.warning(
-                "Bỏ 1 sample của %s: %s.", synthesizer.name, type(error).__name__
-            )
-            return None
+        for attempt in range(2):
+            try:
+                sample = await synthesizer.generate_sample(scenario)
+            except DailyQuotaExhaustedError as error:
+                sampling.quota_error = error
+                return None
+            except Exception as error:  # noqa: BLE001 - sample hỏng không được huỷ cả unit
+                if attempt == 0:
+                    continue
+                sampling.skipped += 1
+                sampling.last_error = error
+                logger.warning(
+                    "Bỏ 1 sample của %s sau 2 lần thử: %s.",
+                    synthesizer.name,
+                    type(error).__name__,
+                )
+                return None
+            else:
+                break
     row: dict[str, Any] = sample.model_dump(exclude_none=True)
     row["synthesizer_name"] = synthesizer.name
     return row
@@ -414,10 +492,22 @@ async def _sample_all(
     semaphore = asyncio.Semaphore(MAX_WORKERS)
     for synthesizer, count in planned:
         try:
-            scenarios = await synthesizer.generate_scenarios(count, graph, personas)
-        except Exception as error:  # noqa: BLE001 - lỗi một loại không mất các loại đã xong
-            sampling.interruption = error
+            scenarios = await _generate_scenarios_once_more(
+                synthesizer, count, graph, personas
+            )
+        except DailyQuotaExhaustedError as error:
+            sampling.quota_error = error
             break
+        except Exception as error:  # noqa: BLE001 - thu hẹp lỗi vào đúng loại câu
+            kind = _question_type(synthesizer)
+            sampling.skipped_question_types.add(kind)
+            sampling.last_error = error
+            logger.warning(
+                "Bỏ loại câu %s sau 2 lần tạo scenario lỗi: %s.",
+                kind,
+                type(error).__name__,
+            )
+            continue
         rows = await asyncio.gather(
             *(_sample_one(synthesizer, item, semaphore, sampling) for item in scenarios)
         )
@@ -432,11 +522,63 @@ def _finish_generation(unit: EvalUnit, sampling: _Sampling) -> _Generation:
     cases = _to_cases(sampling.rows)
     skipped = sampling.skipped + len(sampling.rows) - len(cases)
     interruption = sampling.quota_error or sampling.interruption
-    if not cases and (interruption is not None or skipped > 0):
+    if not cases and isinstance(interruption, DailyQuotaExhaustedError):
         raise UnitGenerationError(
             unit_key(unit), f"không sinh được câu nào ({skipped} sample bị bỏ)"
         ) from (interruption or sampling.last_error)
-    return _Generation(cases=cases, skipped=skipped, interruption=interruption)
+    return _Generation(
+        cases=cases,
+        skipped=skipped,
+        skipped_question_types=sampling.skipped_question_types,
+        interruption=interruption,
+    )
+
+
+def _question_type(synthesizer: BaseSynthesizer[Any]) -> str:
+    """Ánh xạ synthesizer nội bộ sang khoá progress, không dựa vào text exception RAGAS."""
+    name = getattr(synthesizer, "name", "")
+    if "multi_hop_abstract" in name:
+        return "abstract"
+    if "multi_hop_specific" in name:
+        return "specific"
+    if isinstance(synthesizer, CleanMultiHopAbstractSynthesizer):
+        return "abstract"
+    if isinstance(synthesizer, CleanMultiHopSpecificSynthesizer):
+        return "specific"
+    return "single_hop"
+
+
+def _generate_personas_once_more(graph: KnowledgeGraph, llm: Any) -> list[Persona]:
+    """Sinh persona tối đa hai lần; chỉ lỗi RAGAS sau HTTP 200 mới đến retry thứ hai."""
+    for attempt in range(2):
+        try:
+            return generate_personas_from_kg(
+                kg=graph, llm=llm, num_personas=NUM_PERSONAS
+            )
+        except DailyQuotaExhaustedError:
+            raise
+        except Exception:
+            if attempt == 1:
+                raise
+    raise AssertionError("vòng retry persona phải return hoặc raise")
+
+
+async def _generate_scenarios_once_more(
+    synthesizer: BaseSynthesizer[Any],
+    count: int,
+    graph: KnowledgeGraph,
+    personas: list[Persona],
+) -> list[BaseScenario]:
+    """Tạo scenario tối đa hai lần; không nhân retry ở tầng SDK/RAGAS."""
+    for attempt in range(2):
+        try:
+            return await synthesizer.generate_scenarios(count, graph, personas)
+        except DailyQuotaExhaustedError:
+            raise
+        except Exception:
+            if attempt == 1:
+                raise
+    raise AssertionError("vòng retry scenario phải return hoặc raise")
 
 
 def _token_delta(
