@@ -2,7 +2,7 @@
 
 > Cô đọng 2026-09-30 từ bản 1.396 dòng (lịch sử pilot và số đo cũ: git history). Giữ số mục vì code/spec khác tham chiếu (3.1, 3.2, 3.3, 4.4, 4.5, 8 nhất là).
 > **Trạng thái:** Phase 1 đã implement (PR #55, #60, #63, #64: điều phối 9 key, đếm token, giữ phần đã sinh); sinh testset **chạy dở: 33/50 đơn vị, 97 câu** (mục 4.6). Chính sách retry/pass tiết kiệm token (mục 3.4) đã implement trên branch `feature/eval-ragas-retry-pass`.
-> Phase 2 (mục 11) **đã thiết kế, chưa implement**.
+> Phase 2 (mục 11) **đã thiết kế, chưa implement**. Mục 12 (lệnh `translate`, dịch mẫu tiếng Anh trong raw bằng Google Apps Script) **đã chốt thiết kế 2026-09-30, chưa implement**.
 
 ## 0. Tinh hoa: bài học xương máu và phương pháp đúng
 
@@ -321,3 +321,76 @@ Thêm vào `evaluation/` (chỉ `scoring.py` import `ragas`): `run_models.py` (`
 
 Sau khi implement, chạy S1→S6 với `--limit 10–20` (có thể trỏ raw khi chưa `finalize`) ra `--output-dir data/eval/phase2_pilot`. Phải trả lời: token và số lượt gọi thật từng stage (thay 11.8 → số ngày cho 180 câu); venv `eval` chạy được S1/S5 không (11.9.1); S3 trên GPU 2GB có OOM không và `batch_size` nào đủ; `answer_relevancy` với embedding có segment cho điểm hợp lý; **rải 9 key hoạt động thật**
 (tải xấp xỉ đều; câu gán cho tài khoản hết quota ra `error` rồi `--retry-failed` sang key khác); resume (Ctrl+C rồi chạy lại từng stage không làm lại bản ghi xong); `report.json` đọc được, đủ các lát. Chỉ chạy full khi pilot đạt.
+
+
+## 12. Dịch mẫu tiếng Anh trong raw — lệnh `translate` (chốt 2026-09-30, chưa implement)
+
+### 12.1 Vấn đề, mục tiêu, phạm vi
+
+`gpt-oss-120b` đôi khi trả `user_input`/`reference` bằng tiếng Anh dù đã `adapt_prompts("vietnamese")` (mục 4.1). **Số đo cũ:** trên raw 141 câu có ~10 mẫu (~7%) tiếng Anh (dòng số 13, 31, 39, 41, 45, 55, 67, 69, 120, 130); `reference_contexts` chưa có mẫu nào tiếng Anh (chúng là trích nguyên văn luật).
+**Số đo cần cập nhật (chưa đo):** số mẫu/trường tiếng Anh trên raw hiện tại 203 câu — lấy từ `translate --dry-run` (12.6) là việc ĐẦU TIÊN, ghi kết quả vào đây trước khi dịch. Bỏ mẫu tiếng Anh thì lệch phân bố (mục 4.2 cắt phân tầng) và tốn quota sinh bù; giữ nguyên thì Phase 2 chấm câu tiếng Việt bằng đáp án tiếng Anh (`reference`) và retrieval tiếng Việt bị hỏi bằng câu tiếng Anh. Dịch là cách rẻ nhất.
+
+**Làm:** lệnh `translate` (thêm vào `tools/generate_testset.py`) đọc raw, phát hiện trường tiếng Anh, dịch qua Google Apps Script web app của người dùng, ghi đè tại chỗ và giữ bản gốc, kiểm bằng code rằng tham chiếu pháp lý không đổi, gắn cờ mẫu nghi ngờ. Chạy **trước `finalize`**, **không chạy song song `generate`** (cả hai ghi raw; chạy chồng sẽ mất dữ liệu).
+**Không làm:** dịch mẫu đã là tiếng Việt; dịch `synthesizer_name`/`source_*`; tự sửa bằng LLM những gì bản dịch làm sai (thuật ngữ, dính chữ — người dùng soát tay, mục 12.7); thử lại tự động mẫu bị cờ; API dịch khác (Google Cloud Translation v2, Groq `gpt-oss-20b`, `deep-translator` đã **loại hẳn**: v2 cần thẻ thanh toán, Groq tốn TPD vốn là nút thắt, `deep-translator` bị Google trả captcha và không cập nhật từ 2023-06); khoá/lock giữa `generate` và `translate` (chỉ quy ước vận hành); cache bản dịch; dịch song song (vài chục request, tuần tự là đủ).
+
+### 12.2 Công cụ & tích hợp
+
+| Việc | Chọn | Ghi chú |
+| --- | --- | --- |
+| Dịch | Google Apps Script web app do người dùng tự deploy (Execute as: Me, Who has access: Anyone) | Miễn phí, không thẻ. Hạn mức của Apps Script chưa xác minh — kiểm ở pilot (12.9) |
+| Gọi HTTP | `requests.get(url, params={"text","source":"en","target":"vi"[,"key"]}, timeout=…)` | Người dùng đã chốt `requests`; khai báo tường minh trong nhóm `eval` (đang chỉ có bắc cầu), không thêm `httpx` |
+| Response | JSON `{"translatedText": "..."}` | Apps Script trả 302 sang `script.googleusercontent.com`, `requests` tự follow. Phải validate: JSON hợp lệ, có `translatedText` là `str` không rỗng; trang HTML (đăng nhập/lỗi quyền/quota) hoặc `{"error": ...}` = lỗi |
+| Cấu hình | `TranslateSettings` (pydantic-settings, `env_file=".env"`, `extra="ignore"`): `url` (`TRANSLATE_URL`, bắt buộc), `key` (`TRANSLATE_KEY`, tuỳ chọn), `timeout_seconds = 60` | Thêm `TRANSLATE_URL`, `TRANSLATE_KEY` vào `.env.example` block APP (chú thích: chỉ dùng cho `generate_testset.py translate`). Không đọc/ghi `.env` bằng tay. Thiếu `TRANSLATE_URL` → `EvalInputError` mã thoát 2, nêu TÊN biến |
+
+**Số đo thật (người dùng chạy tay 2026-09-30, `tools/try_translate.py`):** GET chạy ổn tới **6.400 ký tự** → không cần POST. Số Điều/Khoản/Điểm giữ nguyên ("Điều 5, Khoản 2, Điểm a", "Điều 10"); ký tự đặc biệt và xuống dòng qua được. **Lỗi thấy:** (1) thuật ngữ lệch ("social pension" → "lương hưu xã hội" thay vì "trợ cấp hưu trí xã hội"); (2) thỉnh thoảng mất dấu cách ("bảo vệsức khỏe", "Ngườilao động"); (3) văn bản lặp nhân tạo có thể bị gộp câu — **chưa kết luận**, phải đo trên `reference` thật ở pilot.
+
+**Bảo mật:** deploy "Anyone" nghĩa là ai có URL đều gọi được và tiêu hạn mức của tài khoản Google của người dùng. Dùng **`TRANSLATE_KEY`**: phía Apps Script đặt cùng tên trong Script properties và từ chối (trả `{"error": "forbidden"}`) khi tham số `key` sai; client gửi `key` nếu biến có giá trị. Khoá này chỉ chặn truy cập vô tình, không phải bảo mật mạnh (nằm trong query string). Client coi `forbidden`/HTML quyền là **lỗi cấu hình** (mã thoát 2, không retry).
+**Log:** không log URL, key, nội dung hay `exception message` (`requests` nhét cả URL vào message của `ConnectionError`/`Timeout`) — chỉ tên loại lỗi + `file:dòng:hàm` qua `_describe_traceback` sẵn có (bài học 0.8), và số đếm.
+
+### 12.3 Phát hiện trường tiếng Anh (hàm thuần)
+
+Với mỗi trường (`user_input`, `reference`, từng phần tử `reference_contexts`) tính **tỉ lệ từ có dấu tiếng Việt** = số token chữ (tách theo khoảng trắng, bỏ token không có chữ cái) chứa ít nhất một ký tự có dấu/`đ` của tiếng Việt / tổng token chữ. Tiếng Việt pháp lý cho tỉ lệ cao, tiếng Anh gần 0. Coi là tiếng Anh khi tỉ lệ `< ENGLISH_MAX_DIACRITIC_RATIO`.
+**Ngưỡng chưa chốt:** khởi điểm 0,10; chốt sau khi xem phân bố thật từ `--dry-run` (in danh sách trường có tỉ lệ trong khoảng 0,05–0,30 để người dùng nhìn tay, hằng số nội bộ như `GENERATE_SIZE`, không phải env var). Trường quá ngắn (< 4 token chữ) không phân loại, bỏ qua. Phát hiện độc lập từng trường (mẫu có thể chỉ `reference` bằng tiếng Anh). `reference_contexts` được dịch **chỉ khi** phát hiện tiếng Anh (hiện chưa có trường hợp) — dịch làm mất tính nguyên văn nên mẫu đó đương nhiên gắn cờ để soát (12.5).
+
+### 12.4 Dịch một trường
+
+Thứ tự bắt buộc, mỗi bước là hàm thuần trừ bước gọi mạng:
+1. **Tách:** nếu trường dài hơn `MAX_REQUEST_CHARS = 4.000` (biên an toàn dưới 6.400 đã đo) thì tách gộp theo dòng (`\n`) sao cho mỗi phần ≤ giới hạn, dịch từng phần, nối lại đúng dấu xuống dòng cũ; một dòng đơn dài hơn giới hạn → không dịch, cờ `too_long`.
+2. **Gọi dịch** (`AppsScriptTranslator.translate`): retry 3 lần với backoff + jitter chỉ cho timeout/`ConnectionError`/5xx/lỗi response không hợp lệ tạm thời; không retry lỗi cấu hình (`forbidden`, HTML quyền).
+3. **Chuẩn hoá nhẹ:** NFC; gộp khoảng trắng thừa; bỏ dấu cách trước `, . ; :`; thêm dấu cách giữa chữ thường và chữ hoa dính nhau (`([a-zà-ỹ])([A-ZĐ])`). **Không** cố sửa "dính chữ" kiểu "vệsức" bằng regex/từ điển (đã chấp nhận ở mục 4.1: `reference` chỉ LLM chấm); lỗi này xử lý ở bước soát tay.
+4. **Bảng thuật ngữ** (`data/eval/translation_glossary.json`, `{"lương hưu xã hội": "trợ cấp hưu trí xã hội", ...}`, tuỳ chọn, thiếu file = không thay): thay trên **bản dịch** (không trên bản gốc tiếng Anh), khớp không phân biệt hoa/thường theo cụm dài trước, giữ kiểu hoa ký tự đầu. Bảng nhỏ, người dùng tự thêm mục khi soát; mục mới **không** áp lại lên mẫu đã dịch (soát tay, xem 12.7).
+5. **Kiểm bất biến bằng code** (nếu trượt → giữ nguyên trường gốc, không ghi bản dịch, gắn cờ):
+   - **Tham chiếu pháp lý:** trích tập cặp `(loại, số/chữ)` ở bản gốc bằng regex tiếng Anh `Article|Clause|Point|Chapter|Section|Paragraph + số/chữ cái/số La Mã`, ánh xạ `Article→Điều, Clause→Khoản, Point→Điểm, Chapter→Chương, Section→Mục`; trích tập tương ứng ở bản dịch bằng `Điều|Khoản|Điểm|Chương|Mục + …`; hai tập phải bằng nhau (so tập, không so số lần; chữ Điểm so không phân biệt hoa/thường). Trường gốc không có cụm nào thì không kiểm mục này. `Section` mơ hồ (có thể không là Mục) chỉ gây cờ dư, chấp nhận.
+   - **Số dòng không rỗng** bằng nhau trước/sau (bắt trường hợp gộp câu/dòng, lỗi (3) ở 12.2). Nếu pilot cho thấy cờ oan nhiều thì bỏ kiểm này, không nới thành heuristic khác.
+   - Kết quả không rỗng và tỉ lệ dấu tiếng Việt **không còn** dưới ngưỡng 12.3 (dịch xong vẫn là tiếng Anh = lỗi).
+
+### 12.5 Model dữ liệu và ghi
+
+`GoldenTestCase` (mục 5) thêm hai trường tuỳ chọn, mặc định `None`, **tương thích ngược** với raw cũ:
+- `original_en: dict[str, str] | None` — bản gốc của trường ĐÃ dịch thành công, khoá `user_input` / `reference` / `reference_contexts`; kiểu `dict[str, str | list[str]]` (`reference_contexts` lưu nguyên `list[str]` gốc). Chỉ có khoá của trường thực sự bị dịch.
+- `translation_review: str | None` — lý do mẫu cần soát tay: `citation_mismatch`, `line_count_mismatch`, `still_english`, `too_long`, `translate_error`, `contexts_translated` (reference_contexts đã dịch, mất tính nguyên văn); `None` = không có vấn đề. Mẫu cờ do kiểm thất bại thì trường tương ứng **giữ bản gốc tiếng Anh** (người dùng sửa tay hoặc xoá dòng); riêng `contexts_translated` thì bản dịch đã ghi.
+
+`golden_testset_raw.json` ghi lại **nguyên tử** (file tạm cùng thư mục + `os.replace`; tái dùng hàm ghi/đọc raw của `testset_generator.py`) sau **mỗi mẫu**, không sửa dòng nào ngoài các trường đã dịch, không sắp xếp lại (không bao giờ ghi đè sửa tay của người dùng). `finalize` giữ hai cột phụ mới trong `golden_testset.json` (cùng nhóm cột phụ với `synthesizer_name`, mục 2) và in cảnh báo **số dòng còn `translation_review`** (không chặn). Phase 2 đọc 3 cột ragas + `synthesizer_name` như cũ, bỏ qua cột thừa.
+
+**Resume không dùng file progress riêng (lệch có chủ đích so với bài học 0.5):** raw tự nó là checkpoint vì việc phát hiện là tất định và idempotent — trường đã dịch có tỉ lệ dấu tiếng Việt cao nên lần chạy sau không chọn lại; chạy lại sau khi đứt giữa chừng chỉ làm nốt phần còn thiếu, và dữ liệu (bản dịch + `original_en`) luôn ghi cùng một lần nguyên tử nên không có trạng thái nửa vời. Bài học 0.5 xuất phát từ việc người dùng xoá dòng làm sai suy luận "đã xong" và **tốn quota Groq**; ở đây xoá dòng không sinh ra việc thừa và dịch không tốn quota LLM. Mẫu đã bị cờ (`translation_review` khác `None`) mặc định **bị bỏ qua** khi chạy lại (tránh dịch lại lỗi tất định); `--retry-flagged` chạy lại chúng (dùng sau khi sửa bảng thuật ngữ/`MAX_REQUEST_CHARS`, hoặc khi cờ là `translate_error`).
+
+### 12.6 CLI và luồng chạy
+
+`tools/generate_testset.py translate` (Typer mỏng; logic ở `evaluation/translation.py`): tuỳ chọn `--output-dir` (cùng ý nghĩa với `generate`), `--dry-run`, `--limit N`, `--retry-flagged`.
+- **`--dry-run`** (không gọi mạng, không cần `TRANSLATE_URL`): bảng theo dòng raw gồm số thứ tự dòng, trường bị coi là tiếng Anh, tỉ lệ dấu tiếng Việt, số ký tự; tóm tắt số mẫu/trường và tổng ký tự cần dịch; in riêng các trường tỉ lệ ở vùng mơ hồ (12.3). Đây là **bước đo lại số mẫu tiếng Anh trên raw 203 câu** (12.1).
+- Chạy thật: duyệt raw theo thứ tự file, mẫu nào có trường tiếng Anh thì dịch tuần tự (12.4), ghi raw sau mỗi mẫu. Lỗi mạng sau retry chỉ gắn `translate_error` cho mẫu đó rồi đi tiếp; **3 mẫu liên tiếp `translate_error`** (URL hỏng, hết hạn mức Apps Script) → dừng, mã thoát 1. Log chỉ có số đếm (đã dịch/cờ theo lý do/đã bỏ qua), chỉ số dòng, không nội dung.
+- **Mã thoát:** 0 sạch; 1 dừng do lỗi liên tiếp; 2 đầu vào/cấu hình sai (thiếu `TRANSLATE_URL`, raw thiếu/hỏng, `forbidden`); 3 xong nhưng còn mẫu `translation_review` (như mục 4.5). Chạy lại cùng lệnh là tiếp tục.
+- **Trình tự tổng:** `generate` xong → chốt abstract (mục 4.6) → `translate --dry-run` → pilot `translate --limit 5` → `translate` → **soát tay (12.7)** → `finalize` → duyệt tay đọc lướt (mục 9.4) → Phase 2. **Phải xong trước Phase 2:** `case_id = sha256(user_input)` (mục 11.2) đổi khi `user_input` bị dịch; dịch sau khi đã chạy Phase 2 làm mồ côi mọi bản ghi.
+
+### 12.7 Soát tay sau dịch
+
+**Mọi mẫu có `original_en` đều phải qua mắt người dùng** ở bước duyệt cuối (không chỉ mẫu bị cờ) vì bản dịch máy có lỗi thuật ngữ tất định mà code không bắt được. Ưu tiên soát **thuật ngữ**: đối chiếu bản dịch với thuật ngữ trong luật (ví dụ "trợ cấp hưu trí xã hội"), sửa tay trực tiếp trong raw; dính chữ chỉ sửa khi rõ ràng. Thuật ngữ lặp lại nhiều lần thì thêm vào bảng thuật ngữ cho lần dịch sau; **không có** lệnh áp lại bảng lên mẫu đã dịch (over-engineering; sửa tay ~10–20 mẫu là rẻ hơn). Mẫu `translation_review`: sửa tay trường vẫn tiếng Anh hoặc xoá dòng; nhớ xoá/đặt lại `translation_review` là `null` sau khi sửa (finalize chỉ cảnh báo).
+
+### 12.8 Module
+
+Thêm vào `evaluation/`: `translation.py` (không import `ragas`; `TranslateSettings`, `detect_english_fields`, `split_for_request`, `AppsScriptTranslator`, `normalize_vietnamese`, `apply_glossary`, `extract_legal_references`, `translate_testcase`, điều phối `translate_raw` dùng lại hàm đọc/ghi raw hiện có); sửa `models.py` (2 trường mới) và `tools/generate_testset.py` (lệnh `translate`); `.env.example` (2 biến); `pyproject.toml` (`requests` vào nhóm `eval`). Hàm thuần tách khỏi mạng để test không cần Apps Script (mạng thay bằng object có cùng phương thức `translate`).
+
+### 12.9 Pilot và rủi ro / điểm mở
+
+**Pilot bắt buộc trước khi dịch hàng loạt** (bài học 0.1): `--dry-run` để có số đo và kiểm ngưỡng 12.3 bằng mắt; `--limit 5` thật trên mẫu tiếng Anh, kiểm: tỉ lệ cờ oan của số dòng/tham chiếu; mức gộp câu trên `reference` dài (lỗi 3, 12.2); tần suất dính chữ; hạn mức Apps Script (số request/ngày, độ trễ mỗi request) — số đo ghi lại vào mục này.
+**Điểm mở:** (1) ngưỡng `ENGLISH_MAX_DIACRITIC_RATIO` và số mẫu tiếng Anh trên 203 câu (chờ `--dry-run`); (2) hạn mức thật của Apps Script `LanguageApp`/web app; (3) lỗi gộp câu (12.2, mục 3) chưa kết luận; (4) `TRANSLATE_KEY` chỉ là chặn nhẹ (12.2); (5) nếu tỉ lệ cờ cao thì chọn giữa sửa tay và sinh bù thay vì dịch (theo mục 4.2), không thêm LLM sửa lỗi; (6) `requests` mới khai báo tường minh — kiểm `uv.lock` không đổi resolve `openai` (mục 3, xung đột `production`/`eval`).
