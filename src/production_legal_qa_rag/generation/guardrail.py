@@ -44,6 +44,44 @@ _GROQ_OPENAI_BASE_URL: Final = "https://api.groq.com/openai/v1"
 _REASONING_EFFORT: Final = "low"
 _TEMPERATURE: Final = 0.0
 _MAX_COMPLETION_TOKENS: Final = 512
+_CLEAR_NON_RESEARCH_REQUESTS: Final = frozenset(
+    {
+        "xin chào",
+        "chào",
+        "chào bạn",
+        "hello",
+        "hi",
+        "cảm ơn",
+        "tạm biệt",
+        "bye",
+        "viết code",
+        "lập trình",
+        "sáng tác",
+        "kể chuyện",
+        "dịch",
+        "hãy dịch",
+        "vui lòng dịch",
+    }
+)
+_CLEAR_NON_RESEARCH_PREFIXES: Final = (
+    "viết code",
+    "hãy viết code",
+    "vui lòng viết code",
+    "lập trình",
+    "hãy lập trình",
+    "sáng tác",
+    "viết thơ",
+    "làm thơ",
+    "kể chuyện",
+    "viết truyện",
+    "dịch câu ",
+    "dịch đoạn ",
+    "dịch văn bản ",
+    "dịch sang ",
+    "hãy dịch ",
+    "vui lòng dịch ",
+    "translate ",
+)
 
 
 class InputGuardrail:
@@ -113,6 +151,7 @@ class InputGuardrail:
                     raise TypeError(
                         "Guardrail trả về kết quả không đúng schema GuardrailVerdict"
                     )
+                verdict = _normalize_scope_verdict(query, verdict)
                 observation.update(output={"verdict": verdict.verdict})
             return verdict
         except Exception:
@@ -134,6 +173,24 @@ def _build_user_message(query: str, recent_user_turns: Sequence[str]) -> str:
         return _USER_TEMPLATE.format(query=query)
     return _USER_TEMPLATE_WITH_RECENT_TURNS.format(
         recent_user_turns="\n".join(recent_turns), query=query
+    )
+
+
+def _normalize_scope_verdict(query: str, verdict: GuardrailVerdict) -> GuardrailVerdict:
+    """Chỉ giữ ``out_of_scope`` cho tác vụ phi-tra-cứu nhận diện được rõ ràng."""
+    if verdict.verdict != "out_of_scope" or _is_clear_non_research_request(query):
+        return verdict
+    return GuardrailVerdict(
+        verdict="allow",
+        reason="Cần retrieval để xác định evidence trong corpus.",
+    )
+
+
+def _is_clear_non_research_request(query: str) -> bool:
+    """Nhận diện hẹp các tác vụ không cần evidence để tránh chặn topical scope."""
+    normalized = query.casefold().strip().rstrip("!?. ")
+    return normalized in _CLEAR_NON_RESEARCH_REQUESTS or normalized.startswith(
+        _CLEAR_NON_RESEARCH_PREFIXES
     )
 
 

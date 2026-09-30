@@ -72,7 +72,8 @@ không phải tra cứu (chào hỏi thuần tuý, viết code/dịch/sáng tác
 danh/cơ quan/đơn vị hành chính, phụ lục/bảng, giấy phép, số hiệu văn bản, hoặc luật ngoài corpus, phải là `allow` và đi
 retrieval. `out_of_scope` vì vậy không còn mang nghĩa "không thuộc các miền luật đã liệt kê". `retrieval` +
 `is_low_relevance` là cơ chế duy nhất xác định evidence corpus thiếu, trả `error(no_context)`; không sinh câu trả lời
-pháp lý khi đó. Injection luôn ưu tiên, kể cả câu có chèn tên/số hiệu văn bản hợp lệ. Chi tiết prompt/contract ở
+pháp lý khi đó. Sau safeguard, `InputGuardrail` chỉ giữ `out_of_scope` khi query khớp dạng tác vụ phi-tra-cứu rõ ràng;
+mọi `out_of_scope` còn lại map về `allow` trước orchestrator. Injection luôn ưu tiên, kể cả câu có chèn tên/số hiệu văn bản hợp lệ. Chi tiết prompt/contract ở
 `generation_spec.md` mục 3, 8, 9.
 
 ## 7. Workflow (`orchestrator.py`)

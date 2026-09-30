@@ -1205,6 +1205,33 @@ def test_guardrail_parses_json_and_sends_contract_parameters() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Theo Nghị định 293/2025/NĐ-CP, phường Sơn Nam thuộc khu vực nào?",
+        "Long An nằm trong vùng hành chính nào trong danh mục địa bàn?",
+        "Theo Nghị định, thời hạn tối đa của giấy phép và quy định gia hạn là gì?",
+    ],
+)
+def test_guardrail_maps_topical_out_of_scope_to_allow(query: str) -> None:
+    """Safeguard không được tự quyết định scope corpus từ topical verdict."""
+    settings = SimpleNamespace(
+        api_key="key", model_name="model", max_retries=2, timeout_seconds=30
+    )
+    fake_client = _FakeStructuredOutputClient(
+        GuardrailVerdict(verdict="out_of_scope", reason="Không thuộc miền.")
+    )
+
+    verdict = asyncio.run(
+        InputGuardrail(
+            settings,
+            client=fake_client,  # type: ignore[arg-type]
+        ).check_input(query)
+    )
+
+    assert verdict.verdict == "allow"
+
+
 def test_guardrail_includes_only_two_latest_user_turns_as_context() -> None:
     settings = SimpleNamespace(
         api_key="key", model_name="model", max_retries=2, timeout_seconds=30
