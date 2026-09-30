@@ -90,19 +90,33 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   hiện cập nhật thủ công bằng `git pull` → `./deploy/up.sh`.
 
 **Đang hoàn thiện**
-- **Golden testset** (`data/eval/`): **33/50 đơn vị** xong (~48% ký tự), raw có **97 câu** (90 single-hop,
-  7 multi-hop specific, **0 multi-hop abstract**). Lần chạy cuối dừng 2026-09-29 do hết quota ngày
-  `gpt-oss-120b` ở đơn vị `Điều kiện lao động và quan hệ lao động.md#8`; còn 17 đơn vị lớn (~2,12M token,
-  ước ~1–2 ngày quota với 9 key). Chạy tiếp: `tools/generate_testset.py generate` (tự làm tiếp từ đơn vị 34 đến 50, chưa chạy).
-  Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6) sau khi xong 50 đơn vị;
-  sau đó `finalize` đủ 180 câu và duyệt tay.
+- **Golden testset** (`data/eval/`): job `tools/generate_testset.py generate` **đã chạy hết, không còn process** (kiểm tra 2026-09-30 ~22:10):
+  **49/50 đơn vị `done`, 1 `skipped`**, raw có **203 câu** (180 single-hop, 23 multi-hop specific,
+  **0 multi-hop abstract**) — đã vượt 180 nên `finalize` cắt phân tầng được. Đơn vị `skipped` duy nhất:
+  `Văn bản hợp nhất bộ luật lao động.md#5` (Chương IV + V, ~29K ký tự) — lỗi ở stage KG (bước `ThemesExtractor`,
+  model trả JSON hỏng/rỗng → `OutputParserException`; lần trước là `OpenAITimeoutError`), 96 lượt tích luỹ qua 2 lần thử, 0 câu.
+  `Quy định mức lương tối thiểu.md#1` đã chạy lại thành công (`--retry-skipped`, +9 câu). Khuyến nghị: **bỏ** đơn vị này
+  (203 > 180, BLLĐ còn nhiều đơn vị khác); nếu muốn thử nữa: `generate --retry-skipped --only "Văn bản hợp nhất bộ luật lao động.md#5"`
+  (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
+  Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
+  Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6); sau đó `finalize` đủ 180 câu và duyệt tay.
+- **Dịch mẫu tiếng Anh trong raw** (đang brainstorm với `architect`, **chưa chốt, chưa có trong spec**): đo trên
+  raw 141 câu (lúc brainstorm) có **~10 mẫu (~7%)** có `user_input`/`reference` là tiếng Anh (chỉ số 13, 31, 39, 41, 45,
+  55, 67, 69, 120, 130), `reference_contexts` chưa có mẫu nào tiếng Anh. Hướng đề xuất: lệnh `translate` trong
+  `tools/generate_testset.py` + `evaluation/translation.py`, phát hiện bằng tỉ lệ từ có dấu tiếng Việt, ghi đè tại
+  chỗ và lưu bản gốc vào `original_en`, kiểm code rằng `Điều/Khoản/Điểm/Chương/Mục + số` còn nguyên, chạy **trước
+  `finalize`**, không chạy song song với `generate`; spec vào `evaluation_spec.md` mục 12. Điểm chờ người dùng
+  chốt: dùng **Google Cloud Translation v2 chính thức** (cần thẻ thanh toán, ~30K ký tự nằm trong free tier 500K/tháng)
+  hay Groq `gpt-oss-20b`. Endpoint web không chính thức (deep-translator, gói không cập nhật từ 2023-06) đã thử
+  và bị Google trả captcha từ máy dev → không dùng.
 - **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
   `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
 1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
-2. Chạy tiếp sinh golden testset đơn vị 34–50 → chốt abstract → `finalize` → duyệt tay.
+2. Golden testset đã sinh xong 49/50 đơn vị (203 câu) → quyết định bỏ hay thử lại đơn vị `skipped` BLLĐ#5 → chốt abstract → chốt + làm
+   bước dịch mẫu tiếng Anh (brainstorm, xem "Đang hoàn thiện") → `finalize` → duyệt tay.
 3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch mới) → pilot → chạy full;
    sau đó lấy mẫu Q&A thật từ Langfuse.
 4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).
