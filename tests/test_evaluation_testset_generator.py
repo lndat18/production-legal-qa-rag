@@ -1196,9 +1196,7 @@ def test_cli_don_vi_loi_thoat_ma_khac_0_va_in_tom_tat(
             0,
         ),
         (
-            tg.GenerationReport(
-                generated_units=[], skipped_samples=1, new_questions=0
-            ),
+            tg.GenerationReport(generated_units=[], skipped_samples=1, new_questions=0),
             3,
         ),
     ],
