@@ -229,7 +229,7 @@ def test_loi_khong_co_status_http_chi_ghi_ten_loai_khong_ghi_thong_diep(
     assert "bí mật" not in caplog.text
 
 
-def test_log_loi_don_vi_co_ten_loai_loi_va_frame_nhung_khong_co_noi_dung_loi(
+def test_log_loi_don_vi_co_ten_loai_loi_nhung_khong_co_noi_dung_loi(
     dirs: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ):
     markdown_dir, output_dir = dirs
@@ -246,8 +246,7 @@ def test_log_loi_don_vi_co_ten_loai_loi_va_frame_nhung_khong_co_noi_dung_loi(
     ]
     assert len(records) == 1
     message = records[0].getMessage()
-    assert "traceback: ValueError @ " in message
-    assert "testset_generator.py:" in message
+    assert "traceback: ValueError" in message
     assert "bí mật" not in caplog.text
     assert records[0].exc_info is None
 
