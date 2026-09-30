@@ -713,6 +713,342 @@
       "attempts": 0,
       "tokens": 19717,
       "reasoning_tokens": 6240
+    },
+    "Điều kiện lao động và quan hệ lao động.md#11": {
+      "title": "Chương XI. GIẢI QUYẾT TRANH CHẤP LAO ĐỘNG — Mục 2. HỘI ĐỒNG TRỌNG TÀI LAO ĐỘNG",
+      "chars": 17814,
+      "estimated_tokens": 101977,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 85,
+      "seconds": 1763.6642020459985,
+      "completed_at": "2026-09-30T16:08:24.860185+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 102593,
+      "reasoning_tokens": 8768
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#10": {
+      "title": "Chương XI. NHỮNG QUY ĐỊNH RIÊNG ĐỐI VỚI LAO ĐỘNG CHƯA THÀNH NIÊN VÀ MỘT SỐ LAO ĐỘNG KHÁC",
+      "chars": 17837,
+      "estimated_tokens": 102104,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 62,
+      "seconds": 1181.9955735419971,
+      "completed_at": "2026-09-30T16:28:06.801725+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 76516,
+      "reasoning_tokens": 6952
+    },
+    "Luật bảo hiểm xã hội.md#1": {
+      "title": "Chương I. NHỮNG QUY ĐỊNH CHUNG",
+      "chars": 17978,
+      "estimated_tokens": 102879,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 51,
+      "seconds": 1164.5273670019997,
+      "completed_at": "2026-09-30T16:47:31.262664+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 61637,
+      "reasoning_tokens": 6956
+    },
+    "Điều kiện lao động và quan hệ lao động.md#3": {
+      "title": "Chương IV. CHO THUÊ LẠI LAO ĐỘNG — Mục 3. ĐIỀU KIỆN, THẨM QUYỀN, TRÌNH TỰ, THỦ TỤC CẤP, GIA HẠN, CẤP LẠI, THU HỒI GIẤY PHÉP VÀ DANH MỤC CÔNG VIỆC ĐƯỢC THỰC HIỆN CHO THUÊ LẠI LAO ĐỘNG",
+      "chars": 18118,
+      "estimated_tokens": 103649,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 58,
+      "seconds": 1141.297475026,
+      "completed_at": "2026-09-30T17:06:32.565953+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 67783,
+      "reasoning_tokens": 6597
+    },
+    "Điều kiện lao động và quan hệ lao động.md#5": {
+      "title": "Chương VI. TIỀN LƯƠNG",
+      "chars": 18212,
+      "estimated_tokens": 104166,
+      "questions": {
+        "single_hop": 3,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 57,
+      "seconds": 1140.3532338639998,
+      "completed_at": "2026-09-30T17:25:32.920255+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 74801,
+      "reasoning_tokens": 10349
+    },
+    "Điều kiện lao động và quan hệ lao động.md#12": {
+      "title": "Chương XI Mục 3 + Chương XI Mục 4 + Chương XI",
+      "chars": 18235,
+      "estimated_tokens": 104292,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 62,
+      "seconds": 1134.205591597005,
+      "completed_at": "2026-09-30T17:44:27.127029+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 79319,
+      "reasoning_tokens": 8428
+    },
+    "Luật bảo hiểm xã hội.md#2": {
+      "title": "Chương II. QUYỀN, TRÁCH NHIỆM CỦA CƠ QUAN, TỔ CHỨC, CÁ NHÂN VỀ BẢO HIỂM XÃ HỘI VÀ TỔ CHỨC THỰC HIỆN BẢO HIỂM XÃ HỘI",
+      "chars": 19425,
+      "estimated_tokens": 110838,
+      "questions": {
+        "single_hop": 5,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 80,
+      "seconds": 1342.0175330170023,
+      "completed_at": "2026-09-30T18:06:49.147200+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 90768,
+      "reasoning_tokens": 7786
+    },
+    "Luật bảo hiểm xã hội.md#8": {
+      "title": "Chương VI. BẢO HIỂM XÃ HỘI TỰ NGUYỆN",
+      "chars": 21325,
+      "estimated_tokens": 121288,
+      "questions": {
+        "single_hop": 6,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 106,
+      "seconds": 1836.587730845,
+      "completed_at": "2026-09-30T18:37:25.736389+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 126424,
+      "reasoning_tokens": 11402
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#3": {
+      "title": "Chương III Mục 2 + Chương III Mục 3",
+      "chars": 22589,
+      "estimated_tokens": 128240,
+      "questions": {
+        "single_hop": 6,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 61,
+      "seconds": 1087.4348009359965,
+      "completed_at": "2026-09-30T18:55:33.172169+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 74412,
+      "reasoning_tokens": 7817
+    },
+    "Điều kiện lao động và quan hệ lao động.md#4": {
+      "title": "Chương IV Mục 4 + Chương V",
+      "chars": 23170,
+      "estimated_tokens": 131435,
+      "questions": {
+        "single_hop": 6,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 60,
+      "seconds": 1046.9853640110014,
+      "completed_at": "2026-09-30T19:13:00.158430+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 73556,
+      "reasoning_tokens": 7908
+    },
+    "Luật bảo hiểm xã hội.md#5": {
+      "title": "Chương V. BẢO HIỂM XÃ HỘI BẮT BUỘC — Mục 2. CHẾ ĐỘ THAI SẢN",
+      "chars": 24615,
+      "estimated_tokens": 139382,
+      "questions": {
+        "single_hop": 7,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 85,
+      "seconds": 1483.9992714800028,
+      "completed_at": "2026-09-30T19:37:44.158644+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 102251,
+      "reasoning_tokens": 9137
+    },
+    "Điều kiện lao động và quan hệ lao động.md#1": {
+      "title": "Chương I + Chương II + Chương III",
+      "chars": 25466,
+      "estimated_tokens": 144063,
+      "questions": {
+        "single_hop": 7,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 65,
+      "seconds": 1127.2139827459978,
+      "completed_at": "2026-09-30T19:56:31.373715+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 80224,
+      "reasoning_tokens": 9886
+    },
+    "Luật bảo hiểm xã hội.md#6": {
+      "title": "Chương V. BẢO HIỂM XÃ HỘI BẮT BUỘC — Mục 3. CHẾ ĐỘ HƯU TRÍ",
+      "chars": 27064,
+      "estimated_tokens": 152852,
+      "questions": {
+        "single_hop": 7,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 71,
+      "seconds": 1210.4378517830046,
+      "completed_at": "2026-09-30T20:16:41.812646+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 86256,
+      "reasoning_tokens": 9564
+    },
+    "Luật bảo hiểm xã hội.md#3": {
+      "title": "Chương III + Chương IV",
+      "chars": 27337,
+      "estimated_tokens": 154354,
+      "questions": {
+        "single_hop": 7,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 97,
+      "seconds": 1565.5709844989979,
+      "completed_at": "2026-09-30T20:42:47.384811+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 113130,
+      "reasoning_tokens": 10784
+    },
+    "Văn bản hợp nhất bộ luật lao động.md#5": {
+      "title": "Chương IV + Chương V",
+      "chars": 28657,
+      "estimated_tokens": 161614,
+      "questions": {
+        "single_hop": 0,
+        "abstract": 0,
+        "specific": 0
+      },
+      "llm_calls": 96,
+      "seconds": 1685.774598239995,
+      "completed_at": "2026-09-30T21:33:13.112956+07:00",
+      "status": "skipped",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": "knowledge_graph",
+      "error_type": "OutputParserException",
+      "attempts": 96,
+      "tokens": 112629,
+      "reasoning_tokens": 4716
+    },
+    "Quy định mức lương tối thiểu.md#1": {
+      "title": "Toàn văn",
+      "chars": 29075,
+      "estimated_tokens": 163912,
+      "questions": {
+        "single_hop": 8,
+        "abstract": 0,
+        "specific": 1
+      },
+      "llm_calls": 151,
+      "seconds": 2569.6710015129993,
+      "completed_at": "2026-09-30T22:03:47.603626+07:00",
+      "status": "done",
+      "skipped_samples": 0,
+      "skipped_question_types": [],
+      "skipped_stage": null,
+      "error_type": null,
+      "attempts": 0,
+      "tokens": 195947,
+      "reasoning_tokens": 12987
     }
   },
   "last_failure": null
