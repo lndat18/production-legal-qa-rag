@@ -377,7 +377,7 @@ def test_append_tren_don_vi_done_bi_ngat_giu_done_van_ghi_raw_va_last_failure(
     later = ScriptedRunner()
     report = tg.generate_testset(markdown_dir, output_dir, unit_runner=later)
     assert later.calls == []
-    assert "A.md#2" in report.skipped_units
+    assert "A.md#2" in report.already_done_units
 
 
 def test_cli_don_vi_bi_ngat_giua_chung_thoat_ma_1_va_in_tom_tat(
@@ -471,7 +471,12 @@ def test_sample_loi_bi_bo_don_vi_van_done_va_skipped_samples_cong_don(
 
 def _no_case_error(cause: BaseException | None) -> tg.UnitGenerationError:
     try:
-        raise tg.UnitGenerationError("A.md#2", "không sinh được câu nào") from cause
+        raise tg.UnitGenerationError(
+            "A.md#2",
+            "không sinh được câu nào",
+            stage="generation",
+            error_type=type(cause).__name__ if cause is not None else "InvalidSample",
+        ) from cause
     except tg.UnitGenerationError as error:
         return error
 
@@ -484,7 +489,7 @@ def _no_case_error(cause: BaseException | None) -> tg.UnitGenerationError:
             "DailyQuotaExhaustedError (HTTP 429)",
         ),
         (ValueError("nội dung bí mật"), "ValueError"),
-        (None, "UnitGenerationError"),
+        (None, "InvalidSample"),
     ],
     ids=["loi-quota", "loi-parse", "khong-co-loi-goc"],
 )

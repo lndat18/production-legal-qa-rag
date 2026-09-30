@@ -11,7 +11,7 @@ import os
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from typer.testing import CliRunner
@@ -85,7 +85,12 @@ class FakeUnitRunner:
         self.kg_paths.append(knowledge_graph_path)
         self.reuse_flags.append(reuse_knowledge_graph)
         if key == self.fail_on:
-            raise RuntimeError("Groq hết quota: nội dung bí mật không được log")
+            raise tg.UnitGenerationError(
+                key,
+                "lỗi RAGAS đã phân loại",
+                stage="knowledge_graph",
+                error_type="ValueError",
+            )
         cases = []
         for kind in tg.QUESTION_TYPES:
             for _ in range(getattr(quota, kind)):
@@ -124,6 +129,82 @@ class DailyQuotaRunner(FakeUnitRunner):
             knowledge_graph_path,
             reuse_knowledge_graph=reuse_knowledge_graph,
         )
+
+
+class ClassifiedFailureRunner(FakeUnitRunner):
+    """Giả lỗi RAGAS đã phân loại sau khi KG đã được lưu, như runner thật."""
+
+    def __init__(
+        self,
+        failure_keys: set[str],
+        *,
+        stage: Literal["knowledge_graph", "generation"] = "generation",
+        skipped_samples: int = 0,
+        skipped_question_types: set[str] | None = None,
+    ) -> None:
+        super().__init__()
+        self.failure_keys = failure_keys
+        self.stage = stage
+        self.skipped_samples = skipped_samples
+        self.skipped_question_types = skipped_question_types or set()
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key not in self.failure_keys:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        self.kg_paths.append(knowledge_graph_path)
+        self.reuse_flags.append(reuse_knowledge_graph)
+        knowledge_graph_path.parent.mkdir(parents=True, exist_ok=True)
+        knowledge_graph_path.write_text("{}", encoding="utf-8")
+        raise tg.UnitGenerationError(
+            key,
+            "lỗi RAGAS đã phân loại",
+            stage=self.stage,
+            error_type="ValueError",
+            skipped_samples=self.skipped_samples,
+            skipped_question_types=self.skipped_question_types,
+        )
+
+
+class UnclassifiedFailureRunner(FakeUnitRunner):
+    """Giả lỗi I/O/code không được chuyển thành checkpoint `skipped`."""
+
+    def __init__(self, key: str, error: BaseException) -> None:
+        super().__init__()
+        self.key = key
+        self.error = error
+
+    def run_unit(
+        self,
+        unit: EvalUnit,
+        quota: tg.QuestionQuota,
+        knowledge_graph_path: Path,
+        *,
+        reuse_knowledge_graph: bool,
+    ) -> tg.UnitResult:
+        key = tg.unit_key(unit)
+        if key != self.key:
+            return super().run_unit(
+                unit,
+                quota,
+                knowledge_graph_path,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
+        self.calls.append(key)
+        raise self.error
 
 
 def _unit(document: str, index: int, chars: int) -> EvalUnit:
@@ -307,7 +388,7 @@ def test_generate_lan_hai_bo_qua_don_vi_da_xong_ke_ca_khi_xoa_het_dong_trong_raw
 
     assert second.calls == []
     assert report.generated_units == []
-    assert len(report.skipped_units) == 5
+    assert len(report.already_done_units) == 5
     assert json.loads(raw_path.read_text("utf-8")) == kept  # không đụng vào raw
 
 
@@ -340,7 +421,7 @@ def test_generate_loi_khong_quota_bo_qua_unit_va_chay_tiep(
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
     assert progress.units["B.md#1"].status == "skipped"
     assert progress.units["B.md#1"].skipped_stage == "knowledge_graph"
-    assert progress.units["B.md#1"].error_type == "RuntimeError"
+    assert progress.units["B.md#1"].error_type == "ValueError"
     assert progress.last_failure is None
     rows = json.loads((output_dir / tg.RAW_TESTSET_FILENAME).read_text("utf-8"))
     assert {r["source_document"] for r in rows} == {"A.md", "B.md", "C.md"}
@@ -406,6 +487,96 @@ def test_generate_loi_khong_quota_o_unit_dau_tien_ghi_skipped_khong_last_failure
     assert (output_dir / tg.RAW_TESTSET_FILENAME).exists()
 
 
+def test_generation_khong_co_case_checkpoint_skipped_va_retry_dung_lai_kg(
+    dirs: tuple[Path, Path],
+):
+    """Không được ghi `done` rỗng khi RAGAS bỏ toàn bộ sample của một unit."""
+    markdown_dir, output_dir = dirs
+    failed = ClassifiedFailureRunner(
+        {"A.md#2"},
+        skipped_samples=2,
+        skipped_question_types={"single_hop"},
+    )
+
+    report = tg.generate_testset(markdown_dir, output_dir, unit_runner=failed)
+
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    skipped = progress.units["A.md#2"]
+    assert report.has_degradation
+    assert report.skipped_units == ["A.md#2"]
+    assert skipped.status == "skipped"
+    assert skipped.skipped_stage == "generation"
+    assert skipped.skipped_samples == 2
+    assert skipped.skipped_question_types == {"single_hop"}
+    assert (output_dir / "knowledge_graph" / "A__02.json").exists()
+
+    resumed = FakeUnitRunner()
+    tg.generate_testset(
+        markdown_dir,
+        output_dir,
+        only=["A.md#2"],
+        retry_skipped=True,
+        unit_runner=resumed,
+    )
+
+    assert resumed.calls == ["A.md#2"]
+    assert resumed.reuse_flags == [True]
+    assert (
+        tg.load_progress(output_dir / tg.PROGRESS_FILENAME).units["A.md#2"].status
+        == "done"
+    )
+
+
+def test_hai_unit_skipped_cung_chu_ky_lien_tiep_dung_truoc_unit_thu_ba(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = ClassifiedFailureRunner({"A.md#2", "B.md#2"})
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert runner.calls == ["A.md#2", "B.md#2"]
+    assert excinfo.value.unit_key == "B.md#2"
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units["A.md#2"].status == "skipped"
+    assert progress.units["B.md#2"].status == "skipped"
+    assert progress.last_failure is not None
+    assert progress.last_failure.unit == "B.md#2"
+
+
+def test_unit_thanh_cong_reset_systemic_breaker_giua_hai_skipped_cung_chu_ky(
+    dirs: tuple[Path, Path],
+):
+    markdown_dir, output_dir = dirs
+    runner = ClassifiedFailureRunner({"A.md#2", "B.md#1"})
+
+    report = tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert runner.calls == ["A.md#2", "B.md#2", "B.md#1", "A.md#1", "C.md#1"]
+    assert report.skipped_units == ["A.md#2", "B.md#1"]
+    assert report.has_degradation
+    assert tg.load_progress(output_dir / tg.PROGRESS_FILENAME).last_failure is None
+
+
+@pytest.mark.parametrize("error", [OSError("disk"), TypeError("bug")])
+def test_loi_io_hoac_typeerror_khong_bi_doi_thanh_skipped(
+    dirs: tuple[Path, Path], error: BaseException
+):
+    markdown_dir, output_dir = dirs
+    runner = UnclassifiedFailureRunner("A.md#2", error)
+
+    with pytest.raises(tg.UnitGenerationError) as excinfo:
+        tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
+
+    assert excinfo.value.__cause__ is error
+    assert runner.calls == ["A.md#2"]
+    progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
+    assert progress.units == {}
+    assert progress.last_failure is not None
+    assert progress.last_failure.error.startswith(type(error).__name__)
+
+
 def test_generate_chet_giua_hai_buoc_don_vi_co_dong_trong_raw_coi_la_da_xong(
     dirs: tuple[Path, Path],
 ):
@@ -424,7 +595,7 @@ def test_generate_chet_giua_hai_buoc_don_vi_co_dong_trong_raw_coi_la_da_xong(
     report = tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
 
     assert "A.md#2" not in runner.calls
-    assert "A.md#2" in report.skipped_units
+    assert "A.md#2" in report.already_done_units
     progress = tg.load_progress(output_dir / tg.PROGRESS_FILENAME)
     assert progress.units["A.md#2"].questions == {
         "single_hop": 1,
@@ -1013,6 +1184,47 @@ def test_cli_don_vi_loi_thoat_ma_khac_0_va_in_tom_tat(
     assert result.exit_code == 1
     assert "A.md#1" in result.output
     assert "TÓM TẮT" in result.output
+
+
+@pytest.mark.parametrize(
+    ("report", "expected_exit"),
+    [
+        (
+            tg.GenerationReport(
+                generated_units=[], already_done_units=["A.md#1"], new_questions=0
+            ),
+            0,
+        ),
+        (
+            tg.GenerationReport(
+                generated_units=[], skipped_samples=1, new_questions=0
+            ),
+            3,
+        ),
+    ],
+    ids=["pham-vi-da-xong-sach", "du-lieu-suy-giam"],
+)
+def test_cli_chi_tra_3_khi_report_co_du_lieu_suy_giam(
+    monkeypatch: pytest.MonkeyPatch,
+    report: tg.GenerationReport,
+    expected_exit: int,
+):
+    from tools import generate_testset
+
+    monkeypatch.setattr(
+        generate_testset, "generate_testset", lambda *_args, **_kwargs: report
+    )
+    monkeypatch.setattr(
+        generate_testset, "summarize_progress", lambda *_args: "TÓM TẮT"
+    )
+
+    result = CliRunner().invoke(generate_testset.app, ["generate"])
+
+    assert result.exit_code == expected_exit, result.output
+    if expected_exit == 3:
+        assert "dữ liệu suy giảm" in result.output
+    else:
+        assert "đã xong từ trước 1" in result.output
 
 
 def test_cli_loi_dau_vao_thoat_ma_2(dirs: tuple[Path, Path]):

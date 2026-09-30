@@ -190,6 +190,26 @@ def test_single_hop_ep_perfect_grammar(monkeypatch: pytest.MonkeyPatch):
     )  # phần còn lại giữ nguyên
 
 
+def test_single_hop_bo_mapping_persona_khong_duoc_ragas_sinh(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Single-hop cũng phải chặn `PersonaList.__getitem__` của RAGAS 0.4.3."""
+    runner = _runner(monkeypatch)
+    synthesizer = ragas_runner.CleanSingleHopSynthesizer(llm=runner.llm)
+
+    combinations = synthesizer.prepare_combinations(
+        _node(),
+        ["thử việc"],
+        _PERSONAS,
+        {"An": ["thử việc"], "Persona bịa": ["thử việc"]},
+    )
+
+    assert combinations
+    assert [
+        [persona.name for persona in item["personas"]] for item in combinations
+    ] == [["An"]]
+
+
 @pytest.mark.parametrize(
     ("synthesizer_class", "property_name"),
     [
@@ -549,16 +569,17 @@ def test_run_unit_loi_sinh_cau_van_giu_kg_da_dung_xong_khong_de_lai_file_tam(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
-    failure = RuntimeError("429")
+    failure = ValueError("parse RAGAS")
     _patch_generation(monkeypatch, runner, error=failure)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    result = runner.run_unit(
-        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
-    )
+    with pytest.raises(UnitGenerationError) as excinfo:
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+        )
 
-    assert result.cases == []
-    assert result.skipped_question_types == {"single_hop"}
+    assert excinfo.value.stage == "generation"
+    assert excinfo.value.skipped_question_types == {"single_hop"}
     assert kg_path.exists()
     assert list(kg_path.parent.glob("*.tmp")) == []
 
@@ -575,13 +596,11 @@ def test_run_unit_loi_khi_dung_kg_thi_khong_de_lai_file_kg(
     monkeypatch.setattr(runner, "_build_knowledge_graph", _build_fails)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
 
-    with pytest.raises(UnitGenerationError) as excinfo:
+    with pytest.raises(RuntimeError):
         runner.run_unit(
             _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
         )
 
-    assert excinfo.value.stage == "knowledge_graph"
-    assert excinfo.value.error_type == "RuntimeError"
     assert not kg_path.exists()
 
 
@@ -942,6 +961,31 @@ def _timeout_error() -> Any:
 
 
 @pytest.mark.parametrize(
+    "error",
+    [
+        _status_error(APIStatusError, 413),
+        _connection_error(),
+    ],
+    ids=["413", "connection"],
+)
+def test_ragas_khong_retry_tang_tren_cho_loi_transport(
+    monkeypatch: pytest.MonkeyPatch, error: BaseException
+):
+    """Router đã quyết retry HTTP; scenario không được gửi lại cùng lỗi transport."""
+    runner = _runner(monkeypatch)
+    synthesizer = _FakeSynthesizer(_SINGLE, scenario_error=error)
+
+    with pytest.raises(type(error)):
+        asyncio.run(
+            ragas_runner._generate_scenarios_once_more(
+                synthesizer, 1, _FakeGraph(), list(_PERSONAS)
+            )
+        )
+
+    assert synthesizer.scenario_requests == [1]
+
+
+@pytest.mark.parametrize(
     "error_factory",
     [
         lambda: _status_error(InternalServerError, 500),
@@ -973,11 +1017,12 @@ def test_run_unit_loi_o_buoc_sinh_cau_thi_lan_sau_tai_dung_kg_khong_dung_lai(
 ):
     runner = _runner(monkeypatch)
     kg_path = tmp_path / "knowledge_graph" / "A__01.json"
-    first = _patch_generation(monkeypatch, runner, error=RuntimeError("429"))
-    first_result = runner.run_unit(
-        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
-    )
-    assert first_result.skipped_question_types == {"single_hop"}
+    first = _patch_generation(monkeypatch, runner, error=ValueError("parse RAGAS"))
+    with pytest.raises(UnitGenerationError) as excinfo:
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=True
+        )
+    assert excinfo.value.skipped_question_types == {"single_hop"}
     saved_after_failure = kg_path.read_text("utf-8")
     reloaded = _FakeGraph()
     monkeypatch.setattr(KnowledgeGraph, "load", staticmethod(lambda _p: reloaded))
@@ -1142,7 +1187,7 @@ def test_loi_sinh_scenario_cua_mot_loai_giu_cac_loai_da_xong_truoc_do(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
-    failure = RuntimeError("lỗi sinh scenario")
+    failure = ValueError("lỗi parse scenario")
     errors = {"abstract": failure}
     seen = _patch_generation(monkeypatch, runner, scenario_errors=errors)
     quota = QuestionQuota(single_hop=4, abstract=2, specific=2)
@@ -1178,7 +1223,7 @@ def test_sample_loi_bi_bo_va_dem_dung_ke_ca_sample_thieu_cot_bat_buoc(
     assert result.interruption is None
 
 
-def test_moi_sample_deu_loi_thi_bo_sau_hai_lan_va_van_giu_kg(
+def test_moi_sample_deu_loi_thi_checkpoint_generation_skipped_va_van_giu_kg(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
@@ -1186,12 +1231,13 @@ def test_moi_sample_deu_loi_thi_bo_sau_hai_lan_va_van_giu_kg(
     _patch_generation(monkeypatch, runner, samples=outcomes)
     kg_path = tmp_path / "A__01.json"
 
-    result = runner.run_unit(
-        _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
-    )
+    with pytest.raises(UnitGenerationError) as excinfo:
+        runner.run_unit(
+            _unit(), QuestionQuota(single_hop=2), kg_path, reuse_knowledge_graph=False
+        )
 
-    assert result.cases == []
-    assert result.skipped_samples == 2
+    assert excinfo.value.stage == "generation"
+    assert excinfo.value.skipped_samples == 2
     assert kg_path.exists()
 
 
@@ -1206,19 +1252,20 @@ def test_khong_sinh_duoc_cau_nao_thi_loi_goc_uu_tien_loi_quota_hon_loi_parse(
     with pytest.raises(UnitGenerationError) as excinfo:
         _run(runner, tmp_path, QuestionQuota(single_hop=3))
 
-    assert excinfo.value.__cause__ is quota_error
+    assert testset_generator._root_cause(excinfo.value) is quota_error
 
 
-def test_chi_con_sample_thieu_cot_bat_buoc_thi_done_voi_so_cau_it_hon(
+def test_chi_con_sample_thieu_cot_bat_buoc_thi_khong_checkpoint_done_rong(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     runner = _runner(monkeypatch)
     _patch_generation(monkeypatch, runner, samples=[_sample(0, reference="")])
 
-    result = _run(runner, tmp_path, QuestionQuota(single_hop=1))
+    with pytest.raises(UnitGenerationError) as excinfo:
+        _run(runner, tmp_path, QuestionQuota(single_hop=1))
 
-    assert result.cases == []
-    assert result.skipped_samples == 1
+    assert excinfo.value.stage == "generation"
+    assert excinfo.value.skipped_samples == 1
 
 
 def test_log_loi_sample_chi_co_ten_synthesizer_va_ten_loai_loi_khong_co_noi_dung(
@@ -1311,12 +1358,16 @@ def test_log_token_cuoi_don_vi_co_tong_va_theo_tai_khoan_ke_ca_khi_don_vi_loi(
     unit_fails: bool,
 ):
     runner = _runner(monkeypatch)
-    failure = RuntimeError("429") if unit_fails else None
+    failure = ValueError("parse RAGAS") if unit_fails else None
     _patch_generation(monkeypatch, runner, error=failure)
     _spend_tokens_while_building(monkeypatch, runner)
 
     with caplog.at_level(logging.INFO, logger=ragas_runner.logger.name):
-        _run(runner, tmp_path, QuestionQuota(single_hop=1))
+        if unit_fails:
+            with pytest.raises(UnitGenerationError):
+                _run(runner, tmp_path, QuestionQuota(single_hop=1))
+        else:
+            _run(runner, tmp_path, QuestionQuota(single_hop=1))
 
     messages = [record.getMessage() for record in caplog.records]
     records = [message for message in messages if "Token A.md#1" in message]

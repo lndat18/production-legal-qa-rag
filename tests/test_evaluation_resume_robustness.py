@@ -62,6 +62,19 @@ class HttpLikeError(Exception):
     status_code = 429
 
 
+def _classified_error(error: BaseException) -> tg.UnitGenerationError:
+    """Bọc lỗi RAGAS đã biết theo contract `UnitRunner` mới."""
+    try:
+        raise tg.UnitGenerationError(
+            "A.md#2",
+            "lỗi RAGAS đã phân loại",
+            stage="knowledge_graph",
+            error_type=type(error).__name__,
+        ) from error
+    except tg.UnitGenerationError as wrapped:
+        return wrapped
+
+
 class Runner:
     """Sinh đúng số câu theo quota; có thể ép một lỗi bất kỳ ở một đơn vị."""
 
@@ -73,7 +86,7 @@ class Runner:
         llm_calls: int = 3,
     ) -> None:
         self.fail_on = fail_on
-        self.error = error or RuntimeError("lỗi")
+        self.error = error or _classified_error(ValueError("lỗi RAGAS"))
         self.prefix = prefix
         self.llm_calls = llm_calls
         self.calls: list[str] = []
@@ -186,7 +199,7 @@ def test_loi_http_chi_ghi_dong_dau_da_cat_ngan_va_khong_lo_noi_dung(
 ):
     markdown_dir, output_dir = dirs
     message = "Rate limit reached " + "x" * 500 + "\nNỘI DUNG BÍ MẬT của câu hỏi"
-    runner = Runner(fail_on="A.md#2", error=HttpLikeError(message))
+    runner = Runner(fail_on="A.md#2", error=_classified_error(HttpLikeError(message)))
 
     with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
@@ -202,7 +215,10 @@ def test_loi_khong_co_status_http_chi_ghi_ten_loai_khong_ghi_thong_diep(
     dirs: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ):
     markdown_dir, output_dir = dirs
-    runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
+    runner = Runner(
+        fail_on="A.md#2",
+        error=_classified_error(ValueError("câu hỏi bí mật: Điều 5")),
+    )
 
     with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
@@ -217,7 +233,10 @@ def test_log_loi_don_vi_co_ten_loai_loi_va_frame_nhung_khong_co_noi_dung_loi(
     dirs: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ):
     markdown_dir, output_dir = dirs
-    runner = Runner(fail_on="A.md#2", error=ValueError("câu hỏi bí mật: Điều 5"))
+    runner = Runner(
+        fail_on="A.md#2",
+        error=_classified_error(ValueError("câu hỏi bí mật: Điều 5")),
+    )
 
     with caplog.at_level(logging.INFO, logger=tg.logger.name):
         tg.generate_testset(markdown_dir, output_dir, unit_runner=runner)
