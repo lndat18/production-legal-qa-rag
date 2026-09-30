@@ -9,7 +9,7 @@ dùng cho cả 3 việc:
 - Chạy code Python trực tiếp trên host (`uv run pytest`, `tools/`, `api` không qua Docker).
 - Chạy toàn bộ stack production qua Docker Compose (`deploy/docker-compose.yml`,
   `./deploy/up.sh`) — container `api` đọc nguyên file `.env` này qua `env_file: ../.env`.
-- Chạy stack Langfuse/Prometheus/Grafana dev-only (`dev/observability/`).
+- Chạy stack Langfuse/Prometheus/Grafana (`observability/`).
 
 `cp .env.example .env` rồi điền. `.env.example` chia 3 block bằng comment — **APP** (biến
 app Python, dùng chung cho cả dev-trên-host lẫn container `api`), **DEPLOY** (chỉ container
@@ -120,11 +120,11 @@ thật (biến DEPLOY_* + các biến dùng chung đã điền ở phần trên 
 
 ## Observability (Langfuse + Prometheus + Grafana)
 
-Chỉ chạy trên máy dev (`observability_spec.md`), dùng chung `.env` root (block `OBS_*`).
-Tạo symlink 1 lần để không phải gõ `--env-file`: `ln -s ../../.env dev/observability/.env`.
+Chạy cạnh production trên cùng máy (`observability_spec.md`), dùng chung `.env` root (block `OBS_*`).
 
 ```bash
-docker compose -f dev/observability/docker-compose.yml up -d
+./observability/up.sh     # bật (giữ dữ liệu, chạy lại an toàn)
+./observability/down.sh   # tắt, giữ volume
 ```
 
 **Lần đầu:** mở `http://localhost:3001`, đăng ký tài khoản Langfuse local, tạo project, lấy

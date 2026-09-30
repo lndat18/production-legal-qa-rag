@@ -396,9 +396,9 @@ def test_gitignore_loai_tru_thu_muc_backup() -> None:
 
 
 def test_backup_script_cu_phap_shell_hop_le() -> None:
-    """`deploy/scripts/backup.sh` phải là bash hợp lệ (kiểm tra cú pháp, không chạy thật)."""
+    """`deploy/backup.sh` phải là bash hợp lệ (kiểm tra cú pháp, không chạy thật)."""
     result = subprocess.run(
-        ["bash", "-n", str(DEPLOY_DIR / "scripts" / "backup.sh")],
+        ["bash", "-n", str(DEPLOY_DIR / "backup.sh")],
         capture_output=True,
         text=True,
         timeout=10,
@@ -407,30 +407,52 @@ def test_backup_script_cu_phap_shell_hop_le() -> None:
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        "deploy/down.sh",
+        "deploy/reset_cache.sh",
+        "observability/up.sh",
+        "observability/down.sh",
+    ],
+)
+def test_script_van_hanh_cu_phap_bash_hop_le_va_chay_duoc(script: str) -> None:
+    """Các script vận hành phải là bash hợp lệ và có quyền thực thi (không chạy thật)."""
+    path = REPO_ROOT / script
+    assert path.stat().st_mode & 0o111, f"{script} thiếu quyền thực thi"
+    result = subprocess.run(
+        ["bash", "-n", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_script_observe_khong_xoa_volume() -> None:
+    """`down.sh` của cả deploy lẫn observe phải giữ volume (không có `down ... -v`)."""
+    for script in ("deploy/down.sh", "observability/down.sh"):
+        lines = (REPO_ROOT / script).read_text(encoding="utf-8").splitlines()
+        commands = [
+            ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")
+        ]
+        assert not any(" down" in ln and " -v" in ln for ln in commands), script
+
+
 def test_backup_script_giu_dung_7_ban_va_chi_dump_database_openwebui() -> None:
     """Backup chỉ dump `openwebui` (DB `chatbot` đã gỡ), giữ 7 bản gần nhất (mục 8)."""
-    content = (DEPLOY_DIR / "scripts" / "backup.sh").read_text(encoding="utf-8")
+    content = (DEPLOY_DIR / "backup.sh").read_text(encoding="utf-8")
     assert "KEEP=7" in content
     assert "openwebui" in content
     assert "chatbot" not in content
 
 
-def test_initdb_script_cu_phap_shell_hop_le() -> None:
-    """`deploy/initdb/001_create_databases.sh` phải là POSIX shell hợp lệ."""
-    script = DEPLOY_DIR / "initdb" / "001_create_databases.sh"
-    result = subprocess.run(
-        ["sh", "-n", str(script)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_initdb_script_chi_tao_database_openwebui() -> None:
-    """Chỉ tạo DB `openwebui` (OpenWebUI); DB `chatbot` (chatlog) đã gỡ — mục 4."""
-    script = DEPLOY_DIR / "initdb" / "001_create_databases.sh"
-    content = script.read_text(encoding="utf-8")
-    assert "CREATE DATABASE openwebui" in content
-    assert "CREATE DATABASE chatbot" not in content
+@requires_docker_compose
+def test_docker_compose_postgres_tu_tao_database_openwebui(tmp_path: Path) -> None:
+    """Postgres tự tạo DB `openwebui` qua `POSTGRES_DB`, không cần script initdb (mục 4)."""
+    postgres = _resolve_compose_config(tmp_path)["services"]["postgres"]
+    assert postgres["environment"]["POSTGRES_DB"] == "openwebui"
+    mounts = [str(volume.get("target", "")) for volume in postgres.get("volumes", [])]
+    assert "/docker-entrypoint-initdb.d" not in mounts
+    assert not (DEPLOY_DIR / "initdb").exists()

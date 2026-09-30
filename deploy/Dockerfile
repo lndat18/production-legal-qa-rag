@@ -33,17 +33,24 @@ USER appuser
 ENV TORCH_CUDA_EXTRAS="torch triton cuda-bindings cuda-pathfinder cuda-toolkit nvidia-cublas nvidia-cuda-cupti nvidia-cuda-nvrtc nvidia-cuda-runtime nvidia-cudnn-cu13 nvidia-cufft nvidia-cufile nvidia-curand nvidia-cusolver nvidia-cusparse nvidia-cusparselt-cu13 nvidia-nccl-cu13 nvidia-nvjitlink nvidia-nvshmem-cu13 nvidia-nvtx"
 
 # Tầng dependency (được cache khi chỉ code đổi)
+#
+# `--mount=type=cache` giữ cache tải wheel của uv (torch ~GB) qua các lần build: kể cả khi tầng
+# này bị vô hiệu (uv.lock đổi, BuildKit dọn tầng), gói đã tải không phải tải lại. UV_LINK_MODE=copy
+# ở trên là bắt buộc vì cache mount và /app nằm khác filesystem. uid/gid 1000 = appuser.
 COPY --chown=appuser:appuser pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project \
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv sync --frozen --no-dev --no-install-project \
     $(printf -- '--no-install-package %s ' $TORCH_CUDA_EXTRAS)
 
-RUN uv pip install --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}" torch
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv pip install --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}" torch
 
 # Cài chính project
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser README.md ./
 # Dùng `uv pip install`, KHÔNG dùng lại `uv sync`: sync sẽ gỡ bản torch vừa cài đúng biến thể.
-RUN uv pip install --no-deps .
+RUN --mount=type=cache,target=/home/appuser/.cache/uv,uid=1000,gid=1000 \
+    uv pip install --no-deps .
 
 # `data/bm25/` không copy vào image — mount read-only lúc chạy (mục 6).
 

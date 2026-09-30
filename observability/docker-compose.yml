@@ -1,12 +1,13 @@
-# Langfuse self-host + Prometheus + Grafana — CHỈ để chạy thử/học cục bộ, ngoài phạm vi
-# deploy_spec.md (monitoring/tracing là phase cuối sau RAGAS). Tách riêng khỏi các compose
-# chính. `api` (chạy trên host, xem prometheus.yml) đã gửi trace sang Langfuse và expose
-# /metrics cho Prometheus (observability_spec.md) khi có đủ LANGFUSE_PUBLIC_KEY/SECRET_KEY
-# trong `.env` gốc.
+# Langfuse self-host + Prometheus + Grafana — chạy cạnh production, ngoài phạm vi
+# deploy_spec.md (không phục vụ end-user). Tách riêng khỏi các compose chính. `api` production
+# (nối vào network chung qua deploy/docker-compose.observe.yml, xem prometheus.yml) gửi trace
+# sang Langfuse và expose /metrics cho Prometheus (observability_spec.md) khi có đủ
+# LANGFUSE_PUBLIC_KEY/SECRET_KEY trong `.env` gốc.
 #
-#   docker compose -f dev/observability/docker-compose.yml --env-file .env up -d
-# (chạy từ repo root để --env-file trỏ đúng vào .env gốc — biến OBS_* bên dưới nằm ở đó).
-# Dừng (giữ volume): thay `up -d` bằng `down`; xoá sạch (mất trace/dashboard): `down -v`.
+#   ./observability/up.sh      # bật (bọc docker compose --env-file ../.env up -d --wait)
+#   ./observability/down.sh    # dừng, giữ volume
+# Biến OBS_* nằm ở .env gốc. Xoá sạch dữ liệu (mất trace/dashboard, không hoàn tác):
+# `docker compose -f observability/docker-compose.yml --env-file .env down -v`.
 #
 # Nặng nhất là ClickHouse + MinIO. Tổng mem_limit ~5.4GB — đừng bật cùng lúc với việc load
 # model embedding/rerank nếu máy yếu (deploy_spec.md mục 10).
@@ -23,8 +24,8 @@ x-langfuse-depends-on: &langfuse-depends-on
     condition: service_healthy
   clickhouse:
     condition: service_healthy
-  minio:
-    condition: service_started
+  minio-init:
+    condition: service_completed_successfully
 
 x-langfuse-env: &langfuse-env
   DATABASE_URL: postgresql://${OBS_POSTGRES_USER:-langfuse}:${OBS_POSTGRES_PASSWORD:?}@postgres:5432/${OBS_POSTGRES_DB:-langfuse}
@@ -131,6 +132,24 @@ services:
     # sẵn sàng, thêm retries/start_period ở service phụ thuộc thay vì ép healthcheck ở đây.
     mem_limit: 256m
 
+  # Langfuse v4 lưu event/media vào S3, nhưng MinIO không tự tạo bucket.
+  minio-init:
+    image: cgr.dev/chainguard/minio
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do
+          sleep 2
+        done
+        mc mb --ignore-existing local/langfuse
+    environment:
+      MINIO_ROOT_USER: ${OBS_MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${OBS_MINIO_ROOT_PASSWORD:?OBS_MINIO_ROOT_PASSWORD bắt buộc, xem .env.example}
+    restart: "no"
+
   langfuse-worker:
     <<: *defaults
     image: docker.langfuse.com/langfuse/langfuse-worker:4
@@ -145,6 +164,9 @@ services:
     depends_on: *langfuse-depends-on
     environment:
       <<: *langfuse-env
+      # Next.js mặc định đọc HOSTNAME để bind. Phải lắng nghe mọi interface để `api`
+      # trên network `legal-qa-observe` kết nối được, không chỉ interface default.
+      HOSTNAME: 0.0.0.0
       NEXTAUTH_URL: http://localhost:3001
       NEXTAUTH_SECRET: ${OBS_NEXTAUTH_SECRET:?OBS_NEXTAUTH_SECRET bắt buộc, xem .env.example}
       # Media: server đọc qua tên service nội bộ, nhưng trình duyệt nhận URL trực tiếp nên
@@ -156,7 +178,7 @@ services:
     ports:
       - "127.0.0.1:3001:3000" # 3000 dành cho open-webui (deploy_spec.md mục 4)
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:3000/api/public/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://127.0.0.1:3000/api/public/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 15

@@ -129,15 +129,15 @@ nghiệp vụ).
 host (`127.0.0.1:3001:3000`), không phải tên service Docker. `api/`, `conversation/`, `generation/`, `retrieval/` không đọc `LangfuseSettings`; package
 `observability/` tự đọc khi khởi tạo client. 3 biến `LANGFUSE_*` nằm trong `.env.example` root (block APP; 1 cặp `.env` duy nhất, `deploy_spec.md` mục 7).
 
-## 7. Triển khai (`dev/observability/` + `deploy/docker-compose.observe.yml`)
+## 7. Triển khai (`observability/` + `deploy/docker-compose.observe.yml`)
 
 Mục tiêu (chốt 2026-09-29): quan sát **traffic end-user thật** trên `api` production. Stack observe (Langfuse/Prometheus/Grafana) là compose riêng ở
-`dev/observability/`, tách khỏi `deploy/` (không phục vụ end-user); `api` production nối vào bằng 1 network chung `legal-qa-observe` (tên cố định) do
-`dev/observability/docker-compose.yml` tạo (`langfuse-web`, `prometheus` join). `deploy/docker-compose.observe.yml` (override, cùng kiểu `docker-compose.gpu.yml`)
+`observability/`, tách khỏi `deploy/` (không phục vụ end-user); `api` production nối vào bằng 1 network chung `legal-qa-observe` (tên cố định) do
+`observability/docker-compose.yml` tạo (`langfuse-web`, `prometheus` join). `deploy/docker-compose.observe.yml` (override, cùng kiểu `docker-compose.gpu.yml`)
 khai network `external`, thêm `api` vào, ghi đè `LANGFUSE_BASE_URL=http://langfuse-web:3000` và `LANGFUSE_TRACING_ENVIRONMENT=production`; `deploy/up.sh` tự ghép
-override khi network đã tồn tại (stack đang chạy), chưa chạy thì bỏ qua. `dev/observability/prometheus.yml` scrape `api:8000` (label `env=production`).
-`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY` điền vào `.env` root, tạo tay qua Langfuse UI sau lần `docker compose -f dev/observability/docker-compose.yml up -d` đầu
-(cần symlink `dev/observability/.env` → `../../.env`); điền xong chạy lại `./deploy/up.sh`. Stack observe chạy cùng máy với production (chưa chốt tách VM).
+override khi network đã tồn tại (stack đang chạy), chưa chạy thì bỏ qua. `observability/prometheus.yml` scrape `api:8000` (label `env=production`).
+`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY` điền vào `.env` root, tạo tay qua Langfuse UI sau lần `./observability/up.sh` đầu
+(script bọc `docker compose --env-file ../.env`; `down.sh` giữ volume); điền xong chạy lại `./deploy/up.sh`. Stack observe chạy cùng máy với production (chưa chốt tách VM).
 
 ## 8. Module
 
@@ -148,7 +148,7 @@ override khi network đã tồn tại (stack đang chạy), chưa chạy thì b�
 
 ## 9. Nghiệm thu thủ công
 
-1. Bật stack (`dev/observability`), hỏi vài câu qua OpenWebUI/`tools/conversation.py`. 2. Langfuse UI: mỗi lượt đúng 1 trace `chat_turn`, cây span khớp 4.3 (span
+1. Bật stack (`observability`), hỏi vài câu qua OpenWebUI/`tools/conversation.py`. 2. Langfuse UI: mỗi lượt đúng 1 trace `chat_turn`, cây span khớp 4.3 (span
    nào chạy tuỳ nhánh cache hit/miss/refused/error). 3. `guardrail` + `condense` (song song) đều là con trực tiếp của `chat_turn`, không lẫn ngữ cảnh. 4. `curl
    api:8000/metrics` thấy `chat_turns_total`, `turn_latency_seconds`, `http_requests_total`; Prometheus (`localhost:9092/targets`) báo `legal-qa-api` `UP`. 5. Trace có
    đủ nhật ký (4.5): `input`, `output`, `user_id`/`session_id`, metadata `outcome`/`cache_status`/`chunk_ids`; lượt từ chối/lỗi/cache hit vẫn có trace riêng; lọc `session_id`

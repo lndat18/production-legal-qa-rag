@@ -11,8 +11,8 @@ tests/                         Test, đặt tên test_<package>_<phần>.py
 tools/                         CLI (Typer) chạy từng bước pipeline độc lập, vd. tools/chunk_documents.py
 data/                          raw -> markdown -> chunks -> embeddings, bm25/ cho sparse index
 models/                        Model tải local, vd. vietnamese-reranker (chạy in-process, không host tách rời)
-deploy/                        Docker compose production (chỉ phục vụ end-user) + docs (deploy/deploy_spec.md), scripts/ (backup, reset cache); không phải code import được
-dev/                           observability/ (Langfuse/Prometheus/Grafana compose, dev only) — tách khỏi deploy/ (2026-09-29) vì không phục vụ end-user
+deploy/                        Docker compose production (chỉ phục vụ end-user) + docs (deploy/deploy_spec.md), up.sh/down.sh/backup.sh/reset_cache.sh; không phải code import được
+observability/                 Langfuse/Prometheus/Grafana compose (chạy cạnh production để quan sát end-user) — tách khỏi deploy/ (2026-09-29) vì không phục vụ end-user
 docs/                          Tài liệu tổng quan hệ thống (luồng xử lý 1 câu hỏi, kiến trúc)
 .claude/                       Cấu hình Claude Code cho project: agents/, skills/, settings.json
 ```
@@ -40,21 +40,28 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 
 ## Tiến độ
 
-Trạng thái tại **2026-09-30**.
+Trạng thái tại **2026-09-30**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
+thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset, Evaluation Phase 2) đang hoàn thiện.
 
 **Đã xong**
 - Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
   `conversation/` → `cache/` → `api/`: có spec, có test, chatbot chạy end-to-end qua API
   OpenAI-compatible + OpenWebUI + Redis (Postgres chỉ còn phục vụ OpenWebUI).
-- **Deploy production** (`deploy/`, chỉ phục vụ end-user): entrypoint `deploy/up.sh` (tự dò GPU
-  NVIDIA), public qua Cloudflare quick tunnel; nghiệm thu thật ngày 2026-09-27, **trước** các thay đổi
-  #57–#62 (compose/env gọn lại, chính sách model/key, observability, gỡ chatlog) — xem "Đang dở". Lưu ý vận hành: `api` cần
+- **Deploy production** (`deploy/`, chỉ phục vụ end-user): `deploy/up.sh` (tự dò GPU NVIDIA) / `deploy/down.sh`,
+  public qua Cloudflare quick tunnel; `backup.sh` (pg_dump `openwebui`), `reset_cache.sh` (xoá cache Redis) nằm cạnh
+  `up.sh`. Nghiệm thu thật ngày 2026-09-27 và **chạy lại sau #57–#62 ngày 2026-09-30** (đăng ký user thường,
+  hỏi-đáp có citation, cache hoạt động) — phần observe vẫn chưa nghiệm thu, xem "Đang dở". Lưu ý vận hành: `api` cần
   `mem_limit: 3g`; Groq giới hạn rate limit theo (tài khoản, model), không theo API key.
+  Bài học 2026-09-30: (1) OpenWebUI lưu cấu hình vào DB (PersistentConfig) — giá trị chỉnh ở Admin Panel
+  (vd. New Sign Ups) đè `ENABLE_SIGNUP` trong compose ở các lần khởi động sau; (2) `docker compose down` phải
+  có `--env-file ../.env --profile '*'` (dùng `down.sh`), thiếu thì cloudflared sót và giữ network; (3) Dockerfile dùng
+  `--mount=type=cache` cho cache wheel của uv để đổi dependency không tải lại torch; đừng `docker builder prune`;
+  (4) Postgres chỉ 1 DB nên `POSTGRES_DB=openwebui`, đã bỏ `deploy/initdb/`.
 - **Chính sách model/key LLM** (`conversation_spec.md` mục 12.1, PR #58): generation `gpt-oss-120b`
   xoay key 3 ⇄ 4; condense/HyDE/Judge `gpt-oss-20b`; guardrail `gpt-oss-safeguard-20b`;
   throttle theo bucket `(model, key)`.
 - **Observability code** (PR #61): Langfuse trace + Prometheus/Grafana; `deploy/docker-compose.observe.yml`
-  nối `api` production vào stack observe (`dev/observability/`), `up.sh` tự ghép khi stack đang
+  nối `api` production vào stack observe (`observability/`), `up.sh` tự ghép khi stack đang
   chạy. Prometheus chỉ scrape `api` production (`env=production`).
 - **Gỡ `chatlog/`** (PR #62): Langfuse (self-host, riêng tư) là nơi duy nhất lưu nhật ký lượt hỏi-đáp
   (`observability_spec.md` mục 4.5, bảng ánh xạ trường `chat_turns` → trace). Đã bỏ `alembic/`,
@@ -63,8 +70,7 @@ Trạng thái tại **2026-09-30**.
   production: người dùng tự drop. Dự án hiện tập trung vào phục vụ end-user + observe end-user.
 - **Hạ tầng gọn:** đúng 1 cặp `.env`/`.env.example` ở repo root (3 block APP/DEPLOY/OBSERVABILITY,
   prefix `DEPLOY_`/`OBS_` cho biến trùng tên); `deploy/` chỉ chứa thứ phục vụ end-user, stack
-  dev nằm ở `dev/observability/` (chạy: `docker compose -f dev/observability/docker-compose.yml up -d`,
-  cần symlink `dev/observability/.env` → `../../.env`).
+  observe nằm ở `observability/` (root) (chạy: `./observability/up.sh` / `./observability/down.sh`; bật observe TRƯỚC rồi mới `./deploy/up.sh`).
 - **Evaluation Phase 1** (sinh golden testset theo đơn vị, có checkpoint, chạy tiếp nhiều ngày,
   `tools/generate_testset.py`; PR #55, #60, #63, #64): dùng **9 key Groq** `GROQ_API_KEY_1..9` xoay vòng
   (`groq_round_robin.py`); 429 theo phút cooldown theo `retry-after`, đếm token thật theo key/đơn vị,
@@ -79,32 +85,28 @@ Trạng thái tại **2026-09-30**.
 - **Evaluation Phase 2 — code**: chưa có module nào. Cần thêm `precomputed` ở
   `RetrievalPipeline.retrieve` (`retrieval_spec.md` mục 2). Chỉ làm sau khi golden testset xong.
 
-**Đang dở / chờ người dùng**
+**Chưa làm**
+- **CD** (GitHub Actions build + push image lên GHCR; không SSH tự động vào máy nhà): chưa brainstorm chi tiết,
+  hiện cập nhật thủ công bằng `git pull` → `./deploy/up.sh`.
+
+**Đang hoàn thiện**
 - **Golden testset** (`data/eval/`): **33/50 đơn vị** xong (~48% ký tự), raw có **97 câu** (90 single-hop,
   7 multi-hop specific, **0 multi-hop abstract**). Lần chạy cuối dừng 2026-09-29 do hết quota ngày
   `gpt-oss-120b` ở đơn vị `Điều kiện lao động và quan hệ lao động.md#8`; còn 17 đơn vị lớn (~2,12M token,
   ước ~1–2 ngày quota với 9 key). Chạy tiếp: `tools/generate_testset.py generate` (tự làm tiếp từ đơn vị 34 đến 50, chưa chạy).
   Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6) sau khi xong 50 đơn vị;
   sau đó `finalize` đủ 180 câu và duyệt tay.
-- **Chạy lại full pipeline end-user trên production** (`./deploy/up.sh` → OpenWebUI → hỏi-đáp nhiều lượt có citation)
-  — chưa làm sau #57–#62; test tự động pass nhưng chưa có lần chạy thật nào với code mới.
 - **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
-  `./deploy/up.sh`, xem trace/metrics thật) — chưa làm xong.
-- **Cô đọng spec** (branch `docs/co-dong-spec`, 2026-09-30, **chưa commit/PR**): đã cô đọng **cả 11 spec**
-  (`deploy`, `api`, `cache`, `chunking`, `embedding`, `formatting`, `generation`, `observability`, `retrieval`,
-  `conversation`, `evaluation`) + `CLAUDE.md`/`AGENTS.md`; giữ số mục, bản đầy đủ ở git history. `evaluation_spec.md`
-  đã sửa mục 3.2/3.3 thành "đã implement (#64)", thêm khối bài học ở đầu (mục 0), cập nhật 9 key. Cần người dùng đọc
-  lại và commit; CI sẽ chạy đủ vì spec nằm dưới `src/`.
+  `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
-1. Chạy lại full pipeline end-user trên production với code mới, kèm nghiệm thu observe (bật stack observe
-   cùng lúc để xem trace/metrics thật).
+1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
 2. Chạy tiếp sinh golden testset đơn vị 34–50 → chốt abstract → `finalize` → duyệt tay.
 3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch mới) → pilot → chạy full;
    sau đó lấy mẫu Q&A thật từ Langfuse.
-4. **CD**: GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà) — chưa
-   brainstorm chi tiết. Tách observability sang VM riêng: chưa chốt.
+4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).
+   Tách observability sang VM riêng: chưa chốt.
 
 ## Nguyên tắc & bài học xương máu (đúc kết, chi tiết ở từng spec)
 

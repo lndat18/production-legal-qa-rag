@@ -32,11 +32,10 @@ services:
     environment:
       POSTGRES_USER: ${DEPLOY_POSTGRES_USER}
       POSTGRES_PASSWORD: ${DEPLOY_POSTGRES_PASSWORD}
-      # DB thật (openwebui) do deploy/initdb/ tạo khi volume khởi tạo lần đầu.
-      POSTGRES_DB: postgres
+      # Image postgres tự tạo DB này khi volume khởi tạo lần đầu (chỉ 1 DB: openwebui).
+      POSTGRES_DB: openwebui
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./initdb:/docker-entrypoint-initdb.d:ro
     networks: [internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\""]
