@@ -2198,6 +2198,7 @@ eval = [
     { name = "langchain-community" },
     { name = "ragas" },
     { name = "rapidfuzz" },
+    { name = "requests" },
 ]
 production = [
     { name = "langfuse" },
@@ -2238,6 +2239,7 @@ eval = [
     { name = "langchain-community", specifier = "<0.4" },
     { name = "ragas", specifier = ">=0.4.3" },
     { name = "rapidfuzz" },
+    { name = "requests" },
 ]
 production = [
     { name = "langfuse", specifier = ">=4.15.6" },

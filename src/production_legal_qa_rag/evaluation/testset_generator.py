@@ -307,6 +307,11 @@ def read_raw_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def write_raw_rows(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    """Ghi nguyên tử toàn bộ dòng raw (file tạm + `os.replace`), giữ nguyên thứ tự `rows`."""
+    _write_text_atomic(path, json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
+
+
 def append_raw_cases(
     path: Path, cases: Sequence[GoldenTestCase]
 ) -> list[GoldenTestCase]:
@@ -326,7 +331,7 @@ def append_raw_cases(
         seen.add(case.user_input)
         added.append(case)
     rows.extend(case.model_dump() for case in added)
-    _write_text_atomic(path, json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
+    write_raw_rows(path, rows)
     return added
 
 

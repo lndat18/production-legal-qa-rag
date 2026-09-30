@@ -21,6 +21,8 @@ class GoldenTestCase(BaseModel):
     loại câu hỏi (single-hop/multi-hop) lúc review bằng mắt.
     ``source_document``/``source_section`` không do ragas trả: `generate` biết
     đang xử lý đơn vị nào nên tự gắn vào (mục 5).
+    ``original_en``/``translation_review`` do lệnh `translate` gắn (mục 12.5); mặc định
+    ``None`` nên đọc được raw cũ chưa qua bước dịch.
     """
 
     user_input: str
@@ -29,6 +31,11 @@ class GoldenTestCase(BaseModel):
     synthesizer_name: str | None = None
     source_document: str | None = None  # tên file .md nguồn
     source_section: str | None = None  # tiêu đề Chương (hoặc các Chương gộp)
+    # Bản gốc tiếng Anh của các trường ĐÃ dịch (khoá `user_input`/`reference`/
+    # `reference_contexts`; chỉ có khoá của trường thật sự bị dịch, mục 12.5).
+    original_en: dict[str, str | list[str]] | None = None
+    # Lý do mẫu cần soát tay sau dịch (mục 12.5); `None` = không có vấn đề.
+    translation_review: str | None = None
 
     def empty_required_fields(self) -> list[str]:
         """Tên các cột bắt buộc đang rỗng (câu hỏi/đáp án/ngữ cảnh trống hoặc chỉ khoảng trắng)."""

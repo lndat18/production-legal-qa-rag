@@ -1,11 +1,14 @@
 """CLI sinh golden testset RAGAS Phase 1 (evaluation_spec.md mục 4, 7, 9).
 
-Chỉ gọi thẳng `testset_generator.py`, không chứa business logic. Hai lệnh:
+Chỉ gọi thẳng `testset_generator.py`/`translation.py`, không chứa business logic. Ba lệnh:
 
 - `generate`: sinh câu hỏi theo từng đơn vị (Chương/Mục), nhỏ -> lớn, checkpoint sau mỗi
   đơn vị. Chạy lại đúng lệnh đó hôm sau để làm tiếp khi hết quota Groq (mục 4.5).
   `--dry-run` chỉ in kế hoạch + tiến độ, không gọi LLM, không cần key Groq, không cần
   `ragas` (chạy được trên venv thường).
+- `translate`: dịch các trường tiếng Anh trong `golden_testset_raw.json` qua Google Apps Script
+  (mục 12), ghi đè tại chỗ kèm `original_en`/`translation_review`. Chạy TRƯỚC `finalize`,
+  KHÔNG chạy song song với `generate`. `--dry-run` không gọi mạng, không cần `TRANSLATE_URL`.
 - `finalize`: chốt đúng 180 câu từ `golden_testset_raw.json` đã review -> `golden_testset.json`.
 
 `ragas` (và `langchain-community`) chỉ nằm trong dependency-group `eval`
@@ -18,6 +21,8 @@ trong venv, nên mọi lệnh `uv run` liên quan tới `eval` đều cần đ�
     uv run --group eval --no-group production tools/generate_testset.py generate
     uv run --group eval --no-group production tools/generate_testset.py generate \\
         --only "Luật bảo hiểm y tế.md#6" --append
+    uv run --group eval --no-group production tools/generate_testset.py translate --dry-run
+    uv run --group eval --no-group production tools/generate_testset.py translate --limit 5
     uv run --group eval --no-group production tools/generate_testset.py finalize
 Xong việc, chạy `uv sync` (không cờ) để trả venv về profile mặc định.
 """
@@ -39,6 +44,12 @@ from production_legal_qa_rag.evaluation.testset_generator import (
     generate_testset,
     plan_generation,
     summarize_progress,
+)
+from production_legal_qa_rag.evaluation.translation import (
+    AppsScriptTranslator,
+    load_translate_settings,
+    plan_translation,
+    translate_raw,
 )
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -146,6 +157,67 @@ def generate(
 
 
 @app.command()
+def translate(
+    output_dir: Path = typer.Option(
+        DEFAULT_OUTPUT_DIR,
+        help="Thư mục chứa golden_testset_raw.json (và translation_glossary.json tuỳ chọn).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="In các trường bị coi là tiếng Anh + vùng tỉ lệ mơ hồ; không gọi mạng.",
+    ),
+    limit: int | None = typer.Option(
+        None, min=1, help="Chỉ xử lý N mẫu đầu tiên cần dịch (pilot)."
+    ),
+    retry_flagged: bool = typer.Option(
+        False,
+        "--retry-flagged",
+        help="Dịch lại cả mẫu đã bị cờ translation_review (mặc định bỏ qua).",
+    ),
+) -> None:
+    """Dịch mẫu tiếng Anh trong raw sang tiếng Việt (chạy trước `finalize`).
+
+    Mã thoát: 0 sạch; 1 dừng vì 3 mẫu liên tiếp lỗi dịch; 2 đầu vào/cấu hình sai (thiếu
+    TRANSLATE_URL, raw thiếu/hỏng, forbidden); 3 xong nhưng còn mẫu translation_review cần
+    soát tay. Chạy lại cùng lệnh là tiếp tục (mục 12.6).
+    """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    try:
+        if dry_run:
+            typer.echo(
+                plan_translation(output_dir, retry_flagged=retry_flagged, limit=limit)
+            )
+            return
+        translator = AppsScriptTranslator(load_translate_settings())
+        report = translate_raw(
+            output_dir, translator, limit=limit, retry_flagged=retry_flagged
+        )
+    except EvalInputError as error:
+        typer.echo(f"Lỗi đầu vào: {error}", err=True)
+        raise typer.Exit(2) from error
+    typer.echo(
+        f"Đã dịch {report.translated_samples} mẫu ({report.translated_fields} trường), "
+        f"cờ lần này {report.flagged_this_run or 0}, bỏ qua {report.skipped_flagged} mẫu "
+        f"đã bị cờ; còn {report.flagged_total} dòng có translation_review trong raw."
+    )
+    if report.stopped_by_consecutive_errors:
+        typer.echo(
+            "Dừng: 3 mẫu liên tiếp lỗi dịch (URL hỏng hoặc hết hạn mức Apps Script?).",
+            err=True,
+        )
+    elif report.flagged_total:
+        typer.echo(
+            "Còn mẫu cần soát tay (translation_review); xem evaluation_spec.md mục 12.7.",
+            err=True,
+        )
+    if report.exit_code:
+        raise typer.Exit(report.exit_code)
+
+
+@app.command()
 def finalize(
     output_dir: Path = typer.Option(
         DEFAULT_OUTPUT_DIR, help="Thư mục chứa golden_testset_raw.json (đã review)."
@@ -160,6 +232,11 @@ def finalize(
     typer.echo(
         f"Đã ghi {len(cases)}/{TARGET_SIZE} câu vào {output_dir / 'golden_testset.json'}."
     )
+    if flagged := sum(case.translation_review is not None for case in cases):
+        typer.echo(
+            f"Cảnh báo: {flagged} câu còn translation_review (chưa soát tay sau dịch).",
+            err=True,
+        )
 
 
 if __name__ == "__main__":

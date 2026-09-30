@@ -55,6 +55,9 @@ eval = [
     "ragas>=0.4.3",
     # ragas import rapidfuzz lúc dựng OverlapScoreBuilder nhưng không khai báo là dependency.
     "rapidfuzz",
+    # Gọi Google Apps Script dịch mẫu tiếng Anh (`generate_testset.py translate`, mục 12.2);
+    # trước đây chỉ có bắc cầu qua ragas/langchain-community.
+    "requests",
 ]
 # Dependency thật của đường online (observability_spec.md mục 3) + ràng buộc version
 # `openai` khi KHÔNG cài `eval`. Lý do ràng buộc `openai`: `ragas`/`instructor` (nhóm
@@ -90,6 +93,12 @@ ignore_missing_imports = true
 # xem [dependency-groups] production/eval) — `mypy src` vẫn phải chạy được trên
 # venv mặc định (không có `eval`) nên bỏ qua "import-not-found" cho module này.
 module = ["ragas", "ragas.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `requests` chỉ nằm trong nhóm `eval` và không có stub đi kèm; chỉ import lười trong
+# `evaluation/translation.py` khi gọi Apps Script thật.
+module = ["requests", "requests.*"]
 ignore_missing_imports = true
 
 [tool.uv]
