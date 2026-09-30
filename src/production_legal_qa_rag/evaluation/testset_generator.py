@@ -998,7 +998,7 @@ def _run_one_unit(
     output_dir: Path,
     *,
     reuse_knowledge_graph: bool,
-) -> tuple[int, UnitGenerationError | None, int, int]:
+) -> tuple[int, UnitGenerationError | None, int, int, bool]:
     """Chạy + checkpoint một unit; chỉ lỗi `UnitGenerationError(stage=...)` mới bị bỏ."""
     key = unit_key(unit)
     progress_path = output_dir / PROGRESS_FILENAME
@@ -1043,6 +1043,7 @@ def _run_one_unit(
                 error,
                 error.skipped_samples,
                 len(error.skipped_question_types),
+                False,
             )
         stop = _stop_on_failure(progress_path, state.progress, key, error)
         raise stop from error
@@ -1061,7 +1062,13 @@ def _run_one_unit(
         result.skipped_samples,
         result.llm_calls,
     )
-    return len(added), None, result.skipped_samples, len(result.skipped_question_types)
+    return (
+        len(added),
+        None,
+        result.skipped_samples,
+        len(result.skipped_question_types),
+        bool(result.cases),
+    )
 
 
 def generate_testset(
@@ -1146,8 +1153,14 @@ def generate_testset(
     consecutive_signature: tuple[str, str, int | None] | None = None
     consecutive_skips = 0
     for unit in to_run:
-        added, skipped_error, skipped_samples, skipped_types = _run_one_unit(
-            runner, unit, state, output_dir, reuse_knowledge_graph=reuse_knowledge_graph
+        added, skipped_error, skipped_samples, skipped_types, has_valid_cases = (
+            _run_one_unit(
+                runner,
+                unit,
+                state,
+                output_dir,
+                reuse_knowledge_graph=reuse_knowledge_graph,
+            )
         )
         report.skipped_samples += skipped_samples
         report.skipped_question_types += skipped_types
@@ -1170,7 +1183,7 @@ def generate_testset(
             continue
         report.generated_units.append(unit_key(unit))
         report.new_questions += added
-        if added:
+        if has_valid_cases:
             consecutive_signature = None
             consecutive_skips = 0
     return report
