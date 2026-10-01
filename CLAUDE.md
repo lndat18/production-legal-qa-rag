@@ -19,7 +19,7 @@ docs/                          Tài liệu tổng quan hệ thống (luồng x�
 
 Mỗi package trong `src/production_legal_qa_rag/` có một `<package>_spec.md` nằm ngay
 cạnh nó, là nguồn sự thật cho thiết kế/quyết định của package đó — đọc trước khi sửa code
-trong package tương ứng. Các spec đã **cô đọng 2026-09-30** (bản đầy đủ ở git history) và **giữ nguyên số
+trong package tương ứng. Các spec đã **cô đọng 2026-09-30 và rút gọn lần 2 2026-10-01 (chỉ giữ phần bắt buộc)** (bản đầy đủ ở git history) và **giữ nguyên số
 mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `observability_spec.md` mục 4.5,
 `evaluation_spec.md` mục 3.x/4.x…) — đổi số mục là làm hỏng các tham chiếu đó.
 
@@ -36,7 +36,7 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres (chỉ cho OpenWebUI), spec tổng toàn hệ thống | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
 | `observability/` | Langfuse trace 1 lượt hỏi + Prometheus `/metrics` cho `api`                                       | [observability_spec.md](src/production_legal_qa_rag/observability/observability_spec.md) |
-| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 chạy pipeline thật + chấm điểm (spec đã commit, chưa implement) | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
+| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 chạy pipeline thật + chấm điểm (spec chốt lại 2026-10-01, chưa implement) | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
 
 ## Tiến độ
 
@@ -76,14 +76,17 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   (`groq_round_robin.py`); 429 theo phút cooldown theo `retry-after`, đếm token thật theo key/đơn vị,
   `reasoning_effort=low` chỉ khi dựng KG, và **giữ phần đã sinh khi lỗi giữa đơn vị** (đơn vị `partial`
   chạy tiếp phần thiếu, không mất sample đã xong) — `evaluation_spec.md` mục 3.2, 3.3.
-- **Evaluation Phase 2 — spec** (`evaluation_spec.md` mục 11, đã commit ở PR #63): 6 stage (HyDE → embed →
-  retrieve MMR bật/tắt → chấm retrieval → generation → chấm câu trả lời), file JSONL trung gian, resume
-  theo `case_id`; generation chạy nguyên `GenerationPipeline` (phương án B), rải 9 key Groq; pilot
-  `--limit 10–20` (`--output-dir data/eval/phase2_pilot`) trước khi chạy full.
+- **Evaluation Phase 2 — spec** (`evaluation_spec.md` mục 11, chốt lại **2026-10-01**): stage HyDE → embed → retrieve
+  (MMR bật/tắt, tuần tự) → `context_recall` cả hai cấu hình → chọn MMR → generation → `faithfulness` + `answer_relevancy` →
+  `context_precision`; 4 metric chuẩn RAGAS, file JSONL trung gian, resume theo `case_id`; generation chạy nguyên
+  `GenerationPipeline` (phương án B); hàng đợi chung 9 key Groq + throttle chủ động theo `(model, key)`; testset cuối
+  **157 câu (142 single + 15 multi-hop specific)** = mẫu `keep` của review luna (`data/eval/golden_testset_review.json`),
+  không random, không duyệt tay; không pilot bắt buộc.
 
 **Đã chốt thiết kế, chưa implement**
 - **Evaluation Phase 2 — code**: chưa có module nào. Cần thêm `precomputed` ở
-  `RetrievalPipeline.retrieve` (`retrieval_spec.md` mục 2). Chỉ làm sau khi golden testset xong.
+  `RetrievalPipeline.retrieve` (`retrieval_spec.md` mục 2). Nhánh `/develop-cycle`: `feature/eval-phase2`
+  (`evaluation_spec.md` mục 11.12; gồm sửa nhỏ `finalize`).
 
 **Chưa làm**
 - **CD** (GitHub Actions build + push image lên GHCR; không SSH tự động vào máy nhà): chưa brainstorm chi tiết,
@@ -92,32 +95,23 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
 **Đang hoàn thiện**
 - **Golden testset** (`data/eval/`): job `tools/generate_testset.py generate` **đã chạy hết, không còn process** (kiểm tra 2026-09-30 ~22:10):
   **49/50 đơn vị `done`, 1 `skipped`**, raw có **203 câu** (180 single-hop, 23 multi-hop specific,
-  **0 multi-hop abstract**) — đã vượt 180 nên `finalize` cắt phân tầng được. Đơn vị `skipped` duy nhất:
+  **0 multi-hop abstract**) — đã vượt 180; **chốt 2026-10-01: luna (Codex) review 203 mẫu, testset cuối = 157 mẫu `keep` (142 single + 15 multi-hop specific) trong `golden_testset.json` (đã sinh), không random, không duyệt tay**. Đơn vị `skipped` duy nhất:
   `Văn bản hợp nhất bộ luật lao động.md#5` (Chương IV + V, ~29K ký tự) — lỗi ở stage KG (bước `ThemesExtractor`,
   model trả JSON hỏng/rỗng → `OutputParserException`; lần trước là `OpenAITimeoutError`), 96 lượt tích luỹ qua 2 lần thử, 0 câu.
-  `Quy định mức lương tối thiểu.md#1` đã chạy lại thành công (`--retry-skipped`, +9 câu). Khuyến nghị: **bỏ** đơn vị này
+  `Quy định mức lương tối thiểu.md#1` đã chạy lại thành công (`--retry-skipped`, +9 câu). **Đã chốt bỏ** đơn vị này
   (203 > 180, BLLĐ còn nhiều đơn vị khác); nếu muốn thử nữa: `generate --retry-skipped --only "Văn bản hợp nhất bộ luật lao động.md#5"`
   (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
-  Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6); sau đó `finalize` đủ 180 câu và duyệt tay.
-- **Dịch mẫu tiếng Anh trong raw** (đang brainstorm với `architect`, **chưa chốt, chưa có trong spec**): đo trên
-  raw 141 câu (lúc brainstorm) có **~10 mẫu (~7%)** có `user_input`/`reference` là tiếng Anh (chỉ số 13, 31, 39, 41, 45,
-  55, 67, 69, 120, 130), `reference_contexts` chưa có mẫu nào tiếng Anh. Hướng đề xuất: lệnh `translate` trong
-  `tools/generate_testset.py` + `evaluation/translation.py`, phát hiện bằng tỉ lệ từ có dấu tiếng Việt, ghi đè tại
-  chỗ và lưu bản gốc vào `original_en`, kiểm code rằng `Điều/Khoản/Điểm/Chương/Mục + số` còn nguyên, chạy **trước
-  `finalize`**, không chạy song song với `generate`; spec vào `evaluation_spec.md` mục 12. Điểm chờ người dùng
-  chốt: dùng **Google Cloud Translation v2 chính thức** (cần thẻ thanh toán, ~30K ký tự nằm trong free tier 500K/tháng)
-  hay Groq `gpt-oss-20b`. Endpoint web không chính thức (deep-translator, gói không cập nhật từ 2023-06) đã thử
-  và bị Google trả captcha từ máy dev → không dùng.
+  abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; việc còn lại: sửa nhỏ code `finalize` (nhánh Phase 2).
 - **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
   `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
 1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
-2. Golden testset đã sinh xong 49/50 đơn vị (203 câu) → quyết định bỏ hay thử lại đơn vị `skipped` BLLĐ#5 → chốt abstract → chốt + làm
-   bước dịch mẫu tiếng Anh (brainstorm, xem "Đang hoàn thiện") → `finalize` → duyệt tay.
-3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch mới) → pilot → chạy full;
+2. Golden testset **xong** (49/50 đơn vị, 203 câu raw → luna review → `golden_testset.json` 157 mẫu; BLLĐ#5 bỏ, abstract = 0 chấp nhận).
+3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch `feature/eval-phase2`) → chạy full (không pilot
+   bắt buộc; S5 lần đầu `--limit 2`);
    sau đó lấy mẫu Q&A thật từ Langfuse.
 4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).
    Tách observability sang VM riêng: chưa chốt.
