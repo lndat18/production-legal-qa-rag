@@ -3,11 +3,10 @@
 `HuggingFaceEmbedder` (`embedding/hf_client.py`) chỉ có `embed_chunks(chunks:
 list[Chunk])`, không implement interface `langchain_core.embeddings.Embeddings`
 mà `LangchainEmbeddingsWrapper` của ragas cần (evaluation_spec.md mục 3). Adapter
-này gọi thẳng `InferenceClient.feature_extraction` trên text thô — KHÔNG áp
-`pyvi.ViTokenizer.tokenize()` như `embedding/hf_client.py`, vì ở đây embedding
-chỉ phục vụ nội bộ ragas so sánh độ tương đồng giữa các đoạn tóm tắt khi build
-`KnowledgeGraph`, không phải để khớp query/index với hệ thống tìm kiếm sản xuất
-(evaluation_spec.md mục 3).
+này gọi thẳng `InferenceClient.feature_extraction`; Phase 1 giữ text thô để so
+tương đồng trong `KnowledgeGraph` (evaluation_spec.md mục 3). Phase 2 bật
+`segment=True` để `answer_relevancy` dùng cùng tiền xử lý pyvi với model index
+(mục 11.5).
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ from collections.abc import Sequence
 
 from huggingface_hub import InferenceClient
 from langchain_core.embeddings import Embeddings
+from pyvi import ViTokenizer
 
 from production_legal_qa_rag.config import EmbeddingSettings
 
@@ -36,7 +36,10 @@ class RagasEmbeddingsAdapter(Embeddings):
         self,
         settings: EmbeddingSettings | None = None,
         client: InferenceClient | None = None,
+        *,
+        segment: bool = False,
     ) -> None:
+        self._segment = segment
         self._settings = settings or EmbeddingSettings()
         self._client = client or InferenceClient(
             model=self._settings.model_name,
@@ -46,6 +49,9 @@ class RagasEmbeddingsAdapter(Embeddings):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed nhiều đoạn văn bản theo batch, giữ nguyên thứ tự đầu vào."""
+        texts = (
+            [ViTokenizer.tokenize(text) for text in texts] if self._segment else texts
+        )
         embeddings: list[list[float]] = []
         for batch in _batched(texts, _BATCH_SIZE):
             response = self._client.feature_extraction(batch)
@@ -54,6 +60,7 @@ class RagasEmbeddingsAdapter(Embeddings):
 
     def embed_query(self, text: str) -> list[float]:
         """Embed một câu truy vấn/tóm tắt đơn lẻ."""
+        text = ViTokenizer.tokenize(text) if self._segment else text
         response = self._client.feature_extraction([text])
         return _coerce_embeddings(response, expected_count=1)[0]
 

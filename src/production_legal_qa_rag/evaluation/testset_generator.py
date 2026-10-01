@@ -10,14 +10,13 @@ nhỏ -> lớn, phân bổ số câu theo đơn vị (`allocate_questions`), ch�
 `UnitRunner`, nối kết quả vào `golden_testset_raw.json` rồi ghi
 `generation_progress.json` nguyên tử (mục 4.5), chỉ dừng khi quota ngày cạn (phần sample đã
 sinh xong được giữ, đơn vị ở trạng thái `partial` và chạy tiếp phần còn thiếu — mục 3.3), và
-chốt đúng `TARGET_SIZE` câu (`finalize_golden_testset`, mục 4.2).
+chốt các mẫu được review giữ lại (`finalize_golden_testset`, mục 4.2).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import re
 import time
@@ -49,9 +48,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Hằng số nội bộ module, KHÔNG phải biến môi trường (mục 4). Sinh dư 240 để trừ hao
-# khi người dùng đọc lướt và xoá câu xấu, `finalize` chốt còn đúng 180.
+# khi review loại các mẫu kém chất lượng.
 GENERATE_SIZE: Final = 240
-TARGET_SIZE: Final = 180
 # Tỷ lệ loại câu 80/10/10 (mục 1, 10.10): single-hop / multi-hop abstract / multi-hop specific.
 _MULTI_HOP_SHARE: Final = 0.1
 # Quota token/ngày của 9 tài khoản Groq free x 200K (mục 3.1), chỉ để ước lượng số ngày.
@@ -1190,41 +1188,32 @@ def generate_testset(
 
 
 # ---------------------------------------------------------------------------
-# Chốt đúng TARGET_SIZE câu (mục 4.2)
+# Chốt mẫu keep từ review (mục 4.2)
 # ---------------------------------------------------------------------------
 
 
 def finalize_testset(
-    raw_cases: Sequence[GoldenTestCase], target: int = TARGET_SIZE
+    raw_cases: Sequence[GoldenTestCase], review: Sequence[Mapping[str, Any]]
 ) -> list[GoldenTestCase]:
-    """Chọn đúng `target` câu, cắt phân tầng theo (`source_document`, `synthesizer_name`).
+    """Validate review alignment and keep reviewed samples in original raw order."""
+    from production_legal_qa_rag.evaluation.run_models import case_id
 
-    Mỗi dòng nhận khoá `(thứ hạng trong nhóm theo thứ tự file + 0,5) / kích thước nhóm`;
-    lấy `target` dòng có khoá nhỏ nhất, hoà thì theo thứ tự file. Tất định; giữ tỷ lệ theo
-    văn bản và loại câu sau khi người dùng đã xoá, không dồn vào vài văn bản đầu file.
-    Kết quả giữ thứ tự file.
-
-    Raises:
-        EvalInputError: Còn ít hơn `target` câu (kèm gợi ý lệnh sinh bù).
-    """
-    if len(raw_cases) < target:
-        shortfall = target - len(raw_cases)
-        raise EvalInputError(
-            f"Chỉ còn {len(raw_cases)} câu, thiếu {shortfall} câu so với đích {target}. "
-            "Sinh bù rồi finalize lại: generate --only <tên văn bản> "
-            f"--reuse-knowledge-graph --append --testset-size {math.ceil(shortfall * 1.3)}"
-        )
-    groups: dict[tuple[str | None, str | None], list[int]] = {}
-    for position, case in enumerate(raw_cases):
-        groups.setdefault((case.source_document, case.synthesizer_name), []).append(
-            position
-        )
-    keys: dict[int, float] = {}
-    for positions in groups.values():
-        for rank, position in enumerate(positions):
-            keys[position] = (rank + 0.5) / len(positions)
-    chosen = sorted(sorted(keys, key=lambda p: (keys[p], p))[:target])
-    return [raw_cases[position] for position in chosen]
+    if len(raw_cases) != len(review):
+        raise EvalInputError("Số dòng review không khớp raw.")
+    seen: set[str] = set()
+    selected: list[GoldenTestCase] = []
+    for position, (case, row) in enumerate(zip(raw_cases, review, strict=True), 1):
+        identifier = case_id(case.user_input)
+        if identifier in seen or row.get("case_id") != identifier:
+            raise EvalInputError(f"Review dòng {position}: case_id lệch hoặc trùng.")
+        seen.add(identifier)
+        if row.get("verdict") not in {"keep", "drop"}:
+            raise EvalInputError(f"Review dòng {position}: verdict không hợp lệ.")
+        if case.empty_required_fields():
+            raise EvalInputError(f"Raw dòng {position}: trường bắt buộc rỗng.")
+        if row["verdict"] == "keep":
+            selected.append(case)
+    return selected
 
 
 def _load_raw_cases(path: Path) -> list[GoldenTestCase]:
@@ -1246,15 +1235,14 @@ def _load_raw_cases(path: Path) -> list[GoldenTestCase]:
 
 
 def finalize_golden_testset(
-    output_dir: Path = DEFAULT_OUTPUT_DIR, target: int = TARGET_SIZE
+    output_dir: Path = DEFAULT_OUTPUT_DIR,
 ) -> list[GoldenTestCase]:
-    """Đọc raw đã review, chốt đúng `target` câu và ghi `golden_testset.json` (mục 4.2).
-
-    Raises:
-        EvalInputError: Raw thiếu/hỏng, có dòng thiếu trường, hoặc còn ít hơn `target` câu
-            (khi đó KHÔNG ghi `golden_testset.json`).
-    """
-    cases = finalize_testset(_load_raw_cases(output_dir / RAW_TESTSET_FILENAME), target)
+    """Read raw/review, validate every row, then atomically write kept samples."""
+    raw_cases = _load_raw_cases(output_dir / RAW_TESTSET_FILENAME)
+    review_path = output_dir / "golden_testset_review.json"
+    if not review_path.exists():
+        raise EvalInputError(f"Không thấy {review_path}.")
+    cases = finalize_testset(raw_cases, read_raw_rows(review_path))
     _write_text_atomic(
         output_dir / GOLDEN_TESTSET_FILENAME,
         json.dumps([c.model_dump() for c in cases], ensure_ascii=False, indent=2)

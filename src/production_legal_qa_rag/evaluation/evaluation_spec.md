@@ -1,7 +1,7 @@
 # Evaluation — RAGAS: sinh golden testset (Phase 1) và chấm hệ thống (Phase 2): Reference Spec
 
 > Giữ nguyên số mục vì code/spec khác tham chiếu (3.1, 3.2, 3.3, 4.2, 4.4, 4.5, 8, 9.3 nhất là).
-> **Trạng thái (2026-10-01):** Phase 1 đã implement (PR #55, #60, #63, #64, #66); sinh testset **xong**: 49/50 đơn vị, raw 203 câu (180 single-hop + 23 multi-hop specific, 0 abstract; đơn vị `Văn bản hợp nhất bộ luật lao động.md#5` bỏ hẳn); luna (agent Codex) review ra `golden_testset_review.json`; **testset cuối `golden_testset.json` = 157 mẫu `keep`** (mục 4.2). Phase 2 (mục 11) **chốt lại 2026-10-01, chưa implement**.
+> **Trạng thái (2026-10-01):** Phase 1 đã implement (PR #55, #60, #63, #64, #66); sinh testset **xong**: 49/50 đơn vị, raw 203 câu (180 single-hop + 23 multi-hop specific, 0 abstract; đơn vị `Văn bản hợp nhất bộ luật lao động.md#5` bỏ hẳn); luna (agent Codex) review ra `golden_testset_review.json`; **testset cuối `golden_testset.json` = 157 mẫu `keep`** (mục 4.2). Phase 2 (mục 11) **đã implement code trên `feat/gen-testset-ans` (2026-10-01); chưa chạy đánh giá thật 157 câu**.
 
 ## 0. Bài học xương máu và phương pháp đúng
 
@@ -43,7 +43,7 @@ Sinh **golden testset** (câu hỏi + đáp án chuẩn + context chuẩn) từ 
 
 `ragas==0.4.3` (ghim; API xác nhận bằng đọc source: `TestsetGenerator(llm, embedding_model)`, `generate_with_langchain_docs`, `default_transforms`, `adapt_prompts(language, llm)` + `set_prompts(**...)`); `generator_llm` = `ChatOpenAI` trỏ Groq bọc `LangchainLLMWrapper`; embedding cho KG = adapter (`embeddings_adapter.py`) quanh `InferenceClient.feature_extraction` của `embedding/hf_client.py` (interface LangChain `Embeddings`), **không word-segment** (chỉ để so tương đồng trong KG); `langchain_core.documents.Document`; Typer (`tools/generate_testset.py`). `LangchainLLMWrapper`/`LangchainEmbeddingsWrapper` deprecated ở 0.4.3 (vẫn chạy) — giữ version ghim.
 
-**Dependency (`[dependency-groups] eval`, không phải `[project] dependencies`):** `ragas>=0.4.3`, `langchain-community<0.4`, `rapidfuzz`. `production = ["openai>=3.19.0"]` tồn tại chỉ để `uv` tách resolve `openai`; `[tool.uv.conflicts]` giữa `production` và `eval` nên **không sync cả hai cùng lúc**. Mọi lệnh `uv run` liên quan `eval` phải mang `--group eval --no-group production`; xong việc chạy `uv sync` không cờ để trả venv mặc định.
+**Dependency (`[dependency-groups] eval`, không phải `[project] dependencies`):** `ragas>=0.4.3`, `langchain-community<0.4`, `rapidfuzz`, `langfuse>=4.15.6` (Phase 2 import tracing qua generation/HyDE; giữ group production riêng để không đổi version OpenAI). `production = ["openai>=3.19.0"]` tồn tại chỉ để `uv` tách resolve `openai`; `[tool.uv.conflicts]` giữa `production` và `eval` nên **không sync cả hai cùng lúc**. Mọi lệnh `uv run` liên quan `eval` phải mang `--group eval --no-group production`; xong việc chạy `uv sync` không cờ để trả venv mặc định.
 
 ### 3.1 Round-robin 9 tài khoản Groq (`groq_round_robin.py`)
 
@@ -97,7 +97,7 @@ Dựng 9 `ChatOpenAI` → `generator_llm = LangchainLLMWrapper(GroqRoundRobinCha
 
 **Chốt 2026-10-01 (người dùng chọn hướng B sau khi luna review):** testset cuối = các mẫu raw có `verdict = "keep"` trong `data/eval/golden_testset_review.json` — **157 mẫu (142 single-hop + 15 multi-hop specific, ≈ 9,5:1)**, giữ thứ tự raw; **không cắt xuống 180, không random, không bù mẫu bị loại**. Mốc 180 và tỷ lệ 162/18 bị bỏ vì luna chỉ giữ 157/203 mẫu; bù 23 mẫu bị loại (`forced_fill`, `quality` 1–2) sẽ đưa nhiễu vào đúng chỗ cần đo.
 **Quy trình đã làm:** luna (agent Codex) đọc cả 203 mẫu, chấm `keep/drop` + `quality` 1–5 + `reason_code`; 46 mẫu bị loại: `answer_unsupported` 13, `shallow_topic` 12, `mechanical` 5, `bad_multihop` 5, `duplicate` 4, `not_self_contained` 3, `language` 3, `transitional_clause` 1. `golden_testset.json` sinh một lần từ review (đã kiểm: 157 mẫu, nguyên văn raw, `case_id` duy nhất, trường bắt buộc không rỗng). `golden_testset_candidate.json` (180 mẫu có bù) **không dùng**.
-**Code `finalize` (chưa sửa):** cơ chế cũ (cắt phân tầng đúng 180) lỗi thời — sẽ báo thiếu với raw hiện tại. Sửa trong nhánh Phase 2 thành hàm thuần: đọc raw + review, ghi các mẫu `keep` theo thứ tự raw, kiểm số dòng review khớp raw, `case_id` (12 hex đầu của sha256 `user_input`) khớp và duy nhất, trường bắt buộc không rỗng; không còn `TARGET_SIZE`.
+**Code `finalize` (đã sửa):** bỏ cơ chế cắt phân tầng đúng 180; hàm thuần: đọc raw + review, ghi các mẫu `keep` theo thứ tự raw, kiểm số dòng review khớp raw, `case_id` (12 hex đầu của sha256 `user_input`) khớp và duy nhất, trường bắt buộc không rỗng; không còn `TARGET_SIZE`.
 **Sinh bù:** `generate --only <văn bản> --reuse-knowledge-graph --append --testset-size N` vẫn dùng được (bỏ câu `user_input` trùng y hệt), nhưng câu mới phải qua review lại; hiện không dùng.
 
 ### 4.3 Mã mẫu đã kiểm chứng bằng pilot
@@ -161,7 +161,7 @@ Sinh xong 49/50 đơn vị, raw 203 câu (180 single-hop + 23 multi-hop specific
 11. Đơn vị gộp nhiều Chương (BLLĐ #16 = XV+XVI+XVII) có thể cho câu kém đồng nhất. 12. Đáp án dính chữ (mục 4.1): chấp nhận.
 14. **Không duyệt tay, luna review thay (2026-10-01):** luna đọc cả 203 mẫu và loại 46 (mục 4.2); testset cuối 157 mẫu `keep` (12 mẫu `quality` 2, 49 mẫu `quality` 3). Rủi ro còn lại: nhận xét của luna chưa có người đối chiếu với luật; câu "nhạt" (`quality` 2–3) vẫn nằm lại; `reference_contexts` của 16/23 multi-hop chỉ có 1 đoạn (mất `<2-hop>`) nên không kiểm được đáp án với đoạn thứ hai bằng dữ liệu lưu sẵn. Điểm Phase 2 đọc như xu hướng; nếu bất thường, đọc câu hỏi và `reference` của các case điểm thấp nhất (lọc theo `quality` trong review).
 
-## 11. Phase 2 — Chạy pipeline thật và chấm điểm (chốt lại 2026-10-01, chưa implement)
+## 11. Phase 2 — Chạy pipeline thật và chấm điểm (code implement 2026-10-01, chưa chạy đánh giá thật)
 
 ### 11.1 Mục tiêu, phạm vi
 
@@ -203,7 +203,7 @@ Mỗi stage đọc file stage trước, ghi một JSONL ở `data/eval/phase2/`,
 `GenerationPipeline.generate(query, chunks)` không gọi guardrail và không retrieve; kết quả là câu người dùng thật thấy (đã qua hard gate + Judge + tối đa 1 repair). Eval dựng **9 `GenerationPipeline` độc lập, mỗi cái một key** (truyền `generator` và `judge` vào `GenerationPipeline.__init__`, không sửa code production): `AnswerGenerator` (120b) và `EvidenceJudge` (20b) cùng dùng key i (hai bucket khác model).
 **Luồng một câu:** draft (120b, 1 lượt) → hard gate (code) → Judge (20b, 1 lượt) → `pass` / `insufficient_evidence` (từ chối) / `repair` (1 draft + 1 Judge nữa; ngân sách repair **1 lần/câu**, hết mà vẫn lỗi → `unable_to_verify`). Mỗi câu 2–4 lượt; 157 câu = 314–628 lượt; **tỷ lệ repair thật chưa đo**.
 **Throttle (mục 11.11):** wrapper quanh `AnswerGenerator` gọi `acquire(est)` trên `get_throttle(model, key)` trước `draft`/`repair`, `settle` bằng `usage` thật (ước lượng = độ dài prompt/`CHARS_PER_TOKEN` + `EXPECTED_COMPLETION_TOKENS`, **không** dùng `max_completion_tokens`). `EvidenceJudge` đã throttle theo bucket sẵn có. **Bẫy:** `ThrottleTimeout` ở Judge bị pipeline coi là lỗi không phải 429 → ra `unable_to_verify` (kết quả hợp lệ, không chạy lại) làm sai số đo; wrapper quanh `EvidenceJudge.judge` phải bắt `ThrottleTimeout` và ném lại lỗi mà `_is_rate_limited` nhận ra (status 429) để record thành `error` chạy lại được.
-`AnswerRecord`: `case_id`, `config`, `outcome ∈ {answered, insufficient_evidence, unable_to_verify, error}`, `response` (thô, còn marker `[n]`), `citations`, `repair_used`, `warning_codes`, `error_code`, `usage`, **`prompt_version`** (`PROMPT_VERSION` generation, hiện v10). `insufficient_evidence` và `unable_to_verify` là **kết quả hợp lệ của hệ thống**, không chạy lại; chỉ `error` chạy lại được.
+`AnswerRecord`: `case_id`, `config`, `outcome ∈ {answered, insufficient_evidence, unable_to_verify, error}`, `response` (thô, còn marker `[n]`), `citations`, `repair_used`, `warning_codes`, `error_code`, `usage`, **`prompt_version`** (`PROMPT_VERSION` generation, hiện v11). `insufficient_evidence` và `unable_to_verify` là **kết quả hợp lệ của hệ thống**, không chạy lại; chỉ `error` chạy lại được.
 **Hệ quả đọc điểm:** câu bị từ chối không có `response` nên RAGAS không chấm — báo riêng **tỷ lệ từ chối** (theo loại và `synthesizer_name`) và **điểm end-to-end** (mục 11.6); `faithfulness` đo trên câu ĐÃ qua Judge nên cao hơn faithfulness của draft.
 
 ### 11.5 S6 — Chấm câu trả lời
@@ -221,7 +221,7 @@ Mỗi stage đọc file stage trước, ghi một JSONL ở `data/eval/phase2/`,
 ### 11.7 Module
 
 Thêm vào `evaluation/` (chỉ `scoring.py` import `ragas`): `run_models.py` (`case_id()`, các record Pydantic, `EvalConfig`), `jsonl_store.py` (đọc/ghi nối JSONL có validate, bỏ dòng cuối hỏng, tập `case_id` đã xong, một nơi ghi), `key_pool.py` (9 bộ settings/instance, hàng đợi chung + worker, wrapper throttle cho `AnswerGenerator`/`EvidenceJudge`), `hyde_stage.py`/`embed_stage.py`/`retrieve_stage.py`/`generate_stage.py` (chỉ điều phối), `scoring.py` (S4/S4b/S6, tái dùng wrapper LLM/`RunConfig` của `ragas_runner.py`), `report.py` (hàm thuần), `tools/run_eval.py` (Typer: `hyde`, `embed`, `retrieve`, `score-recall`, `generate`, `score-answers`, `score-precision`, `report`, `status`; option chung `--testset`, `--output-dir`, `--limit`, `--retry-failed`, `--workers` mặc định 9, `--config mmr_on|mmr_off` bắt buộc ở S5/S6/S4b).
-Thay đổi ngoài module mới: `retrieval/` thêm `PrecomputedQuery` + `precomputed`; `RagasEmbeddingsAdapter` thêm `segment`; **`groq_round_robin.py` thêm throttle chủ động theo `(model, key)`** (`TokenWindowThrottle` từ `retrieval/llm_throttle.py`: `acquire` trước request, `settle` bằng token thật; đổi mô tả "không phải rate-limiter" ở mục 3.1 — sửa code eval Phase 1, không phải code production); `testset_generator.finalize_testset` đổi sang đọc review (mục 4.2); `.gitignore` thêm `data/eval/phase2/embeddings.jsonl`. Chạy trong venv `eval`.
+Thay đổi ngoài module mới: `retrieval/` thêm `PrecomputedQuery` + `precomputed`; `RagasEmbeddingsAdapter` thêm `segment`; **`groq_round_robin.py` thêm throttle chủ động theo `(model, key)`** (`TokenWindowThrottle` từ `retrieval/llm_throttle.py`: `acquire` trước request, `settle` bằng token thật; đổi mô tả "không phải rate-limiter" ở mục 3.1 — sửa code eval Phase 1, không phải code production); `testset_generator.finalize_testset` đổi sang đọc review (mục 4.2); `.gitignore` thêm `data/eval/phase2/embeddings.jsonl`. Chạy trong venv `eval`; group này có thêm Langfuse hiện có để import được production generation/HyDE dù loại group `production`.
 
 ### 11.8 Ước lượng chi phí (thô, **chưa đo**)
 
@@ -257,6 +257,8 @@ Các số trong 11.8 (token/lượt, tỷ lệ repair, số ngày) và các đi�
 
 ### 11.12 Kế hoạch implement và mặc định đã chốt
 
-**Một nhánh `/develop-cycle`: `feature/eval-phase2`** — toàn bộ mục 11.7, kèm sửa nhỏ `finalize_testset` theo mục 4.2 (đọc review, giữ mẫu `keep`); `golden_testset.json` đã sinh sẵn nên không chặn Phase 2.
+**Nhánh `/develop-cycle` theo yêu cầu người dùng: `feat/gen-testset-ans`** — toàn bộ mục 11.7, kèm sửa nhỏ `finalize_testset` theo mục 4.2 (đọc review, giữ mẫu `keep`); `golden_testset.json` đã sinh sẵn nên không chặn Phase 2.
 **Mặc định:** `--workers` mặc định 9 cho stage RAGAS (throttle mới là thứ chặn tốc độ); `--config` bắt buộc ở S5, S6, S4b; `max_wait` của throttle đặt rộng; hằng ước lượng token draft/repair chốt khi implement.
+**Kiểm chứng cục bộ (2026-10-01, không gọi dịch vụ thật):** `evaluate(raise_exceptions=False)` trong ragas 0.4.3 trả NaN khi một metric lỗi và không crash; lớp checkpoint chuyển NaN thành `error`. Import và chạy được `GenerationPipeline`/`HydeGenerator` trong venv `eval` với fake; smoke kiểm resume/JSONL, reuse recall, quota ngày, phân biệt refusal/error, strip citation và throttle acquire/settle; `finalize` trên raw/review thật trả đúng 157 mẫu. Chạy thật S5 lần đầu vẫn theo mục 11.9.1.
+
 **Giao developer kiểm chứng khi làm:** `raise_exceptions=False` của `evaluate()` trong ragas 0.4.3 có trả NaN dùng được không (NaN ghi `error`); venv `eval` chạy được `GenerationPipeline`/`HydeGenerator`; regex strip `[n]` trên dữ liệu thật. `CLAUDE.md`/`AGENTS.md` cập nhật cùng commit với spec.

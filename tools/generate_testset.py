@@ -6,7 +6,7 @@ Chỉ gọi thẳng `testset_generator.py`, không chứa business logic. Hai l�
   đơn vị. Chạy lại đúng lệnh đó hôm sau để làm tiếp khi hết quota Groq (mục 4.5).
   `--dry-run` chỉ in kế hoạch + tiến độ, không gọi LLM, không cần key Groq, không cần
   `ragas` (chạy được trên venv thường).
-- `finalize`: chốt đúng 180 câu từ `golden_testset_raw.json` đã review -> `golden_testset.json`.
+- `finalize`: giữ các mẫu keep theo review từ `golden_testset_raw.json` đã review -> `golden_testset.json`.
 
 `ragas` (và `langchain-community`) chỉ nằm trong dependency-group `eval`
 (`pyproject.toml`, không cài khi `uv sync` mặc định) — lệnh `generate` thật cần chạy với
@@ -32,7 +32,6 @@ import typer
 from production_legal_qa_rag.evaluation.corpus_loader import DEFAULT_MARKDOWN_DIR
 from production_legal_qa_rag.evaluation.testset_generator import (
     DEFAULT_OUTPUT_DIR,
-    TARGET_SIZE,
     EvalInputError,
     UnitGenerationError,
     finalize_golden_testset,
@@ -151,15 +150,13 @@ def finalize(
         DEFAULT_OUTPUT_DIR, help="Thư mục chứa golden_testset_raw.json (đã review)."
     ),
 ) -> None:
-    """Chốt đúng 180 câu từ raw đã review -> golden_testset.json (mã thoát 2 nếu đầu vào sai)."""
+    """Giữ các mẫu keep theo review từ raw đã review -> golden_testset.json (mã thoát 2 nếu đầu vào sai)."""
     try:
         cases = finalize_golden_testset(output_dir)
     except EvalInputError as error:
         typer.echo(f"Lỗi đầu vào: {error}", err=True)
         raise typer.Exit(2) from error
-    typer.echo(
-        f"Đã ghi {len(cases)}/{TARGET_SIZE} câu vào {output_dir / 'golden_testset.json'}."
-    )
+    typer.echo(f"Đã ghi {len(cases)} câu vào {output_dir / 'golden_testset.json'}.")
 
 
 if __name__ == "__main__":

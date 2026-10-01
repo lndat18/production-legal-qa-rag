@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+import math
+
+from pydantic import BaseModel, model_validator
 
 from production_legal_qa_rag.embedding.models import PineconeMetadata
 
@@ -54,3 +56,27 @@ class RetrievedChunk(BaseModel):
     has_table: bool = False
     raw_table: str | None = None
     rerank_score: float | None = None
+
+
+class PrecomputedQuery(BaseModel):
+    """Validated HyDE and embeddings, bypassing only online query preparation."""
+
+    hypothetical_document: str | None = None
+    query_embedding: list[float]
+    hypothetical_embedding: list[float] | None = None
+
+    @model_validator(mode="after")
+    def validate_vectors(self) -> PrecomputedQuery:
+        """Reject empty, non-finite or mismatched precomputed vectors."""
+        vectors = [self.query_embedding]
+        if self.hypothetical_document is not None:
+            if self.hypothetical_embedding is None:
+                raise ValueError("HyDE requires a hypothetical embedding.")
+            vectors.append(self.hypothetical_embedding)
+        elif self.hypothetical_embedding is not None:
+            raise ValueError("A hypothetical embedding requires HyDE text.")
+        if not all(vectors) or any(not math.isfinite(x) for v in vectors for x in v):
+            raise ValueError("Embeddings must be nonempty finite vectors.")
+        if any(len(v) != len(self.query_embedding) for v in vectors):
+            raise ValueError("Precomputed embedding dimensions differ.")
+        return self
