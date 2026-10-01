@@ -3,7 +3,6 @@
 Khi bắt đầu **mỗi session**, trước mọi công việc khác, hãy kiểm tra phần nội dung được đồng bộ bên dưới với nội dung hiện tại của [`CLAUDE.md`](CLAUDE.md). Nếu khác content, hãy map toàn bộ content từ `CLAUDE.md` sang phần được đồng bộ trong `AGENTS.md`, giữ nguyên mục **Đồng bộ với `CLAUDE.md`** này.
 
 <!-- BEGIN CLAUDE.md SYNC -->
-
 # production-legal-qa-rag
 
 RAG chatbot hỏi-đáp pháp luật Việt Nam, thiết kế theo hướng sát production nhưng gọn

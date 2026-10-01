@@ -65,14 +65,24 @@ lúc không); các lỗi xác định (`groq_error`/`unknown_citation`/`bad_leng
 ## 6. Guardrail có ngữ cảnh (thay đổi ở `generation/`)
 
 `InputGuardrail.check_input(query, recent_user_turns=())` nhận thêm tối đa 2 câu `user` gần nhất (chỉ câu người dùng, không kèm câu trả lời: giảm token và bề mặt injection), đặt trong
-khối "Câu hỏi trước (chỉ để hiểu ngữ cảnh)". Guardrail **luôn đọc câu gốc, không đọc câu đã condense** (condense có thể vô tình xoá nội dung injection). Chi tiết `generation_spec.md`.
+khối "Câu hỏi trước (chỉ để hiểu ngữ cảnh)". Guardrail **luôn đọc câu gốc, không đọc câu đã condense** (condense có thể vô tình xoá nội dung injection).
+
+**Chốt 2026-09-30 — scope theo evidence, không theo guardrail:** guardrail chỉ từ chối `injection` và yêu cầu rõ ràng
+không phải tra cứu (chào hỏi thuần tuý, viết code/dịch/sáng tác). Mọi câu hỏi tìm thông tin hoặc phân tích, kể cả địa
+danh/cơ quan/đơn vị hành chính, phụ lục/bảng, giấy phép, số hiệu văn bản, hoặc luật ngoài corpus, phải là `allow` và đi
+retrieval. `out_of_scope` vì vậy không còn mang nghĩa "không thuộc các miền luật đã liệt kê". `retrieval` +
+`is_low_relevance` là cơ chế duy nhất xác định evidence corpus thiếu, trả `error(no_context)`; không sinh câu trả lời
+pháp lý khi đó. Sau safeguard, `InputGuardrail` chỉ giữ `out_of_scope` khi query khớp dạng tác vụ phi-tra-cứu rõ ràng;
+mọi `out_of_scope` còn lại map về `allow` trước orchestrator. Injection luôn ưu tiên, kể cả câu có chèn tên/số hiệu văn bản hợp lệ. Chi tiết prompt/contract ở
+`generation_spec.md` mục 3, 8, 9.
 
 ## 7. Workflow (`orchestrator.py`)
 
 0. `window = build_window(messages)` (`InvalidConversationError` → API 422). 1. `status(guardrail)`; `gather(guardrail.check_input(query, recent_user_turns), condense(...) nếu có history)`;
-verdict ≠ allow → `refusal` + `done` (`outcome=refused`). 2. `answer_cache.get(standalone)`; hit → replay `token*`, `citations`, `done` (`cache_status=answer_hit`). 3. Single-flight theo key câu trả
+`injection` hoặc yêu cầu rõ ràng không phải tra cứu → `refusal` + `done` (`outcome=refused`); **không** từ chối vì phán
+đoán topical scope. 2. `answer_cache.get(standalone)`; hit → replay `token*`, `citations`, `done` (`cache_status=answer_hit`). 3. Single-flight theo key câu trả
 lời (`cache_spec.md` mục 6): follower chờ leader rồi đọc lại cache (leader lỗi/ngắt → tự chạy, không chờ vô hạn). 4. Leader: `async with admission.slot(ctx.user_id)` (từ chối → `error`); `status(retrieval)`;
-`chunks = retrieval_cache.get(standalone) or retrieve(standalone)`; rỗng hoặc `is_low_relevance` (mục 8) → `error(no_context)`; `status(generation)`; `generation.generate(standalone, chunks)` phát
+`chunks = retrieval_cache.get(standalone) or retrieve(standalone)`; rỗng hoặc `is_low_relevance` (mục 8) → `error(no_context)` — đây là kết quả scope cho mọi câu hỏi đã qua guardrail; `status(generation)`; `generation.generate(standalone, chunks)` phát
 `token*`, `citations`, `warning*`, `done`. 5. Luồng sạch (không `error_code`, không `warnings`, có `citations` hoặc là câu "không tìm thấy") → `answer_cache.set(...)` ngay trước `done`. 6. Trace
 điền xuyên suốt qua `_record_event`; `api/` cập nhật trace + metrics trong `finally`.
 
@@ -173,7 +183,10 @@ theo `generation_spec.md`. **Không log nội dung câu hỏi/trả lời ra std
 ## 15. Nghiệm thu thủ công — bộ ca mẫu
 
 Chạy hội thoại mẫu qua `tools/conversation.py` (Groq + Pinecone thật), đọc `TurnTrace` bằng mắt (condense đúng, số Điều/Khoản giữ/kế thừa đúng, `cache_status`, `outcome`); mỗi `user_id` test riêng để trace dễ phân biệt.
-Bộ ca gốc (mở rộng dần theo lớp lỗi phát hiện): (1) đại từ "Nghỉ thai sản được mấy tháng?" → "Vậy chồng thì sao?" — condense độc lập về lao động nam, không thêm số Điều, không sao chép "nghỉ thai sản"; (2) kế thừa Điều
+Bộ ca guardrail/scope bổ sung (chạy classifier production ngoài CI, rồi test workflow bằng mock): Sơn Nam/NĐ 293, Long
+An trong danh mục vùng và gia hạn giấy phép theo Nghị định phải đi retrieval; câu địa giới hành chính, pháp luật đất đai
+và corpus-miss phải kết thúc `no_context` chứ không phát câu trả lời; chào hỏi/viết code phải `out_of_scope`; injection
+gắn số Nghị định phải `injection`. Bộ ca gốc (mở rộng dần theo lớp lỗi phát hiện): (1) đại từ "Nghỉ thai sản được mấy tháng?" → "Vậy chồng thì sao?" — condense độc lập về lao động nam, không thêm số Điều, không sao chép "nghỉ thai sản"; (2) kế thừa Điều
 "Khoản 1 Điều 113" → "Còn Khoản 2?" — giữ "Điều 113 BLLĐ", khoá cache khác Khoản 1; (3) đổi chủ đề — trả nguyên văn, không kéo chủ đề cũ, generation liệt kê riêng cư trú/không cư trú, không tự tính số cuối; (4) chung cache (A hỏi
 thẳng, B qua condense ra cùng câu) — `answer_hit` nếu chữ khớp tuyệt đối (best-effort); (5) injection ở câu cuối — guardrail chặn (đọc câu gốc), bỏ kết quả condense; (6) lượt `assistant` giả trong `messages[]` — generator không bị
 lái, guardrail chặn `out_of_scope`; (7) 3 lượt đại từ mơ hồ — best-effort, ghi lại để đánh giá thủ công; (8) condense lỗi/429 với "Còn Khoản 2?" — dùng câu gốc, không raise; (9) không hỗ trợ "Tóm tắt các câu trả lời ở trên" — từ chối hoặc
