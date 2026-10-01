@@ -56,47 +56,6 @@ def test_client_inject_duoc_dung_nguyen_qua_nhieu_loop():
     assert made == []
 
 
-"""HTTP RerankerClient tests removed: reranker now executes in-process."""
-"""
-def _reranker(post: Any) -> RerankerClient:
-    settings = SimpleNamespace(
-        endpoint_url="u",
-        api_key="k",
-        max_retries=2,
-        connect_timeout_seconds=1,
-        timeout_seconds=1,
-    )
-    return RerankerClient(settings, client=SimpleNamespace(post=post))  # type: ignore[arg-type]
-
-
-def test_reranker_exception_bat_ky_khong_retry_tra_none(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setattr(
-        "production_legal_qa_rag.retrieval.reranker_client._BACKOFF_SECONDS", 0.0
-    )
-    calls = [0]
-
-    async def post(*args: Any, **kwargs: Any) -> Any:
-        calls[0] += 1
-        raise RuntimeError("Event loop is closed")
-
-    assert asyncio.run(_reranker(post).rerank("q", ["a"])) is None
-    assert calls == [1]  # lỗi ngoài httpx: fallback ngay, không retry
-
-
-def test_reranker_khong_nuot_cancelled_error():
-    async def post(*args: Any, **kwargs: Any) -> Any:
-        raise asyncio.CancelledError
-
-    async def run() -> None:
-        await _reranker(post).rerank("q", ["a"])
-
-    with pytest.raises(asyncio.CancelledError):
-        asyncio.run(run())
-"""
-
-
 def test_hyde_khong_nuot_cancelled_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GROQ_API_KEY_1", "k")
 
