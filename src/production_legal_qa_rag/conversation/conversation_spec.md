@@ -124,7 +124,9 @@ liên quan trực tiếp, không có thì từ chối theo 5. 12. Generator **kh
 từ đoạn hiện tại. 13. **Kim tự tháp ngược**: kết luận rõ trong 1–2 câu đầu rồi mới căn cứ; riêng ca quy tắc 5/9 câu đầu phải đúng là từ chối/liệt kê, không thay bằng kết luận giả dứt khoát. 14. Trích nguyên văn ≤ ~2 dòng
 đặt trong blockquote `> `, diễn giải ở văn xuôi ngay sau, vẫn thêm `[n]` (ASCII `[` `]`) sau khối; không bắt buộc cho mọi câu.
 
-Context do `build_context`: mỗi chunk `[n] {breadcrumb}\n{content}` (+ `raw_table` nếu có), nối `\n\n`, tối đa 5 chunk. Hậu kiểm `output_check.py` chỉ kiểm **hình thức** (`[n]` khớp context, số không xuất hiện dạng chuẩn hoá →
+Context do `build_context`: mỗi chunk `[n] {breadcrumb}\n{content}` (+ `raw_table` nếu có), nối `\n\n`, tối đa 5 chunk.
+`n` luôn là hạng rerank/citation gốc; riêng đủ 5 chunk, vị trí vật lý là `[1], [2], [5], [3], [4]` (không đánh số lại),
+còn 0–4 chunk giữ `1..n`. Hậu kiểm `output_check.py` chỉ kiểm **hình thức** (`[n]` khớp context, số không xuất hiện dạng chuẩn hoá →
 `unverified_number`); kiểm ngữ nghĩa nằm ở Judge (`generation_spec.md`). Quy tắc 9–14 xử lý tận gốc bằng prompt thay vì bắt lỗi sau.
 
 ## 11. Adapter đánh giá (`evaluation.py`) — hoãn, thiết kế Phase 2 nằm ở `evaluation_spec.md` mục 11
