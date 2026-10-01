@@ -18,4 +18,4 @@ deploy/backups/
 # lớn, dựng lại được; *.tmp là file ghi dở của lần ghi nguyên tử. golden_testset*.json và
 # generation_progress.json cần commit nên KHÔNG ignore.
 data/eval/knowledge_graph/
-data/eval/**/*.tmp
+data/eval/units
