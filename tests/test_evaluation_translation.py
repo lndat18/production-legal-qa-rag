@@ -478,6 +478,68 @@ def test_extract_legal_references_chuan_hoa_nfc_truoc_khi_so():
     assert found == {("điều", "5"), ("điểm", "đ")}
 
 
+def test_extract_legal_references_danh_sach_so_tieng_anh():
+    assert tr.extract_legal_references("clauses 1, 2 or 3", language="en") == {
+        ("khoản", "1"),
+        ("khoản", "2"),
+        ("khoản", "3"),
+    }
+    assert tr.extract_legal_references("Clauses 1, 2 and 3 apply", language="en") == {
+        ("khoản", "1"),
+        ("khoản", "2"),
+        ("khoản", "3"),
+    }
+    assert tr.extract_legal_references("Articles 5 and 6", language="en") == {
+        ("điều", "5"),
+        ("điều", "6"),
+    }
+    assert tr.extract_legal_references("Clauses 1, 2, and 3", language="en") == {
+        ("khoản", "1"),
+        ("khoản", "2"),
+        ("khoản", "3"),
+    }
+
+
+def test_extract_legal_references_danh_sach_so_tieng_viet():
+    assert tr.extract_legal_references("khoản 1, 2 hoặc 3", language="vi") == {
+        ("khoản", "1"),
+        ("khoản", "2"),
+        ("khoản", "3"),
+    }
+    assert tr.extract_legal_references("Khoản 1, 2 và 3 Điều 5", language="vi") == {
+        ("khoản", "1"),
+        ("khoản", "2"),
+        ("khoản", "3"),
+        ("điều", "5"),
+    }
+    assert tr.extract_legal_references("Điều 5 và 6", language="vi") == {
+        ("điều", "5"),
+        ("điều", "6"),
+    }
+
+
+def test_extract_legal_references_danh_sach_khong_nuot_so_khong_phai_tham_chieu():
+    # Năm (4 chữ số), chữ không phải số, và chữ cái đơn lẻ không được nối vào danh sách.
+    assert tr.extract_legal_references("Điều 5, 2020", language="vi") == {("điều", "5")}
+    assert tr.extract_legal_references("Điều 5 năm 2020", language="vi") == {
+        ("điều", "5")
+    }
+    assert tr.extract_legal_references("Article 5 and a person", language="en") == {
+        ("điều", "5")
+    }
+    assert tr.extract_legal_references("Article 5, 2020 rules", language="en") == {
+        ("điều", "5")
+    }
+    assert tr.extract_legal_references("Điều 5 và Điều 6", language="vi") == {
+        ("điều", "5"),
+        ("điều", "6"),
+    }
+    # Danh sách chỉ nối sau số; sau chữ La Mã/chữ cái giữ hành vi đơn lẻ.
+    assert tr.extract_legal_references("Chương II, 3 người", language="vi") == {
+        ("chương", "ii")
+    }
+
+
 # ---------------------------------------------------------------------------
 # 12.4 Kiểm bất biến
 # ---------------------------------------------------------------------------
@@ -541,6 +603,55 @@ def test_invariants_diem_khong_phan_biet_hoa_thuong():
     translated = "Theo Điểm A người sử dụng lao động phải trả lương đúng hạn đầy đủ."
 
     assert _reason(original, translated) is None
+
+
+def test_invariants_khoan_bi_dich_thanh_dieu_la_citation_mismatch():
+    # Tham chiếu tiếng Việt có sẵn trong bản gốc trộn Anh-Việt cũng phải được giữ nguyên.
+    original = "Khoản 6 specifies that the employer must pay wages on time every month."
+    good = "Khoản 6 quy định người sử dụng lao động phải trả lương đúng hạn mỗi tháng."
+    bad = "Điều 6 quy định người sử dụng lao động phải trả lương đúng hạn mỗi tháng."
+
+    assert _reason(original, good) is None
+    assert _reason(original, bad) == "citation_mismatch"
+
+
+def test_invariants_mau_tron_anh_viet_giu_nguyen_thi_qua():
+    original = "Under Điều 102 the employer must pay wages on time and in full."
+    translated = "Theo Điều 102 người sử dụng lao động phải trả lương đúng hạn đầy đủ."
+
+    assert _reason(original, translated) is None
+    assert _reason(original, translated.replace("Điều 102", "Điều 103")) == (
+        "citation_mismatch"
+    )
+
+
+def test_invariants_tron_anh_viet_thieu_tham_chieu_viet_la_citation_mismatch():
+    original = "Under Điều 102 and Article 5 the employer must pay wages on time."
+    dropped = "Theo Điều 5 người sử dụng lao động phải trả lương đúng hạn."
+
+    assert _reason(original, dropped) == "citation_mismatch"
+
+
+def test_invariants_danh_sach_so_dich_dung_khong_co_oan():
+    original = (
+        "Under clauses 1, 2 or 3 of Điều 197 the employer must pay wages. "
+        "Clause 4 outlines the penalty for late payment."
+    )
+    translated = (
+        "Theo khoản 1, 2 hoặc 3 của Điều 197 người sử dụng lao động phải trả lương. "
+        "Khoản 4 nêu mức phạt khi trả lương chậm."
+    )
+
+    assert _reason(original, translated) is None
+
+
+def test_invariants_danh_sach_so_dich_thieu_so_la_citation_mismatch():
+    original = "Under clauses 1, 2 or 3 of Điều 197 the employer must pay wages."
+    translated = (
+        "Theo khoản 1 hoặc 2 của Điều 197 người sử dụng lao động phải trả lương."
+    )
+
+    assert _reason(original, translated) == "citation_mismatch"
 
 
 def test_invariants_lech_so_dong_khong_rong_la_line_count_mismatch():

@@ -100,12 +100,12 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
   Vấn đề mở: abstract = 0 — chốt hướng (a/b/c, `evaluation_spec.md` mục 4.6); sau đó `finalize` đủ 180 câu và duyệt tay.
-- **Dịch mẫu tiếng Anh trong raw** (**đã chốt thiết kế 2026-09-30, đã implement (PR #70), chưa pilot/chưa chạy thật**; `evaluation_spec.md` mục 12): lệnh
+- **Dịch mẫu tiếng Anh trong raw** (**đã chốt thiết kế 2026-09-30, đã implement (PR #70), đã chạy thử 13 mẫu, đang soát tay**; `evaluation_spec.md` mục 12): lệnh
   `translate` trong `tools/generate_testset.py` + `evaluation/translation.py`, dịch qua **Google Apps Script web app**
   người dùng tự deploy (`TRANSLATE_URL`, tuỳ chọn `TRANSLATE_KEY`; GET ổn tới 6.400 ký tự), ghi đè tại chỗ + lưu
   `original_en`, kiểm code `Điều/Khoản/Điểm/Chương/Mục + số` còn nguyên (lệch → giữ gốc, cờ `translation_review`), chạy
   **trước `finalize`**, không chạy song song `generate`; mọi mẫu đã dịch đều soát tay (ưu tiên thuật ngữ). Số mẫu tiếng Anh
-  trên raw 203 câu **chưa đo** (trước đó ~7% trên 141 câu): việc đầu tiên là `translate --dry-run` sau khi implement.
+  trên raw 203 câu: đã chạy thử thật 13 mẫu (PR #70), đang soát tay kết quả (bản gốc ở `original_en`).
 - **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
   `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
@@ -113,7 +113,7 @@ Roadmap tiếp theo (thứ tự đề xuất):
 
 1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
 2. Golden testset đã sinh xong 49/50 đơn vị (203 câu) → quyết định bỏ hay thử lại đơn vị `skipped` BLLĐ#5 → chốt abstract → chốt + làm
-   bước dịch mẫu tiếng Anh (`translate`, spec mục 12 đã chốt, cần implement) → `finalize` → duyệt tay.
+   bước dịch mẫu tiếng Anh (`translate`, spec mục 12 đã implement ở PR #70, đã chạy thử 13 mẫu, đang soát tay) → `finalize` → duyệt tay.
 3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch mới) → pilot → chạy full;
    sau đó lấy mẫu Q&A thật từ Langfuse.
 4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).

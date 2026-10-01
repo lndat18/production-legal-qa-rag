@@ -287,12 +287,20 @@ def load_glossary(path: Path) -> dict[str, str]:
     return data
 
 
+# Danh sách số nối sau một số tham chiếu: "clauses 1, 2 or 3", "khoản 1, 2 và 3". Chỉ nối số
+# 1-3 chữ số đứng liền sau dấu phẩy hoặc từ nối (loại năm như 2020); chữ cái đơn lẻ không nối
+# vì "a" là mạo từ tiếng Anh ("Article 5 and a person").
+_LIST_TAIL: Final = (
+    r"((?:\s*,\s*(?:(?:{conj})\s+)?[0-9]{{1,3}}\b|\s+(?:{conj})\s+[0-9]{{1,3}}\b)*)"
+)
 _ENGLISH_REFERENCE: Final = re.compile(
-    r"\b(Article|Clause|Point|Chapter|Section|Paragraph)s?\s+([0-9]+|[IVXLC]+\b|[A-Za-z]\b)",
+    r"\b(Article|Clause|Point|Chapter|Section|Paragraph)s?\s+([0-9]+|[IVXLC]+\b|[A-Za-z]\b)"
+    + _LIST_TAIL.format(conj="and|or"),
     re.IGNORECASE,
 )
 _VIETNAMESE_REFERENCE: Final = re.compile(
-    r"\b(Điều|Khoản|Điểm|Chương|Mục)\s+([0-9]+|[IVXLC]+\b|[A-Za-zĐđ]\b)",
+    r"\b(Điều|Khoản|Điểm|Chương|Mục)\s+([0-9]+|[IVXLC]+\b|[A-Za-zĐđ]\b)"
+    + _LIST_TAIL.format(conj="và|hoặc"),
     re.IGNORECASE,
 )
 # `Paragraph` không có trong bảng ánh xạ của spec; dịch pháp lý thường là Khoản.
@@ -313,17 +321,21 @@ def extract_legal_references(
 
     Với `language="en"` ánh xạ `Article→điều`, `Clause→khoản`, `Point→điểm`,
     `Chapter→chương`, `Section→mục` (và `Paragraph→khoản`); so tập, không so số lần.
+    Danh sách số liền sau một số ("clauses 1, 2 or 3", "khoản 1, 2 và 3") được bung thành
+    từng cặp `(loại, số)`.
     """
     text = unicodedata.normalize("NFC", text)
-    if language == "en":
-        return {
-            (_REFERENCE_KIND_TO_VIETNAMESE[kind.lower()], value.lower())
-            for kind, value in _ENGLISH_REFERENCE.findall(text)
-        }
-    return {
-        (kind.lower(), value.lower())
-        for kind, value in _VIETNAMESE_REFERENCE.findall(text)
-    }
+    pattern = _ENGLISH_REFERENCE if language == "en" else _VIETNAMESE_REFERENCE
+    found: set[tuple[str, str]] = set()
+    for kind, value, tail in pattern.findall(text):
+        normalized_kind = kind.lower()
+        if language == "en":
+            normalized_kind = _REFERENCE_KIND_TO_VIETNAMESE[normalized_kind]
+        values = [value.lower()]
+        if value.isdigit():
+            values.extend(re.findall(r"[0-9]+", tail))
+        found.update((normalized_kind, item) for item in values)
+    return found
 
 
 def _count_non_empty_lines(text: str) -> int:
@@ -339,8 +351,12 @@ def check_translation_invariants(original: str, translated: str) -> None:
     """
     if not translated.strip() or is_english(translated):
         raise FieldRejected(REVIEW_STILL_ENGLISH)
-    english_references = extract_legal_references(original, language="en")
-    if english_references and english_references != extract_legal_references(
+    # Tập mong đợi: tham chiếu tiếng Anh đã ánh xạ + tham chiếu tiếng Việt có sẵn trong bản gốc
+    # (mẫu trộn Anh-Việt), để bắt cả "Khoản 6" bị dịch thành "Điều 6".
+    expected_references = extract_legal_references(
+        original, language="en"
+    ) | extract_legal_references(original, language="vi")
+    if expected_references and expected_references != extract_legal_references(
         translated, language="vi"
     ):
         raise FieldRejected(REVIEW_CITATION_MISMATCH)
