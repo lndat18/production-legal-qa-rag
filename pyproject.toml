@@ -48,7 +48,9 @@ dev = [
     "pytest>=8",
     "ruff>=0.14",
     "mypy>=1.14",
+    "pyqt6>=6.11.0",
     "types-pyyaml>=6.0.12.20260906",
+    "seaborn>=0.13.2",
 ]
 eval = [
     "langchain-community<0.4",
