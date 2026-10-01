@@ -29,7 +29,10 @@ from production_legal_qa_rag.generation.models import (
     JudgeVerdict,
     VerificationIssue,
 )
-from production_legal_qa_rag.generation.pipeline import GenerationPipeline
+from production_legal_qa_rag.generation.pipeline import (
+    GenerationPipeline,
+    _validate_judge_verdict,
+)
 from production_legal_qa_rag.retrieval.hyde import HydeGenerator
 from production_legal_qa_rag.retrieval.llm_throttle import (
     ThrottleTimeout,
@@ -241,7 +244,7 @@ class ThrottledAnswerGenerator(AnswerGenerator):
 
 
 class EvalEvidenceJudge(EvidenceJudge):
-    """Retain Judge semantics; expose daily exhaustion and throttle timeouts."""
+    """Retain Judge policy; expose validation, quota and throttle failures."""
 
     def __init__(self, settings: JudgeSettings) -> None:
         super().__init__(settings)
@@ -254,9 +257,11 @@ class EvalEvidenceJudge(EvidenceJudge):
         draft: str,
         citations: list[Citation],
     ) -> JudgeVerdict:
-        """Translate wrapped throttle errors before the pipeline sees them."""
+        """Track production policy failures before the pipeline maps them to refusal."""
         try:
-            return await super().judge(query, chunks, draft, citations)
+            verdict = await super().judge(query, chunks, draft, citations)
+            _validate_judge_verdict(verdict, len(chunks))
+            return verdict
         except Exception as error:
             self.last_error = error
             if any(isinstance(item, ThrottleTimeout) for item in error_chain(error)):
