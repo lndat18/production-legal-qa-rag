@@ -606,6 +606,36 @@ def test_build_context_includes_table_only_when_chunk_marks_it_as_table() -> Non
     )
 
 
+def test_build_context_reorders_five_chunks_without_renumbering_citations() -> None:
+    chunks = [
+        _chunk(number, breadcrumb=f"Điều {number}", content=f"Nội dung {number}.")
+        for number in range(1, 6)
+    ]
+
+    assert build_context(chunks) == (
+        "[1] Điều 1\nNội dung 1.\n\n"
+        "[2] Điều 2\nNội dung 2.\n\n"
+        "[5] Điều 5\nNội dung 5.\n\n"
+        "[3] Điều 3\nNội dung 3.\n\n"
+        "[4] Điều 4\nNội dung 4."
+    )
+    citation = check_output("Có căn cứ [5].", chunks, "Câu hỏi").citations
+    assert [(item.n, item.chunk_id) for item in citation] == [(5, "chunk-5")]
+
+
+@pytest.mark.parametrize("count", range(5))
+def test_build_context_keeps_rerank_order_below_five_chunks(count: int) -> None:
+    chunks = [
+        _chunk(number, breadcrumb=f"Điều {number}", content=f"Nội dung {number}.")
+        for number in range(1, count + 1)
+    ]
+
+    assert build_context(chunks) == "\n\n".join(
+        f"[{number}] Điều {number}\nNội dung {number}."
+        for number in range(1, count + 1)
+    )
+
+
 def test_build_context_rejects_more_than_five_chunks() -> None:
     with pytest.raises(ValueError, match="tối đa 5 chunks"):
         build_context([_chunk(number) for number in range(1, 7)])
@@ -671,7 +701,7 @@ def test_build_repair_messages_keeps_query_and_context_fixed() -> None:
 
 
 def test_prompt_version_bumped_for_cache_keying() -> None:
-    assert PROMPT_VERSION == "v10"
+    assert PROMPT_VERSION == "v11"
 
 
 def test_generation_prompt_has_ambiguous_classification_rule() -> None:
