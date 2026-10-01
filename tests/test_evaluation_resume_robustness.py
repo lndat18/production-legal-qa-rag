@@ -610,99 +610,64 @@ def _named(names: list[str]) -> list[GoldenTestCase]:
     ]
 
 
-def _chosen_names(raw_names: list[str], target: int) -> list[str]:
-    return [c.user_input for c in tg.finalize_testset(_named(raw_names), target)]
+def _review_keep(raw: list[GoldenTestCase], kept: set[int]) -> list[dict[str, str]]:
+    from production_legal_qa_rag.evaluation.run_models import case_id
 
-
-def test_finalize_nhom_lon_khong_nuot_nhom_nho_theo_khoa_thu_hang_tren_kich_thuoc():
-    # X có 4 dòng (khoá 0,125/0,375/0,625/0,875), Y có 1 dòng (khoá 0,5).
-    chosen = _chosen_names(["X1", "X2", "X3", "X4", "Y1"], target=3)
-
-    assert chosen == ["X1", "X2", "Y1"]
-
-
-def test_finalize_thu_tu_file_xen_ke_khong_doi_ket_qua_theo_nhom_va_giu_thu_tu_file():
-    chosen = _chosen_names(["X1", "Y1", "X2", "X3", "X4"], target=3)
-
-    assert chosen == ["X1", "Y1", "X2"]
-
-
-def test_finalize_hoa_khoa_thi_lay_dong_dung_truoc_trong_file():
-    # Hai nhóm cỡ 2: khoá 0,25/0,25/0,75/0,75; hoà khoá thì lấy dòng đứng trước.
-    chosen = _chosen_names(["X1", "Y1", "X2", "Y2"], target=3)
-
-    assert chosen == ["X1", "Y1", "X2"]
+    return [
+        {"case_id": case_id(c.user_input), "verdict": "keep" if i in kept else "drop"}
+        for i, c in enumerate(raw)
+    ]
 
 
 @pytest.mark.parametrize("seed", range(15))
-def test_finalize_thuoc_tinh_dung_target_tat_dinh_giu_thu_tu_va_lay_tien_to_moi_nhom(
+def test_finalize_review_tat_dinh_giu_raw_order_va_khong_chia_lai_nhom(
     seed: int,
-):
+) -> None:
     rng = random.Random(seed)
-    kinds = list(_NAME_OF_KIND)
     raw = [
-        _case(rng.choice("ABCDE") + ".md", rng.choice(kinds), serial)
+        _case(rng.choice("ABCDE") + ".md", rng.choice(list(_NAME_OF_KIND)), serial)
         for serial in range(rng.randint(180, 400))
     ]
-
-    chosen = tg.finalize_testset(raw)
-
-    assert len(chosen) == tg.TARGET_SIZE
-    assert chosen == tg.finalize_testset(list(raw))
-    positions = [raw.index(c) for c in chosen]
-    assert positions == sorted(positions)
-    assert len(set(positions)) == len(positions)
-    groups: dict[tuple[str | None, str | None], list[int]] = {}
-    for position, case in enumerate(raw):
-        groups.setdefault((case.source_document, case.synthesizer_name), []).append(
-            position
-        )
-    chosen_positions = set(positions)
-    for group_positions in groups.values():
-        kept = [p for p in group_positions if p in chosen_positions]
-        assert kept == group_positions[: len(kept)]
+    kept = {i for i in range(len(raw)) if rng.choice([True, False])}
+    review = _review_keep(raw, kept)
+    chosen = tg.finalize_testset(raw, review)
+    assert chosen == [c for i, c in enumerate(raw) if i in kept]
+    assert chosen == tg.finalize_testset(list(raw), review)
+    assert len(chosen) == len(kept)
 
 
-def test_finalize_bo_han_mot_van_ban_thi_khong_co_dong_nao_cua_van_ban_do(
-    tmp_path: Path,
-):
-    raw = [_case(doc, "single_hop", i) for doc in ("A.md", "C.md") for i in range(110)]
-    (tmp_path / tg.RAW_TESTSET_FILENAME).write_text(
-        json.dumps([c.model_dump() for c in raw], ensure_ascii=False), encoding="utf-8"
-    )
+@pytest.mark.parametrize(
+    "names,kept",
+    [
+        (["X1", "X2", "X3", "X4", "Y1"], {2, 3}),
+        (["X1", "Y1", "X2", "X3", "X4"], {1, 4}),
+        (["X1", "Y1", "X2", "Y2"], {1, 3}),
+    ],
+)
+def test_finalize_review_quyet_dinh_ca_nhom_nho_va_thu_tu_xen_ke(
+    names: list[str], kept: set[int]
+) -> None:
+    raw = _named(names)
+    assert tg.finalize_testset(raw, _review_keep(raw, kept)) == [
+        c for i, c in enumerate(raw) if i in kept
+    ]
 
-    cases = tg.finalize_golden_testset(tmp_path)
 
-    assert len(cases) == 180
-    assert {c.source_document for c in cases} == {"A.md", "C.md"}
-    assert abs(sum(c.source_document == "A.md" for c in cases) - 90) <= 1
-
-
-def test_finalize_khong_sua_raw_va_chay_lai_cho_file_giong_het(tmp_path: Path):
+def test_finalize_khong_sua_raw_va_chay_lai_cho_file_giong_het(tmp_path: Path) -> None:
     raw = [_case("A.md", "single_hop", i) for i in range(200)]
     raw_path = tmp_path / tg.RAW_TESTSET_FILENAME
     raw_path.write_text(
         json.dumps([c.model_dump() for c in raw], ensure_ascii=False), encoding="utf-8"
     )
+    (tmp_path / "golden_testset_review.json").write_text(
+        json.dumps(_review_keep(raw, {3, 20, 199})), encoding="utf-8"
+    )
     raw_bytes = raw_path.read_bytes()
-
-    tg.finalize_golden_testset(tmp_path)
+    assert tg.finalize_golden_testset(tmp_path) == [raw[i] for i in (3, 20, 199)]
     first = (tmp_path / tg.GOLDEN_TESTSET_FILENAME).read_bytes()
     tg.finalize_golden_testset(tmp_path)
-
     assert raw_path.read_bytes() == raw_bytes
     assert (tmp_path / tg.GOLDEN_TESTSET_FILENAME).read_bytes() == first
-
-
-def test_finalize_du_dung_target_khi_nguoi_dung_xoa_vua_du(tmp_path: Path):
-    raw = [_case("A.md", "single_hop", i) for i in range(180)]
-    (tmp_path / tg.RAW_TESTSET_FILENAME).write_text(
-        json.dumps([c.model_dump() for c in raw], ensure_ascii=False), encoding="utf-8"
-    )
-
-    cases = tg.finalize_golden_testset(tmp_path)
-
-    assert cases == raw
 
 
 # ==========================================================================
