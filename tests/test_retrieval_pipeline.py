@@ -417,9 +417,11 @@ def test_precomputed_skips_online_preparation_preserves_dense_and_sparse_branche
     dense_vectors: list[list[float]] = []
     original = dense.query
 
-    async def query(embedding: list[float], **kwargs: Any) -> list[SearchHit]:
+    async def query(
+        embedding: list[float], top_k: int = 20, **kwargs: Any
+    ) -> list[SearchHit]:
         dense_vectors.append(embedding)
-        return await original(embedding, **kwargs)
+        return await original(embedding, top_k, **kwargs)
 
     async def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("precomputed must bypass online HyDE/HF")
