@@ -191,4 +191,7 @@ for _stage in (
 
 
 if __name__ == "__main__":
+    """
+    uv run --group eval --no-group production tools/run_eval.py <param>
+    """
     app()
