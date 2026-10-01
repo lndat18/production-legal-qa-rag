@@ -19,7 +19,8 @@ from production_legal_qa_rag.retrieval.loop_bound import LoopBoundClient
 from production_legal_qa_rag.retrieval.models import RetrievedChunk
 
 MAX_CONTEXT_CHUNKS: Final = 5
-PROMPT_VERSION: Final = "v10"
+PROMPT_VERSION: Final = "v11"
+_FIVE_CHUNK_CONTEXT_ORDER: Final = (0, 1, 4, 2, 3)
 
 # Groq công bố endpoint OpenAI-compatible chính thức (generation_spec.md mục 8);
 # dùng ChatOpenAI trỏ vào đây thay AsyncGroq thô để rút boilerplate client/parse
@@ -175,13 +176,17 @@ class GeneratedAnswer(BaseModel):
 
 
 def build_context(chunks: list[RetrievedChunk]) -> str:
-    """Render các chunk thành ngữ cảnh đánh số ổn định cho prompt.
+    """Render context với citation theo hạng rerank ổn định.
+
+    Khi đủ năm chunk, đặt hạng 1, 2 ở đầu và 3, 4 ở cuối để tránh
+    evidence hạng 5 bị đẩy xuống cuối context. Nhãn citation vẫn là hạng
+    rerank gốc, nên ``[5]`` luôn trỏ tới ``chunks[4]``.
 
     Args:
         chunks: Các chunk đã rerank, theo thứ tự giảm dần liên quan.
 
     Returns:
-        Chuỗi context với mỗi chunk ở dạng ``[n] breadcrumb\\ncontent``.
+        Chuỗi context với mỗi chunk ở dạng ``[rank] breadcrumb\\ncontent``.
 
     Raises:
         ValueError: Khi số chunk vượt hợp đồng tối đa của generation.
@@ -189,9 +194,15 @@ def build_context(chunks: list[RetrievedChunk]) -> str:
     if len(chunks) > MAX_CONTEXT_CHUNKS:
         raise ValueError(f"Generation chỉ nhận tối đa {MAX_CONTEXT_CHUNKS} chunks.")
 
+    indices = (
+        _FIVE_CHUNK_CONTEXT_ORDER
+        if len(chunks) == MAX_CONTEXT_CHUNKS
+        else range(len(chunks))
+    )
     rendered_chunks: list[str] = []
-    for number, chunk in enumerate(chunks, start=1):
-        rendered = f"[{number}] {chunk.breadcrumb}\n{chunk.content}"
+    for index in indices:
+        chunk = chunks[index]
+        rendered = f"[{index + 1}] {chunk.breadcrumb}\n{chunk.content}"
         if chunk.has_table and chunk.raw_table:
             rendered += f"\nBảng gốc (markdown):\n{chunk.raw_table}"
         rendered_chunks.append(rendered)
