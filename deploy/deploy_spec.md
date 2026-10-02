@@ -1,23 +1,17 @@
 # Deploy — Chạy toàn bộ chatbot trên máy cá nhân, public qua Cloudflare Tunnel
 
 - Giữ nguyên số mục để không làm hỏng tham chiếu từ code/spec khác; bản đầy đủ ở git history.
-- Spec liên quan: [api_spec.md](../src/production_legal_qa_rag/api/api_spec.md),
-  [conversation_spec.md](../src/production_legal_qa_rag/conversation/conversation_spec.md),
-  [observability_spec.md](../src/production_legal_qa_rag/observability/observability_spec.md).
+- Spec liên quan: [api_spec.md](../src/production_legal_qa_rag/api/api_spec.md), [conversation_spec.md](../src/production_legal_qa_rag/conversation/conversation_spec.md), [observability_spec.md](../src/production_legal_qa_rag/observability/observability_spec.md).
 
 ## 1. Mục tiêu & phạm vi
 
-- Một lệnh chạy toàn chatbot trên máy cá nhân Windows/WSL2, public HTTPS qua Cloudflare Tunnel; không VPS/mở
-  cổng router.
+- Một lệnh chạy toàn chatbot trên máy cá nhân Windows/WSL2, public HTTPS qua Cloudflare Tunnel; không VPS/mở cổng router.
 - Cùng entrypoint cho laptop tác giả có GPU và người clone CPU-only; không cần chọn biến thể trước.
-- Làm: Dockerfile/Compose/scripts trong deploy, năm service cloudflared/open-webui/api/redis/postgres, bảo vệ
-  mạng/bí mật, backup/vận hành.
+- Làm: Dockerfile/Compose/scripts trong deploy, năm service cloudflared/open-webui/api/redis/postgres, bảo vệ mạng/bí mật, backup/vận hành.
 - Postgres chỉ OpenWebUI; reranker in-process trong API (retrieval 6.1).
-- Không làm: VPS/PaaS/Kubernetes/Caddy/nginx, replica/HA, CD tự deploy, monitoring/alert trong compose
-  production, host LLM/Pinecone.
+- Không làm: VPS/PaaS/Kubernetes/Caddy/nginx, replica/HA, CD tự deploy, monitoring/alert trong compose production, host LLM/Pinecone.
 - Observe ở compose riêng observability (observability spec 7); CI test/lint, deploy tay.
-- Acceptance: clone → điền root env → chạy → người ngoài đăng ký/hỏi nhiều lượt; không lộ cổng/bí mật; host
-  tắt thì dịch vụ tắt.
+- Acceptance: clone → điền root env → chạy → người ngoài đăng ký/hỏi nhiều lượt; không lộ cổng/bí mật; host tắt thì dịch vụ tắt.
 
 ## 2. Kiến trúc
 
@@ -28,11 +22,9 @@
 
 ## 3. Cloudflare Tunnel
 
-- Profile quick mặc định: không account/domain, URL ngẫu nhiên trycloudflare.com, đổi khi restart, không cam
-  kết uptime.
+- Profile quick mặc định: không account/domain, URL ngẫu nhiên trycloudflare.com, đổi khi restart, không cam kết uptime.
 - Quick command: `cloudflared tunnel --no-autoupdate --url http://open-webui:8080`; URL trong log.
-- Named profile: account/domain, URL cố định; `cloudflared tunnel --no-autoupdate run`, TUNNEL_TOKEN root env;
-  dashboard trỏ UI:8080.
+- Named profile: account/domain, URL cố định; `cloudflared tunnel --no-autoupdate run`, TUNNEL_TOKEN root env; dashboard trỏ UI:8080.
 - Quick → named chỉ đổi cấu hình, không code; WEBUI_URL theo URL named thật.
 - TLS ở Cloudflare edge; mạng compose HTTP.
 
@@ -53,13 +45,10 @@
 ### 4.1 GPU passthrough cho reranker (tự động qua `deploy/up.sh`)
 
 - up.sh là entrypoint duy nhất, chạy từ bất kỳ cwd, tự cd deploy; reranker tự chọn cuda/cpu.
-- Build arg TORCH_VARIANT: mặc định cpu, GPU cu126 trở lên; cu121/cu124 dừng torch 2.5.1/2.6.0, không wheel
-  cp314.
-- GPU override deploy/docker-compose.gpu.yml: reservation driver nvidia/count 1/capabilities gpu; không đặt
-  GPU bắt buộc trong compose gốc.
+- Build arg TORCH_VARIANT: mặc định cpu, GPU cu126 trở lên; cu121/cu124 dừng torch 2.5.1/2.6.0, không wheel cp314.
+- GPU override deploy/docker-compose.gpu.yml: reservation driver nvidia/count 1/capabilities gpu; không đặt GPU bắt buộc trong compose gốc.
 - Host cần NVIDIA Container Toolkit hoặc Docker Desktop WSL2 GPU support.
-- Chỉ dùng GPU khi nvidia-smi chạy được và docker info có runtime nvidia; thiếu một điều kiện → CPU, không
-  fail.
+- Chỉ dùng GPU khi nvidia-smi chạy được và docker info có runtime nvidia; thiếu một điều kiện → CPU, không fail.
 - CPU: build TORCH_VARIANT=cpu rồi up; GPU: build cu126 và ghép override khi up.
 - Script giữ build/override khớp; gọi tay lệch có rủi ro (10.4).
 - VRAM 2GB có thể OOM batch lớn → fallback `rerank_score=None` (retrieval 8), không crash service.
@@ -68,46 +57,36 @@
 
 - Đăng ký mở: ENABLE_SIGNUP=true, DEFAULT_USER_ROLE=user; không duyệt tay.
 - Tài khoản đầu thường là admin: đăng ký trước công bố URL, kiểm khi nghiệm thu, tắt tính năng thừa (API 9).
-- Bảo vệ Groq: cache, rate limit phút, admission đồng thời, throttle bước nhẹ và 429 thật (conversation
-  9/12.1, API 5).
-- Không có quota user/ngày hoặc GLOBAL_DAILY_LLM_ANSWERS; nhiều account có thể vượt rate limit theo user và
-  làm cạn provider quota.
+- Bảo vệ Groq: cache, rate limit phút, admission đồng thời, throttle bước nhẹ và 429 thật (conversation 9/12.1, API 5).
+- Không có quota user/ngày hoặc GLOBAL_DAILY_LLM_ANSWERS; nhiều account có thể vượt rate limit theo user và làm cạn provider quota.
 - Khi provider hết hạn mức: thông báo rate_limited/retry-after; không tự dựng ngân sách ngày riêng.
-- Lạm dụng: tắt signup bằng Admin Panel hoặc cấu hình PersistentConfig phù hợp (API 9), recreate UI; hoặc dừng
-  tunnel.
+- Lạm dụng: tắt signup bằng Admin Panel hoặc cấu hình PersistentConfig phù hợp (API 9), recreate UI; hoặc dừng tunnel.
 
 ## 6. Image API (`deploy/Dockerfile`)
 
 - Base python:3.14-slim, uv từ ghcr.io/astral-sh/uv; torch theo TORCH_VARIANT, CPU mặc định.
-- Tầng deps riêng pyproject.toml/uv.lock → uv sync --frozen --no-dev --no-install-project → copy src/README →
-  cài project.
+- Tầng deps riêng pyproject.toml/uv.lock → uv sync --frozen --no-dev --no-install-project → copy src/README → cài project.
 - RUN uv dùng --mount=type=cache: đổi dependency không tải lại torch; không prune builder cache tùy tiện.
 - Reranker checkpoint khoảng 1GB tải HF lần đầu, không bake image; hf_cache giữ qua recreate.
 - User không root; BM25 không trong image, mount read-only; thiếu file → lỗi startup rõ.
-- Uvicorn `production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`; không
-  migration; admission in-process.
+- Uvicorn `production_legal_qa_rag.api.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1`; không migration; admission in-process.
 - dockerignore: .venv/.git/data/tests/.env và mypy/ruff/pytest cache.
 
 ## 7. Biến môi trường & bí mật (`.env` ở repo root, không commit)
 
 - Duy nhất root .env/.env.example; API container env_file ../.env, host config đọc cùng file.
 - Example có ba block APP/DEPLOY/OBSERVABILITY; prefix DEPLOY_/OBS_ cho biến trùng giữa stack.
-- APP: `GROQ_API_KEY_1`…9 (1–4 production, 5–9 eval), `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`,
-  `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY`.
-- Deploy: COMPOSE_PROFILES, REDIS_PASSWORD (Compose dựng container REDIS_URL),
-  `DEPLOY_POSTGRES_USER`/`DEPLOY_POSTGRES_PASSWORD` → container `POSTGRES_USER`/`POSTGRES_PASSWORD`.
+- APP: `GROQ_API_KEY_1`…9 (1–4 production, 5–9 eval), `HF_TOKEN`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `PINECONE_SPARSE_INDEX_NAME`, `CHATBOT_API_KEY`.
+- Deploy: COMPOSE_PROFILES, REDIS_PASSWORD (Compose dựng container REDIS_URL), `DEPLOY_POSTGRES_USER`/`DEPLOY_POSTGRES_PASSWORD` → container `POSTGRES_USER`/`POSTGRES_PASSWORD`.
 - UI: WEBUI_SECRET_KEY cố định qua restart, WEBUI_URL tùy chọn; named tunnel TUNNEL_TOKEN.
 - Observe là stack riêng cho traffic production (observability 7), không phục vụ end-user trực tiếp.
-- .env phải được gitignore; file bí mật khác cũng ignore trước; không truyền secret qua build args hoặc bake
-  image.
+- .env phải được gitignore; file bí mật khác cũng ignore trước; không truyền secret qua build args hoặc bake image.
 
 ## 8. Vận hành cơ bản
 
 - Start/update: ./deploy/up.sh; dò GPU/build/up/in quick URL, tự ghép observe nếu network tồn tại.
-- Stop: ./deploy/down.sh, Compose --env-file ../.env --profile '*' down; không -v, giữ volume, không để tunnel
-  sót.
-- Thiếu .env lần đầu: copy example rồi dừng để điền; named URL theo WEBUI_URL, xem log cloudflared-named nếu
-  cần.
+- Stop: ./deploy/down.sh, Compose --env-file ../.env --profile '*' down; không -v, giữ volume, không để tunnel sót.
+- Thiếu .env lần đầu: copy example rồi dừng để điền; named URL theo WEBUI_URL, xem log cloudflared-named nếu cần.
 - Windows: Docker Desktop WSL2 tự bật; tắt sleep/hibernate khi cắm điện.
 - Backup: backup.sh pg_dump openwebui vào deploy/backups/<ngày>/, gitignore, giữ 7 bản; Redis không backup.
 - Update: git pull → up.sh; đổi UI tag phải nghiệm thu lại.
@@ -124,11 +103,9 @@
 
 ## 10. Rủi ro / điểm mở
 
-- **1:** host tắt/ngủ/mất mạng → dừng; quick URL đổi; named/domain chưa có, chi phí từng ước khoảng 10
-  USD/năm.
+- **1:** host tắt/ngủ/mất mạng → dừng; quick URL đổi; named/domain chưa có, chi phí từng ước khoảng 10 USD/năm.
 - **2:** signup mở/nhiều account có thể cạn quota; chưa Turnstile/Access; đóng signup/tunnel khi cần.
 - **3:** host giữ hội thoại/trace, chưa tự xóa; tác giả chịu trách nhiệm mã hóa đĩa (BitLocker)/cập nhật OS.
 - **4:** CPU-only chậm; up.sh tránh build/override lệch, lệnh Compose tay vẫn có thể lệch.
 - **5:** quick tunnel dành thử nghiệm/không uptime; đối chiếu điều khoản trước chia sẻ rộng.
-- **6:** image + checkpoint nặng; WSL2 RAM/disk cho năm service, gợi ý ≥6GB, thêm tài nguyên cho
-  observe/hf_cache.
+- **6:** image + checkpoint nặng; WSL2 RAM/disk cho năm service, gợi ý ≥6GB, thêm tài nguyên cho observe/hf_cache.

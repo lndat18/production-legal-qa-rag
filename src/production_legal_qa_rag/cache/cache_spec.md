@@ -1,14 +1,12 @@
 # Cache — Cache câu trả lời & kết quả retrieval bằng Redis
 
 - Giữ nguyên số mục để không làm hỏng tham chiếu từ code/spec khác.
-- Spec liên quan: [generation_spec.md](../generation/generation_spec.md),
-  [conversation_spec.md](../conversation/conversation_spec.md).
+- Spec liên quan: [generation_spec.md](../generation/generation_spec.md), [conversation_spec.md](../conversation/conversation_spec.md).
 
 ## 1. Mục tiêu & phạm vi
 
 - Giảm chi phí/độ trễ câu hỏi lặp lại, bảo vệ hạn mức Groq.
-- Cache answer hoàn chỉnh/retrieval theo `standalone_query`; single-flight cache miss; replay stream; version
-  key theo corpus/prompt/model.
+- Cache answer hoàn chỉnh/retrieval theo `standalone_query`; single-flight cache miss; replay stream; version key theo corpus/prompt/model.
 - Không làm: semantic cache, embedding/guardrail/error/refusal cache, cache theo user, invalidation thủ công.
 - Không semantic cache vì Khoản 1/2 cùng Điều có embedding gần nhau nhưng đáp án khác.
 - Ưu tiên: không trả answer sai/cũ; Redis lỗi không làm chatbot dừng.
@@ -37,15 +35,13 @@ retrieval = rag:ret:{corpus_version}:{sha256(norm)[:32]}
 lock      = {answer key}:lock
 ```
 
-- `corpus_version`: 12 ký tự đầu SHA-256 `data/bm25/bm25_params.json`; thiếu → `unknown` + warning; override
-  `CACHE_CORPUS_VERSION`.
+- `corpus_version`: 12 ký tự đầu SHA-256 `data/bm25/bm25_params.json`; thiếu → `unknown` + warning; override `CACHE_CORPUS_VERSION`.
 - `prompt_version`: `PROMPT_VERSION` trong `generation/generator.py`; tăng khi đổi prompt hoặc `output_check`.
 - `model_name`: `GenerationSettings.model_name`.
 
 ## 5. Chính sách cache
 
-- Answer TTL 7 ngày: luồng done không error/warning, có ≥1 citation `[n]` hợp lệ hoặc câu “không tìm thấy quy
-  định”.
+- Answer TTL 7 ngày: luồng done không error/warning, có ≥1 citation `[n]` hợp lệ hoặc câu “không tìm thấy quy định”.
 - Retrieval TTL 24 giờ: `retrieve()` có ≥1 chunk.
 - Không ghi khi bypass/refusal/error/client ngắt; lỗi ghi bỏ qua.
 

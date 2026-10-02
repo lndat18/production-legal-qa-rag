@@ -1,16 +1,14 @@
 # Embedding — Chunk → Vector Store: Reference Spec
 
 - Giữ nguyên số mục để không làm hỏng tham chiếu từ code/spec khác.
-- Spec liên quan: [chunking_spec.md](../chunking/chunking_spec.md),
-  [retrieval_spec.md](../retrieval/retrieval_spec.md).
+- Spec liên quan: [chunking_spec.md](../chunking/chunking_spec.md), [retrieval_spec.md](../retrieval/retrieval_spec.md).
 
 ## 1. Mục đích
 
 - Chuyển `Chunk` thành vector tìm kiếm được, giữ citation và dữ liệu generation.
 - **Checkpoint snapshot trước, publish sau:** không trộn embed và publish trong một vòng lặp mạng.
 - Làm: đọc JSON, preprocess, embed batch, checkpoint atomic, validate, publish/tạo index, quota/retry.
-- Không làm: chunk/retrieve/rerank/generate, phân quyền, DB trạng thái, delta embedding, multi-tenant, nhiều
-  key song song.
+- Không làm: chunk/retrieve/rerank/generate, phân quyền, DB trạng thái, delta embedding, multi-tenant, nhiều key song song.
 - Mặc định: full rebuild; vector store chỉ nhận snapshot hoàn chỉnh.
 
 ## 2. Bất biến hệ thống
@@ -24,21 +22,16 @@
 
 ## 3. Contract dữ liệu
 
-- Input: `data/chunks/**/*.json`, mảng `Chunk` gồm `chunk_id`, `content`, `breadcrumb`, `source_document`,
-  `has_table`, `raw_table`.
-- `EmbeddedChunk`: `Chunk` + `embedding: list[float]`; ghi file tạm rồi rename; một file nguồn ↔ một
-  checkpoint.
-- Manifest mỗi build: nguồn↔checkpoint, tổng chunk/thành công/lỗi, model, dimension, version; chỉ trạng thái
-  `complete` được publish.
-- Record: `id=chunk_id`, `values=embedding`; metadata `content` nguyên văn, `breadcrumb`, `source_document`,
-  `has_table`.
+- Input: `data/chunks/**/*.json`, mảng `Chunk` gồm `chunk_id`, `content`, `breadcrumb`, `source_document`, `has_table`, `raw_table`.
+- `EmbeddedChunk`: `Chunk` + `embedding: list[float]`; ghi file tạm rồi rename; một file nguồn ↔ một checkpoint.
+- Manifest mỗi build: nguồn↔checkpoint, tổng chunk/thành công/lỗi, model, dimension, version; chỉ trạng thái `complete` được publish.
+- Record: `id=chunk_id`, `values=embedding`; metadata `content` nguyên văn, `breadcrumb`, `source_document`, `has_table`.
 - Chỉ thêm `raw_table` khi có bảng; Pinecone không nhận metadata `null`.
 - Contract Pydantic v2: `EmbeddedChunk`, `PineconeMetadata`, `PineconeRecord`; không trao đổi `dict` thô.
 
 ## 4. Tiền xử lý và model
 
-- Model PhoBERT hiện tại dùng `pyvi.ViTokenizer.tokenize(Chunk.content)` ngay trước API; index/query cùng quy
-  tắc.
+- Model PhoBERT hiện tại dùng `pyvi.ViTokenizer.tokenize(Chunk.content)` ngay trước API; index/query cùng quy tắc.
 - Checkpoint/metadata giữ nguyên văn, không lưu bản word-segment thay `content`.
 - `EmbeddingSettings`: nguồn chung `model_name`, provider token và token budget.
 - Dimension lấy từ config/response đã validate; không hard-code hoặc trộn vector khác model.
@@ -52,8 +45,7 @@
 
 ## 6. Publish vector store
 
-- Manifest complete → đọc/validate checkpoint → tạo index cosine nếu thiếu → chờ ready → upsert batch → kiểm
-  số vector khớp snapshot.
+- Manifest complete → đọc/validate checkpoint → tạo index cosine nếu thiếu → chờ ready → upsert batch → kiểm số vector khớp snapshot.
 - Full replace offline: `delete_all` rồi upsert toàn snapshot.
 - Replace không atomic: lỗi sau delete có thể để index trống/partial; không coi là publish thành công.
 
