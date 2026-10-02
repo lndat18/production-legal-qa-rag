@@ -164,9 +164,9 @@ def test_docker_compose_image_tag_duoc_ghim_khong_dung_latest(tmp_path: Path) ->
         for name, service in config["services"].items()
         if service.get("image")
     }
-    # `api` build từ Dockerfile, không có `image:` cố định — các service còn lại đều dùng
-    # image ngoài và phải xuất hiện ở đây.
-    expected = {"postgres", "redis", "open-webui", "cloudflared-named"}
+    # `api` vừa build từ Dockerfile vừa có `image:` mặc định `legal-qa-api:local` (mục 11.5,
+    # tag `local` — không phải `latest`); các service còn lại dùng image ngoài.
+    expected = {"postgres", "redis", "open-webui", "cloudflared-named", "api"}
     assert set(pinned_images) == expected
     for name, image in pinned_images.items():
         assert ":" in image, f"image của '{name}' thiếu tag: {image}"
@@ -456,3 +456,13 @@ def test_docker_compose_postgres_tu_tao_database_openwebui(tmp_path: Path) -> No
     mounts = [str(volume.get("target", "")) for volume in postgres.get("volumes", [])]
     assert "/docker-entrypoint-initdb.d" not in mounts
     assert not (DEPLOY_DIR / "initdb").exists()
+
+
+@requires_docker_compose
+def test_docker_compose_api_image_mac_dinh_la_legal_qa_api_local(tmp_path: Path) -> None:
+    """`api` có `image:` mặc định `legal-qa-api:local` và vẫn giữ `build:` (mục 11.5)."""
+    config = _resolve_compose_config(tmp_path, profile="named")
+
+    api = config["services"]["api"]
+    assert api["image"] == "legal-qa-api:local"
+    assert api["build"]["args"]["TORCH_VARIANT"] == "cpu"
