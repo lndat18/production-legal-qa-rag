@@ -69,7 +69,9 @@ def test_gate_co_hai_kiem_tra_va_build_phu_thuoc_gate(
     # Mỗi kiểm tra fail thì job phải thoát lỗi.
     assert gate_runs.count("exit 1") >= 2
     # merge-base cần lịch sử đầy đủ.
-    checkout = next(s for s in jobs["gate"]["steps"] if "checkout" in str(s.get("uses")))
+    checkout = next(
+        s for s in jobs["gate"]["steps"] if "checkout" in str(s.get("uses"))
+    )
     assert checkout["with"]["fetch-depth"] == 0
 
 
@@ -110,7 +112,9 @@ def test_tag_cpu_cu126_latest(workflow: dict[str, Any], workflow_text: str) -> N
     assert workflow["env"]["IMAGE"] == "ghcr.io/lndat18/production-legal-qa-rag"
     assert workflow["env"]["IMAGE"] == workflow["env"]["IMAGE"].lower()
 
-    tag_step = next(s for s in workflow["jobs"]["build"]["steps"] if s.get("id") == "tags")
+    tag_step = next(
+        s for s in workflow["jobs"]["build"]["steps"] if s.get("id") == "tags"
+    )
     script = tag_step["run"]
     assert "${IMAGE}:${GITHUB_REF_NAME}-${{ matrix.variant }}" in script
     # `latest` chỉ xuất hiện trong nhánh cpu, đúng 1 lần, và không có latest-cu126.
@@ -138,7 +142,9 @@ def test_login_ghcr_bang_github_token(workflow: dict[str, Any]) -> None:
 
 
 def test_don_disk_chi_cho_cu126(workflow: dict[str, Any]) -> None:
-    step = next(s for s in workflow["jobs"]["build"]["steps"] if "Dọn disk" in s.get("name", ""))
+    step = next(
+        s for s in workflow["jobs"]["build"]["steps"] if "Dọn disk" in s.get("name", "")
+    )
     assert step["if"] == "matrix.variant == 'cu126'"
     assert "docker image prune -af" in step["run"]
 

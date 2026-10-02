@@ -459,7 +459,9 @@ def test_docker_compose_postgres_tu_tao_database_openwebui(tmp_path: Path) -> No
 
 
 @requires_docker_compose
-def test_docker_compose_api_image_mac_dinh_la_legal_qa_api_local(tmp_path: Path) -> None:
+def test_docker_compose_api_image_mac_dinh_la_legal_qa_api_local(
+    tmp_path: Path,
+) -> None:
     """`api` có `image:` mặc định `legal-qa-api:local` và vẫn giữ `build:` (mục 11.5)."""
     config = _resolve_compose_config(tmp_path, profile="named")
 

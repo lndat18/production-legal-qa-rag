@@ -102,7 +102,9 @@ def test_up_pull_thanh_cong_khong_build_va_ghim_image(tmp_path: Path) -> None:
     up_calls = [c for c in calls if " up " in c]
     assert len(pull_calls) == 1 and pull_calls[0].startswith(f"API_IMAGE={expected} ::")
     assert len(up_calls) == 1
-    assert "--no-build" in up_calls[0] and up_calls[0].startswith(f"API_IMAGE={expected} ::")
+    assert "--no-build" in up_calls[0] and up_calls[0].startswith(
+        f"API_IMAGE={expected} ::"
+    )
     assert not any(" build " in f" {c} " for c in calls), "chế độ pull không được build"
     # Pull phải đi trước up.
     assert calls.index(pull_calls[0]) < calls.index(up_calls[0])
@@ -126,6 +128,8 @@ def test_up_khong_co_co_van_build_local(tmp_path: Path) -> None:
     build_calls = [c for c in calls if " build " in f" {c} "]
     assert len(build_calls) == 1
     assert "TORCH_VARIANT=cpu" in build_calls[0] and build_calls[0].endswith(" api")
-    assert build_calls[0].startswith("API_IMAGE= ::"), "không ghim API_IMAGE khi build local"
+    assert build_calls[0].startswith("API_IMAGE= ::"), (
+        "không ghim API_IMAGE khi build local"
+    )
     assert any(" up -d" in c and "--no-build" not in c for c in calls)
     assert not any(" pull " in f" {c} " for c in calls)
