@@ -54,6 +54,8 @@ dev = [
 ]
 eval = [
     "langchain-community<0.4",
+    # Phase 2 dùng generator/HyDE production, import tracing Langfuse trực tiếp.
+    "langfuse>=4.15.6",
     "ragas>=0.4.3",
     # ragas import rapidfuzz lúc dựng OverlapScoreBuilder nhưng không khai báo là dependency.
     "rapidfuzz",

@@ -25,6 +25,7 @@ from production_legal_qa_rag.retrieval.hyde import HydeGenerator
 from production_legal_qa_rag.retrieval.mmr import MMR_LAMBDA
 from production_legal_qa_rag.retrieval.models import (
     Candidate,
+    PrecomputedQuery,
     RetrievalError,
     RetrievedChunk,
     SearchHit,
@@ -76,7 +77,11 @@ class RetrievalPipeline:
         self._reranker = reranker or LocalReranker()
 
     async def retrieve(
-        self, query: str, *, use_mmr: bool | None = None
+        self,
+        query: str,
+        *,
+        use_mmr: bool | None = None,
+        precomputed: PrecomputedQuery | None = None,
     ) -> list[RetrievedChunk]:
         """Trả về tối đa `FINAL_TOP_K` chunk liên quan nhất tới `query`.
 
@@ -88,6 +93,7 @@ class RetrievalPipeline:
         Args:
             query: Một câu hỏi tiếng Việt độc lập.
             use_mmr: Ghi đè công tắc MMR; `None` dùng `USE_MMR`.
+            precomputed: Bỏ gọi HyDE/HF, giữ nguyên toàn bộ retrieval phía sau.
 
         Raises:
             RetrievalError: Khi HF embed hoặc Pinecone lỗi (Groq và reranker
@@ -95,12 +101,23 @@ class RetrievalPipeline:
         """
         use_mmr = USE_MMR if use_mmr is None else use_mmr
 
-        hypothetical_document = await self._hyde.generate(query)
-        texts = (
-            [query] if hypothetical_document is None else [hypothetical_document, query]
-        )
-        embeddings = await self._embedder.embed(texts)
-        query_embedding = embeddings[-1]
+        if precomputed is None:
+            hypothetical_document = await self._hyde.generate(query)
+            texts = (
+                [query]
+                if hypothetical_document is None
+                else [hypothetical_document, query]
+            )
+            embeddings = await self._embedder.embed(texts)
+            query_embedding = embeddings[-1]
+        else:
+            hypothetical_document = precomputed.hypothetical_document
+            query_embedding = precomputed.query_embedding
+            embeddings = (
+                [precomputed.hypothetical_embedding, query_embedding]
+                if precomputed.hypothetical_embedding is not None
+                else [query_embedding]
+            )
 
         numbers = extract_citation_numbers(query)
         khoans = extract_citation_khoans(query) if numbers else []

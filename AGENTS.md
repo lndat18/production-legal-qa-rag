@@ -41,7 +41,7 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres (chỉ cho OpenWebUI), spec tổng toàn hệ thống | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
 | `observability/` | Langfuse trace 1 lượt hỏi + Prometheus `/metrics` cho `api`                                       | [observability_spec.md](src/production_legal_qa_rag/observability/observability_spec.md) |
-| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 chạy pipeline thật + chấm điểm (spec chốt lại 2026-10-01, chưa implement) | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
+| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 đã implement code trên feat/gen-testset-ans, chưa chạy đánh giá thật | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
 
 ## Tiến độ
 
@@ -88,10 +88,10 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   **157 câu (142 single + 15 multi-hop specific)** = mẫu `keep` của review luna (`data/eval/golden_testset_review.json`),
   không random, không duyệt tay; không pilot bắt buộc.
 
-**Đã chốt thiết kế, chưa implement**
-- **Evaluation Phase 2 — code**: chưa có module nào. Cần thêm `precomputed` ở
-  `RetrievalPipeline.retrieve` (`retrieval_spec.md` mục 2). Nhánh `/develop-cycle`: `feature/eval-phase2`
-  (`evaluation_spec.md` mục 11.12; gồm sửa nhỏ `finalize`).
+**Đang nghiệm thu code**
+- **Evaluation Phase 2 — code**: đã implement các stage CLI/resume/report, `precomputed` retrieval,
+  throttle router/wrapper và `finalize` theo review trên nhánh `feat/gen-testset-ans`
+  (`evaluation_spec.md` mục 11.12). Chưa chạy đánh giá thật 157 câu; đang qua vòng tester/reviewer.
 
 **Chưa làm**
 - **CD** (GitHub Actions build + push image lên GHCR; không SSH tự động vào máy nhà): chưa brainstorm chi tiết,
@@ -107,7 +107,7 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   (203 > 180, BLLĐ còn nhiều đơn vị khác); nếu muốn thử nữa: `generate --retry-skipped --only "Văn bản hợp nhất bộ luật lao động.md#5"`
   (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
-  abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; việc còn lại: sửa nhỏ code `finalize` (nhánh Phase 2).
+  abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; `finalize` đã sửa theo review trên nhánh Phase 2.
 - **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
   `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
@@ -115,7 +115,7 @@ Roadmap tiếp theo (thứ tự đề xuất):
 
 1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
 2. Golden testset **xong** (49/50 đơn vị, 203 câu raw → luna review → `golden_testset.json` 157 mẫu; BLLĐ#5 bỏ, abstract = 0 chấp nhận).
-3. Implement Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch `feature/eval-phase2`) → chạy full (không pilot
+3. Hoàn tất tester/reviewer Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch `feat/gen-testset-ans`) → chạy full (không pilot
    bắt buộc; S5 lần đầu `--limit 2`);
    sau đó lấy mẫu Q&A thật từ Langfuse.
 4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).

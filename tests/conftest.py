@@ -160,3 +160,54 @@ def observation_parent_id() -> Callable[[Any], str | None]:
         return None if parent is None else format(parent.span_id, "016x")
 
     return read
+
+
+@pytest.fixture
+def eval_throttle_factory() -> Callable[..., Any]:
+    """Use real token/RPM reservations with per-bucket virtual monotonic clocks."""
+    from production_legal_qa_rag.retrieval.llm_throttle import TokenWindowThrottle
+
+    buckets: dict[tuple[str, str], TokenWindowThrottle] = {}
+
+    def factory(model: str, key: str) -> TokenWindowThrottle:
+        identity = (model, key)
+        if identity not in buckets:
+            now = [0.0]
+
+            async def sleep(seconds: float) -> None:
+                now[0] += seconds
+
+            buckets[identity] = TokenWindowThrottle(
+                8000, 30, clock=lambda: now[0], sleep=sleep
+            )
+        return buckets[identity]
+
+    return factory
+
+
+@pytest.fixture(autouse=True)
+def legacy_eval_router_virtual_time(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Migrate pre-throttle router tests without disabling reservation behavior."""
+    modules = {
+        "test_evaluation_components",
+        "test_evaluation_daily_quota",
+        "test_evaluation_key_coordination",
+        "test_evaluation",
+    }
+    if request.module.__name__.split(".")[-1] not in modules:
+        return
+    from production_legal_qa_rag.evaluation.groq_round_robin import (
+        GroqRoundRobinChatModel,
+    )
+
+    factory = request.getfixturevalue("eval_throttle_factory")
+    original = GroqRoundRobinChatModel.__init__
+
+    def initialize(self: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("throttle_factory", factory)
+        original(self, **kwargs)
+
+    monkeypatch.setattr(GroqRoundRobinChatModel, "__init__", initialize)

@@ -11,6 +11,8 @@ hàng đợi job, không phải round-robin tuần tự).
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import itertools
 import logging
 import math
@@ -28,9 +30,17 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, SecretStr
+
+from production_legal_qa_rag.retrieval.llm_throttle import (
+    Reservation,
+    TokenWindowThrottle,
+    estimate_tokens,
+    get_throttle,
+)
 
 logger = logging.getLogger(__name__)
+_THROTTLE_LOOP_LOCK = threading.Lock()
 
 # Groq ghi giới hạn theo ngày trong thông điệp 429: "... on tokens per day (TPD): Limit ...".
 # Giới hạn theo phút ghi "per minute (TPM/RPM)" — tạm thời, chờ là hết, khác hẳn hết ngày.
@@ -128,13 +138,11 @@ def _extract_usage(result: ChatResult) -> TokenTotals | None:
 class GroqRoundRobinChatModel(BaseChatModel):
     """Proxy luân phiên round-robin qua N `ChatOpenAI` (Groq) độc lập tài khoản.
 
-    Không phải rate-limiter: chỉ chọn client trước mỗi lượt gọi thật, để rải tải đều
-    qua các tài khoản độc lập. Chỉ cần implement `_generate` (sync) —
+    Throttle chủ động theo (model, key) trước mỗi HTTP request, cùng thuật toán
+    round-robin/cooldown hiện có. Chỉ cần implement `_generate` (sync) —
     `BaseChatModel._agenerate` mặc định gọi `_generate` qua executor khi không
     override, nên round-robin vẫn đúng dù ragas gọi qua đường async.
 
-    Không thêm rate-limiter mới: mỗi `ChatOpenAI` con giữ nguyên timeout/retry riêng từ
-    `TestsetGeneratorSettings`; round-robin ở đây chỉ chọn client, không kiểm soát tốc độ.
 
     Thread-safe (ragas chạy nhiều worker và `_agenerate` chạy `_generate` trong
     executor): toàn bộ trạng thái dùng chung — con trỏ vòng, bộ đếm `call_counts`,
@@ -156,6 +164,11 @@ class GroqRoundRobinChatModel(BaseChatModel):
     # `time.monotonic`/`time.sleep` thật (tra cứu lúc gọi, nên monkeypatch module vẫn có tác dụng).
     clock: Callable[[], float] | None = Field(default=None, exclude=True)
     sleep: Callable[[float], None] | None = Field(default=None, exclude=True)
+
+    throttle_max_wait: float = Field(default=300.0, gt=0)
+    throttle_factory: Callable[[str, str], TokenWindowThrottle] = Field(
+        default=get_throttle, exclude=True
+    )
 
     _lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     _cycle: Iterator[int] = PrivateAttr()
@@ -358,6 +371,43 @@ class GroqRoundRobinChatModel(BaseChatModel):
             0.0, _TRANSIENT_RETRY_JITTER_SECONDS
         )
 
+    @property
+    def daily_quota_exhausted(self) -> bool:
+        """Expose the circuit-breaker state for NaN-safe scoring checkpoints."""
+        with self._lock:
+            return self._daily_quota_message is not None
+
+    def _reserve(
+        self, index: int, messages: list[BaseMessage]
+    ) -> tuple[TokenWindowThrottle, Reservation]:
+        client = self.clients[index]
+        key = client.openai_api_key
+        if not isinstance(key, SecretStr):
+            raise TypeError("Groq eval client requires a fixed credential")
+        throttle = self.throttle_factory(client.model_name, key.get_secret_value())
+        estimate = estimate_tokens(
+            sum(len(str(m.content)) for m in messages), 3.0, 1000
+        )
+        with _THROTTLE_LOOP_LOCK:
+            loop = _throttle_loop()
+        reservation = asyncio.run_coroutine_threadsafe(
+            throttle.acquire(estimate, self.throttle_max_wait), loop
+        ).result()
+        return throttle, reservation
+
+    @staticmethod
+    def _settle(
+        throttle: TokenWindowThrottle, reservation: Reservation, result: ChatResult
+    ) -> None:
+        usage = _extract_usage(result)
+
+        async def settle() -> None:
+            throttle.settle(
+                reservation, usage.total_tokens if usage is not None else None
+            )
+
+        asyncio.run_coroutine_threadsafe(settle(), _throttle_loop()).result()
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -394,6 +444,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
         transient_retries = 0
         last_transient_error: Exception | None = None
         for index in order:
+            throttle, reservation = self._reserve(index, messages)
             self._record_attempt(index)
             try:
                 result = self.clients[index]._generate(
@@ -417,6 +468,7 @@ class GroqRoundRobinChatModel(BaseChatModel):
                 transient_retries += 1
                 self._sleep(self._transient_retry_delay())
             else:
+                self._settle(throttle, reservation, result)
                 self._mark_result(index, daily_limited=False)
                 self._record_usage(index, result)
                 return result
@@ -433,3 +485,18 @@ class GroqRoundRobinChatModel(BaseChatModel):
         if last_transient_error is not None:
             raise last_transient_error
         raise RuntimeError("Router Groq không gửi được request.")
+
+
+@functools.cache
+def _throttle_loop() -> asyncio.AbstractEventLoop:
+    """Own all sync-router reservations on one loop, shared by executor threads.
+
+    Scoring/Phase 1 use the sync router. S1/S5 use production async clients in
+    separate CLI invocations, so a cached bucket never crosses active loops.
+    """
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(
+        target=loop.run_forever, name="eval-throttle", daemon=True
+    )
+    thread.start()
+    return loop

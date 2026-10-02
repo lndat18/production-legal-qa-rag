@@ -404,3 +404,47 @@ def test_build_rerank_passages_rong_va_thieu_metadata():
     assert build_rerank_passages([]) == []
     with pytest.raises(RetrievalError):
         build_rerank_passages([Candidate(chunk_id="c1", rrf_score=1.0)])
+
+
+@pytest.mark.parametrize("hypothesis", [None, "giả định đã tính"])
+@pytest.mark.parametrize("use_mmr", [True, False])
+def test_precomputed_skips_online_preparation_preserves_dense_and_sparse_branches(
+    hypothesis: str | None, use_mmr: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from production_legal_qa_rag.retrieval.models import PrecomputedQuery
+
+    pipe, dense, reranker, embedder = _build(["c1", "c2"], {})
+    dense_vectors: list[list[float]] = []
+    original = dense.query
+
+    async def query(
+        embedding: list[float], top_k: int = 20, **kwargs: Any
+    ) -> list[SearchHit]:
+        dense_vectors.append(embedding)
+        return await original(embedding, top_k, **kwargs)
+
+    async def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("precomputed must bypass online HyDE/HF")
+
+    monkeypatch.setattr(dense, "query", query)
+    monkeypatch.setattr(pipe._hyde, "generate", forbidden)
+    monkeypatch.setattr(embedder, "embed", forbidden)
+    query_vector = [1.0, 0.0, 0.0, 0.0]
+    hypothesis_vector = [0.0, 1.0, 0.0, 0.0]
+    prepared = PrecomputedQuery(
+        hypothetical_document=hypothesis,
+        query_embedding=query_vector,
+        hypothetical_embedding=hypothesis_vector if hypothesis is not None else None,
+    )
+    result = asyncio.run(
+        pipe.retrieve("câu hỏi", use_mmr=use_mmr, precomputed=prepared)
+    )
+    assert result
+    assert all(chunk.rerank_score is not None for chunk in result)
+    assert dense_vectors == (
+        [hypothesis_vector, query_vector] if hypothesis is not None else [query_vector]
+    )
+    assert reranker.calls
+    assert pipe._sparse_index.texts == (
+        [hypothesis, "câu hỏi"] if hypothesis is not None else ["câu hỏi"]
+    )

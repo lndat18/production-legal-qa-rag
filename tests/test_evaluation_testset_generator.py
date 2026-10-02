@@ -1059,60 +1059,78 @@ def _stratified_raw() -> list[GoldenTestCase]:
     return cases
 
 
-def test_finalize_testset_cat_dung_180_giu_ty_le_theo_van_ban_va_loai_cau():
-    raw = _stratified_raw()
-    assert len(raw) == 240
+def _review(
+    raw: list[GoldenTestCase], keep: set[int] | None = None
+) -> list[dict[str, str]]:
+    from production_legal_qa_rag.evaluation.run_models import case_id
 
-    chosen = tg.finalize_testset(raw)
-
-    assert len(chosen) == tg.TARGET_SIZE == 180
-    by_group = Counter((c.source_document, c.synthesizer_name) for c in chosen)
-    raw_group = Counter((c.source_document, c.synthesizer_name) for c in raw)
-    for group, count in raw_group.items():
-        # tỷ lệ 180/240 = 0,75, lệch tối đa 1 câu mỗi nhóm do làm tròn
-        assert abs(by_group[group] - count * 0.75) <= 1
-    assert by_group[("A.md", ABSTRACT)] >= 8  # không dồn hết vào vài văn bản đầu file
-
-
-def test_finalize_testset_tat_dinh_va_giu_thu_tu_file():
-    raw = _stratified_raw()
-
-    first = tg.finalize_testset(raw)
-    second = tg.finalize_testset(list(raw))
-
-    assert first == second
-    positions = [raw.index(c) for c in first]
-    assert positions == sorted(positions)
+    return [
+        {
+            "case_id": case_id(case.user_input),
+            "verdict": "keep" if keep is None or i in keep else "drop",
+        }
+        for i, case in enumerate(raw)
+    ]
 
 
-def test_finalize_testset_du_dung_target_thi_giu_nguyen():
-    raw = _stratified_raw()[:180]
-
-    assert tg.finalize_testset(raw) == raw
-
-
-def test_finalize_testset_thieu_thi_bao_loi_kem_goi_y_sinh_bu():
-    raw = _stratified_raw()[:170]
-
-    with pytest.raises(tg.EvalInputError) as excinfo:
-        tg.finalize_testset(raw)
-
-    message = str(excinfo.value)
-    assert "thiếu 10 câu" in message
-    assert "--reuse-knowledge-graph --append --testset-size 13" in message
-
-
-def test_finalize_golden_testset_ghi_file_dung_180(tmp_path: Path):
-    raw_path = tmp_path / tg.RAW_TESTSET_FILENAME
-    raw_path.write_text(
-        json.dumps([c.model_dump() for c in _stratified_raw()], ensure_ascii=False),
-        encoding="utf-8",
+def _write_review(
+    path: Path, raw: list[GoldenTestCase], keep: set[int] | None = None
+) -> None:
+    (path / "golden_testset_review.json").write_text(
+        json.dumps(_review(raw, keep)), encoding="utf-8"
     )
 
-    cases = tg.finalize_golden_testset(tmp_path)
 
+def test_finalize_testset_giu_toan_bo_keep_khong_cat_theo_quota() -> None:
+    raw = _stratified_raw()
+    keep = {i for i in range(len(raw)) if i % 3 != 0}
+    chosen = tg.finalize_testset(raw, _review(raw, keep))
+    assert chosen == [case for i, case in enumerate(raw) if i in keep]
+    assert len(tg.finalize_testset(raw, _review(raw))) == 240
+
+
+def test_finalize_testset_tat_dinh_va_giu_thu_tu_file() -> None:
+    raw = _stratified_raw()
+    review = _review(raw, {1, 7, 121, 239})
+    assert tg.finalize_testset(raw, review) == tg.finalize_testset(list(raw), review)
+    assert tg.finalize_testset(raw, review) == [raw[i] for i in (1, 7, 121, 239)]
+
+
+@pytest.mark.parametrize("size", [1, 50, 170, 180, 240])
+def test_finalize_testset_khong_can_so_luong_target(size: int) -> None:
+    raw = _stratified_raw()[:size]
+    assert tg.finalize_testset(raw, _review(raw)) == raw
+
+
+@pytest.mark.parametrize("problem", ["count", "order", "id", "verdict", "duplicate"])
+def test_finalize_testset_tu_choi_review_lech(problem: str) -> None:
+    raw = _stratified_raw()[:3]
+    review = _review(raw)
+    if problem == "count":
+        review.pop()
+    elif problem == "order":
+        review.reverse()
+    elif problem == "id":
+        review[0]["case_id"] = "000000000000"
+    elif problem == "verdict":
+        review[0]["verdict"] = "maybe"
+    else:
+        raw[1] = raw[0]
+        review = _review(raw)
+    with pytest.raises(tg.EvalInputError):
+        tg.finalize_testset(raw, review)
+
+
+def test_finalize_golden_testset_ghi_keep_va_giu_schema(tmp_path: Path) -> None:
+    raw = _stratified_raw()
+    (tmp_path / tg.RAW_TESTSET_FILENAME).write_text(
+        json.dumps([c.model_dump() for c in raw], ensure_ascii=False), encoding="utf-8"
+    )
+    _write_review(tmp_path, raw, {2, 100, 239})
+    cases = tg.finalize_golden_testset(tmp_path)
     written = json.loads((tmp_path / tg.GOLDEN_TESTSET_FILENAME).read_text("utf-8"))
-    assert len(cases) == len(written) == 180
+    assert cases == [raw[i] for i in (2, 100, 239)]
+    assert written == [case.model_dump() for case in cases]
     assert set(written[0]) >= {
         "user_input",
         "reference",
@@ -1123,15 +1141,17 @@ def test_finalize_golden_testset_ghi_file_dung_180(tmp_path: Path):
     }
 
 
-def test_finalize_golden_testset_thieu_thi_khong_ghi_file(tmp_path: Path):
+def test_finalize_golden_testset_review_lech_khong_ghi_de_file(tmp_path: Path) -> None:
+    raw = _stratified_raw()[:3]
     (tmp_path / tg.RAW_TESTSET_FILENAME).write_text(
-        json.dumps([c.model_dump() for c in _stratified_raw()[:50]]), encoding="utf-8"
+        json.dumps([c.model_dump() for c in raw]), encoding="utf-8"
     )
-
-    with pytest.raises(tg.EvalInputError, match="thiếu 130"):
+    _write_review(tmp_path, raw[:2])
+    final = tmp_path / tg.GOLDEN_TESTSET_FILENAME
+    final.write_text("previous", encoding="utf-8")
+    with pytest.raises(tg.EvalInputError, match="khớp"):
         tg.finalize_golden_testset(tmp_path)
-
-    assert not (tmp_path / tg.GOLDEN_TESTSET_FILENAME).exists()
+    assert final.read_text("utf-8") == "previous"
 
 
 def test_finalize_golden_testset_raw_khong_ton_tai(tmp_path: Path):
@@ -1162,7 +1182,7 @@ def test_finalize_golden_testset_dong_rong_hoac_thieu_thi_chi_ra_vi_tri(
     )
 
     with pytest.raises(tg.EvalInputError, match=rf"dòng 2.*{expected}"):
-        tg.finalize_golden_testset(tmp_path, target=1)
+        tg.finalize_golden_testset(tmp_path)
 
 
 # ==========================================================================
@@ -1317,7 +1337,7 @@ def test_cli_loi_dau_vao_thoat_ma_2(dirs: tuple[Path, Path]):
     assert "Hợp lệ" in result.output
 
 
-def test_cli_finalize_thieu_cau_thoat_ma_2_thanh_cong_thi_in_so_luong(tmp_path: Path):
+def test_cli_finalize_thieu_review_thoat_ma_2_keep_in_so_luong(tmp_path: Path):
     from tools import generate_testset
 
     raw_path = tmp_path / tg.RAW_TESTSET_FILENAME
@@ -1330,10 +1350,11 @@ def test_cli_finalize_thieu_cau_thoat_ma_2_thanh_cong_thi_in_so_luong(tmp_path: 
     raw_path.write_text(
         json.dumps([c.model_dump() for c in _stratified_raw()]), encoding="utf-8"
     )
+    _write_review(tmp_path, _stratified_raw(), set(range(157)))
     ok = CliRunner().invoke(
         generate_testset.app, ["finalize", "--output-dir", str(tmp_path)]
     )
 
     assert short.exit_code == 2
     assert ok.exit_code == 0, ok.output
-    assert "180/180" in ok.output
+    assert "157" in ok.output

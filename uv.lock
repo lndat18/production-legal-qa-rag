@@ -2149,7 +2149,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
     { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-http-transport", extra = ["urllib3"], marker = "extra == 'group-23-production-legal-qa-rag-production'" },
+    { name = "opentelemetry-exporter-http-transport", extra = ["urllib3"], marker = "extra == 'group-23-production-legal-qa-rag-eval' or extra == 'group-23-production-legal-qa-rag-production'" },
     { name = "opentelemetry-exporter-otlp-common" },
     { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },
@@ -2430,6 +2430,7 @@ dev = [
 ]
 eval = [
     { name = "langchain-community" },
+    { name = "langfuse" },
     { name = "ragas" },
     { name = "rapidfuzz" },
 ]
@@ -2472,6 +2473,7 @@ dev = [
 ]
 eval = [
     { name = "langchain-community", specifier = "<0.4" },
+    { name = "langfuse", specifier = ">=4.15.6" },
     { name = "ragas", specifier = ">=0.4.3" },
     { name = "rapidfuzz" },
 ]

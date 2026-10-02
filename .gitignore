@@ -19,3 +19,6 @@ deploy/backups/
 # generation_progress.json cần commit nên KHÔNG ignore.
 data/eval/knowledge_graph/
 data/eval/**/*.tmp
+
+# Phase 2 embedding vectors are local intermediates.
+data/eval/phase2/embeddings.jsonl
