@@ -116,7 +116,7 @@ Design details: [retrieval spec](src/production_legal_qa_rag/retrieval/retrieval
 ### Tech Stack
 
 <p align="center">
-  <img src="docs/techstack/tech-stack-cards.svg" alt="Tech stack: FastAPI, OpenWebUI, Groq, GPT OSS 120B, Hugging Face, Pinecone, Redis, PostgreSQL, Docker, Cloudflare Tunnel, Langfuse, Prometheus, Grafana, RAGAS, GitHub Actions" width="848">
+  <img src="docs/techstack/tech-stack-cards.svg" alt="Tech stack: FastAPI, OpenWebUI, Groq, GPT OSS 120B, Hugging Face, Pinecone, Redis, PostgreSQL, Docker, Cloudflare Tunnel, Langfuse, Prometheus, Grafana, RAGAS, GitHub Actions, LangChain" width="848">
 </p>
 
 | Layer                 | Technology                                                                                                                                              |
@@ -124,6 +124,7 @@ Design details: [retrieval spec](src/production_legal_qa_rag/retrieval/retrieval
 | Language and tooling  | Python 3.14, uv, Pydantic v2, Typer                                                                                                                     |
 | API and interface     | FastAPI, Uvicorn, OpenAI-compatible chat endpoints, SSE, OpenWebUI                                                                                      |
 | LLM inference         | Groq:`openai/gpt-oss-120b` for generation; `openai/gpt-oss-20b` for condense, HyDE, and Judge; `openai/gpt-oss-safeguard-20b` for input guardrail |
+| LLM framework         | LangChain (`langchain-openai`, `langchain-text-splitters`)                                                                                              |
 | Embeddings            | Hugging Face Inference API,`CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2`, PyVi word segmentation                                                     |
 | Retrieval             | Pinecone dense/sparse indexes, BM25, RRF, HyDE, configurable MMR                                                                                        |
 | Reranking             | `AITeamVN/Vietnamese_Reranker`, Transformers, PyTorch; local GPU/CPU inference                                                                        |
@@ -550,7 +551,7 @@ Thiết kế chi tiết: [retrieval spec](src/production_legal_qa_rag/retrieval/
 ### Công nghệ sử dụng
 
 <p align="center">
-  <img src="docs/techstack/tech-stack-cards.svg" alt="Tech stack: FastAPI, OpenWebUI, Groq, GPT OSS 120B, Hugging Face, Pinecone, Redis, PostgreSQL, Docker, Cloudflare Tunnel, Langfuse, Prometheus, Grafana, RAGAS, GitHub Actions" width="848">
+  <img src="docs/techstack/tech-stack-cards.svg" alt="Tech stack: FastAPI, OpenWebUI, Groq, GPT OSS 120B, Hugging Face, Pinecone, Redis, PostgreSQL, Docker, Cloudflare Tunnel, Langfuse, Prometheus, Grafana, RAGAS, GitHub Actions, LangChain" width="848">
 </p>
 
 | Thành phần              | Công nghệ                                                                                                                                                      |
@@ -558,6 +559,7 @@ Thiết kế chi tiết: [retrieval spec](src/production_legal_qa_rag/retrieval/
 | Ngôn ngữ và công cụ  | Python 3.14, uv, Pydantic v2, Typer                                                                                                                              |
 | API và giao diện        | FastAPI, Uvicorn, endpoint chat tương thích OpenAI, SSE, OpenWebUI                                                                                            |
 | LLM inference             | Groq:`openai/gpt-oss-120b` sinh câu trả lời; `openai/gpt-oss-20b` cho condense, HyDE và Judge; `openai/gpt-oss-safeguard-20b` cho guardrail đầu vào |
+| LLM framework             | LangChain (`langchain-openai`, `langchain-text-splitters`)                                                                                                       |
 | Embedding                 | Hugging Face Inference API,`CODE4LIFEOFFICIAL/huydang-dek21-embedding-v2`, tách từ bằng PyVi                                                                |
 | Retrieval                 | Pinecone dense/sparse indexes, BM25, RRF, HyDE, MMR có thể bật/tắt                                                                                           |
 | Reranking                 | `AITeamVN/Vietnamese_Reranker`, Transformers, PyTorch; inference local GPU/CPU                                                                                 |

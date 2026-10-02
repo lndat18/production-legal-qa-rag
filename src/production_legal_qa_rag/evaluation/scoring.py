@@ -106,6 +106,8 @@ class RagasScorer:
         }
         for name in names:
             metric = constructors[name](llm=self.llm)
+            # RAGAS đặt tên cột theo class (precision → llm_context_precision_with_reference).
+            metric.name = name
             if name == "answer_relevancy":
                 if self._embedding is None:
                     self._embedding = LangchainEmbeddingsWrapper(
