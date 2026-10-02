@@ -1,4 +1,4 @@
-"""Hiển thị thống kê 4 metric RAGAS Phase 2 từ eval_result.xlsx bằng Seaborn.
+"""Hiển thị điểm trung bình 4 metric RAGAS Phase 2 từ eval_result.xlsx bằng Seaborn.
 
 Đọc sheet `Eval_result` bằng stdlib (không thêm dependency xlsx). Ô trống (câu bị từ
 chối, chưa chấm) không tính vào thống kê; số câu có điểm và trung bình ghi trên từng ô.
@@ -30,7 +30,6 @@ METRICS = (
     "Faithfulness",
     "Answer Relevancy",
 )
-BIN_COUNT = 10
 
 _NS = {
     "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -124,36 +123,29 @@ def load_scores(
 def show_chart(
     scores: Mapping[str, Sequence[float]], total: int, output: Path | None
 ) -> None:
-    """Draw one score histogram per metric with mean and median markers."""
-    if not any(scores.values()):
+    """Draw one bar per metric (x) with its mean score (y)."""
+    means = {
+        name: statistics.fmean(values) for name, values in scores.items() if values
+    }
+    if not means:
         raise ValueError("Không có điểm nào để vẽ biểu đồ.")
 
     sns.set_theme(style="whitegrid")
-    figure, axes = plt.subplots(2, 2, figsize=(12, 8), sharey=False)
-    palette = sns.color_palette("deep", len(scores))
-    for axis, color, (name, values) in zip(
-        axes.flat, palette, scores.items(), strict=False
-    ):
-        if values:
-            sns.histplot(
-                list(values),
-                bins=BIN_COUNT,
-                binrange=(0, 1),
-                color=color,
-                ax=axis,
-            )
-            mean = statistics.fmean(values)
-            median = statistics.median(values)
-            axis.axvline(mean, color="black", linestyle="--", label=f"mean {mean:.3f}")
-            axis.axvline(
-                median, color="gray", linestyle=":", label=f"median {median:.3f}"
-            )
-            axis.legend(loc="best")
-        axis.set_xlim(0, 1)
-        axis.set_title(f"{name} (n={len(values)}/{total})")
-        axis.set_xlabel("Điểm")
-        axis.set_ylabel("Số câu")
-    figure.suptitle("RAGAS Phase 2 — phân bố điểm 4 metric")
+    figure, axis = plt.subplots(figsize=(8, 5))
+    names = list(means)
+    sns.barplot(x=names, y=list(means.values()), hue=names, legend=False, ax=axis)
+    for index, name in enumerate(names):
+        axis.text(
+            index,
+            means[name] + 0.01,
+            f"{means[name]:.3f}",
+            ha="center",
+            va="bottom",
+        )
+    axis.set_ylim(0, 1)
+    axis.set_xlabel("Metric")
+    axis.set_ylabel("Score")
+    axis.set_title("RAGAS Phase 2")
     figure.tight_layout()
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -172,7 +164,7 @@ def main(
         Path | None, typer.Option(help="Lưu PNG thay vì mở cửa sổ.")
     ] = None,
 ) -> None:
-    """In thống kê và vẽ phân bố điểm của 4 metric."""
+    """In thống kê và vẽ bar chart điểm trung bình của 4 metric."""
     try:
         scores = load_scores(input_path)
     except ValueError as error:
