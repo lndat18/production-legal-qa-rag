@@ -417,7 +417,7 @@ production-legal-qa-rag/
 │   ├── embeddings/                                  # Corpus embedding checkpoints
 │   └── eval/
 │       ├── units/                                  # Source units for testset generation
-│       │   └── units_plan.md                       # Unit generation plan
+│       ├── units_plan.md                           # Unit generation plan
 │       ├── phase1/                                 # Testset generation artifacts and checkpoints
 │       │   ├── golden_testset.json                 # Final evaluation testset
 │       │   └── golden_testset_review.json          # Sample review decisions
@@ -865,7 +865,7 @@ production-legal-qa-rag/
 │   ├── embeddings/                                  # Checkpoint embedding corpus
 │   └── eval/
 │       ├── units/                                  # Đơn vị nguồn để sinh testset
-│       │   └── units_plan.md                       # Kế hoạch sinh theo đơn vị
+│       ├── units_plan.md                           # Kế hoạch sinh theo đơn vị
 │       ├── phase1/                                 # Dữ liệu và checkpoint sinh testset
 │       │   ├── golden_testset.json                 # Testset đánh giá cuối
 │       │   └── golden_testset_review.json          # Quyết định review từng mẫu
