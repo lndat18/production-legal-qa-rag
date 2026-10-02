@@ -1,5 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1790941559.27613 "resume.tex" "resume.pdf" "resume" 1790941559.52274 0
+["pdflatex"] 1790945640.93869 "resume.tex" "resume.pdf" "resume" 1790945641.20163 0
   "/etc/texmf/web2c/texmf.cnf" 1790913408.04995 475 c0e671620eb5563b2130f56340a5fde8 ""
   "/home/lndat/.texlive2025/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm0900.600pk" 1790938436.30239 10448 99fcf0bc9bc9ca6ce3c2f70b22a67912 ""
   "/home/lndat/.texlive2025/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1000.600pk" 1790932196.06008 11524 e0ac48eaef700a46a98f8660a1500325 ""
@@ -14,7 +14,6 @@
   "/usr/share/texlive/texmf-dist/fonts/tfm/public/cm/cmr8.tfm" 1136768653 1292 21c1c5bfeaebccffdb478fd231a0997d ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/public/cm/cmr9.tfm" 1136768653 1292 6b21b9c2c7bebb38aa2273f7ca0fb3af ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/public/cm/cmti10.tfm" 1136768653 1480 aa8e34af0eb6a2941b776984cf1dfdc4 ""
-  "/usr/share/texlive/texmf-dist/fonts/tfm/public/cm/cmtt10.tfm" 1136768653 768 1321e9409b4137d6fb428ac9dc956269 ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb" 1248133631 34811 78b52f49e893bcba91bd7581cdc144c0 ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb" 1248133631 32080 340ef9bf63678554ee606688e7b5339d ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb" 1248133631 32166 b0c356b15f19587482a9217ce1d8fa67 ""
@@ -24,7 +23,6 @@
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb" 1248133631 33993 9b89b85fd2d9df0482bd47194d1d3bf3 ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1248133631 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb" 1248133631 37944 359e864bd06cde3b1cf57bb20757fb06 ""
-  "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb" 1248133631 31099 c85edf1dd5b9e826d67c9c7293b6786c ""
   "/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii" 1461363279 71627 94eb9990bed73c364d7f53f960cc8c5b ""
   "/usr/share/texlive/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty" 1576625341 40635 c40361e206be584d448876bba8a64a3b ""
   "/usr/share/texlive/texmf-dist/tex/generic/bitset/bitset.sty" 1576016050 33961 6b5c75130e435b2bfdb9f480a09a39f9 ""
@@ -71,9 +69,9 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1769369718 41603 27f93b3067076450172040dcd57ca8b3 ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1790913413 30070 2c390b00126b1036e8876b6c3ea4d747 ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1790913420 2236306 328ecbb01a9b1b8ab04055201861b984 ""
-  "resume.aux" 1790941559.47959 162 87159b23cce7c2b923b11c85495bbd6d "pdflatex"
-  "resume.out" 1790941559.46359 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
-  "resume.tex" 1790941559.20115 8592 b63c50c466b88b8cee84f95b4bee1987 ""
+  "resume.aux" 1790945641.15465 162 87159b23cce7c2b923b11c85495bbd6d "pdflatex"
+  "resume.out" 1790945641.13882 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
+  "resume.tex" 1790945640.83636 8863 5059f06e2541cf24e33ca74f91237ed7 ""
   (generated)
   "resume.aux"
   "resume.log"

@@ -144,8 +144,21 @@ Status as of **October 1, 2026**:
 - **Serving:** The ingestion-to-chat pipeline, API, and single-host Docker deployment have been implemented and manually exercised end to end.
 - **Observability:** Trace and metrics integration is implemented; manual acceptance of the complete production observability stack is still in progress.
 - **Testset:** The synthetic corpus-derived [golden testset](data/eval/phase1/golden_testset.json) contains **157 retained cases: 142 single-hop and 15 specific multi-hop**, selected after reviewing 203 generated cases. It is not an expert-certified legal benchmark.
-- **Evaluation:** Phase 2 stage/resume/report code is implemented; the full evaluation is in progress. This README does not yet report final quality scores or a winning MMR configuration.
+- **Evaluation:** Phase 2 has run on all 157 cases with the MMR-off retrieval configuration; results are below. The MMR on/off comparison is close and no winning configuration has been declared. Latency and load have not been benchmarked.
 - **Delivery:** CI exists. Automated image build/publish to GHCR is planned.
+
+**RAGAS results (157-case testset, MMR off):**
+
+![RAGAS Phase 2 mean scores](data/eval/phase2/metrics.png)
+
+| Metric            | Mean  | Cases scored | Notes                                                                 |
+| ----------------- | :---: | :----------: | --------------------------------------------------------------------- |
+| Context Precision | 0.899 | 157          | Graded with Claude Haiku.                                             |
+| Context Recall    | 0.866 | 157          | MMR on scored 0.841 vs 0.857 for MMR off overall (13 wins, 11 losses, 133 ties). |
+| Faithfulness      | 0.832 | 143          | Only answers that were released; 14 of 157 cases were refused.        |
+| Answer Relevancy  | 0.432 | 143          | Same 143 answered cases; this is the weakest metric and is not yet analyzed. |
+
+Counting the 14 refused cases as zero, end-to-end Faithfulness is 0.758 and Answer Relevancy 0.394. About 12% of cases needed one repair. Scores measure agreement with LLM-generated references and an LLM judge from the same model family as the generator, so they do not confirm legal correctness. The multi-hop subset (n=15) should be read as a trend only. Reproduce the chart with `uv run python tools/visualize_eval_metrics.py`.
 
 Evaluation compares MMR on/off using `context_recall`, then evaluates a selected configuration with `faithfulness`, `answer_relevancy`, and `context_precision`. The generation stage reads previously retrieved chunks and runs the serving generation logic: draft → deterministic checks → Evidence Judge, with at most one repair followed by re-verification. It bypasses the API, conversation orchestration, condense, input guardrail, and serving caches. Results are checkpointed by case in JSONL and summarized in `data/eval/phase2/report.json`.
 
@@ -295,9 +308,9 @@ See the [configuration reference](docs/configuration.md), [deployment spec](depl
 | One API worker on one host             | Admission is in-process; scaling to multiple workers or hosts requires revisiting shared concurrency and resource controls.                 |
 | Offline full index rebuilds            | Refreshes are not atomic; interrupted publication can temporarily leave an index incomplete.                                                |
 | Quick tunnel and host availability     | The default public URL can change; host shutdown, sleep, or connectivity loss interrupts service.                                           |
-| Evaluation still in progress           | There are no final published quality, latency, or load benchmark results.                                                                   |
+| Evaluation scope                       | Quality scores cover the MMR-off configuration on a synthetic testset; there are no latency or load benchmark results, and Answer Relevancy is low and unanalyzed. |
 
-Next steps: complete production observability acceptance; finish the 157-case evaluation and choose MMR based on results; use real traces to identify failure cases; add CI image build/publish to GHCR. Moving observability to another host remains an open design decision.
+Next steps: complete production observability acceptance; analyze the low Answer Relevancy and choose MMR based on further results; use real traces to identify failure cases; add CI image build/publish to GHCR. Moving observability to another host remains an open design decision.
 
 <a id="en-agentic"></a>
 
@@ -579,8 +592,21 @@ Trạng thái tại **01/10/2026**:
 - **Phục vụ người dùng:** Pipeline từ xử lý tài liệu đến hỏi đáp, API và triển khai Docker trên một host đã implement, chạy nghiệm thu thủ công end to end.
 - **Observability:** Đã có tích hợp trace và metrics; nghiệm thu thủ công toàn bộ stack observe trên production đang tiếp tục.
 - **Testset:** [Golden testset](data/eval/phase1/golden_testset.json) tổng hợp từ corpus gồm **157 mẫu giữ lại: 142 single-hop và 15 multi-hop specific**, sau vòng review 203 mẫu đã sinh. Đây chưa phải benchmark pháp luật được chuyên gia chứng nhận.
-- **Evaluation:** Đã implement code stage/resume/report Phase 2; đang thực hiện đánh giá đầy đủ. README chưa công bố điểm chất lượng cuối cùng hoặc cấu hình MMR thắng cuộc.
+- **Evaluation:** Phase 2 đã chạy trên đủ 157 mẫu với cấu hình retrieval MMR tắt; kết quả ở bên dưới. So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc. Chưa đo độ trễ và tải.
 - **Delivery:** Đã có CI. Tự động build/publish image lên GHCR là hạng mục dự kiến.
+
+**Kết quả RAGAS (testset 157 mẫu, MMR tắt):**
+
+![Điểm trung bình RAGAS Phase 2](data/eval/phase2/metrics.png)
+
+| Metric            | Trung bình | Số mẫu chấm | Ghi chú                                                                |
+| ----------------- | :--------: | :---------: | ---------------------------------------------------------------------- |
+| Context Precision | 0.899      | 157         | Chấm bằng Claude Haiku.                                                |
+| Context Recall    | 0.866      | 157         | MMR bật đạt 0.841 so với 0.857 khi tắt (13 thắng, 11 thua, 133 hòa).   |
+| Faithfulness      | 0.832      | 143         | Chỉ tính các câu trả lời được phát hành; 14/157 mẫu bị từ chối.        |
+| Answer Relevancy  | 0.432      | 143         | Cùng 143 mẫu được trả lời; đây là metric thấp nhất, chưa phân tích nguyên nhân. |
+
+Nếu tính 14 mẫu bị từ chối là 0, Faithfulness end-to-end là 0.758 và Answer Relevancy là 0.394. Khoảng 12% mẫu cần một lần sửa. Điểm đo mức khớp với reference do LLM sinh và judge cùng họ model với generator, nên không xác nhận tính đúng đắn pháp lý. Nhóm multi-hop (n=15) chỉ đọc như xu hướng. Vẽ lại biểu đồ bằng `uv run python tools/visualize_eval_metrics.py`.
 
 Evaluation so sánh MMR bật/tắt bằng `context_recall`, rồi chấm cấu hình được chọn bằng `faithfulness`, `answer_relevancy` và `context_precision`. Stage generation đọc chunks đã truy xuất ở bước trước và chạy logic generation của đường phục vụ người dùng: bản nháp → kiểm tra xác định bằng code → Evidence Judge, với tối đa một lần sửa rồi kiểm chứng lại. Stage này bỏ qua API, điều phối hội thoại, condense, guardrail đầu vào và cache của đường phục vụ. Kết quả được checkpoint theo từng mẫu trong JSONL và tổng hợp tại `data/eval/phase2/report.json`.
 
@@ -730,9 +756,9 @@ Xem [tham chiếu cấu hình](docs/configuration.md), [deploy spec](deploy/depl
 | Một API worker trên một host                        | Admission nằm trong process; mở rộng nhiều worker/host cần thiết kế lại kiểm soát đồng thời và tài nguyên dùng chung.                            |
 | Full rebuild indexes offline                           | Refresh không atomic; lỗi giữa lúc publish có thể tạm thời để lại index chưa đầy đủ.                                                              |
 | Quick tunnel và trạng thái host                     | URL public mặc định có thể đổi; máy tắt, sleep hoặc mất kết nối sẽ gián đoạn dịch vụ.                                                          |
-| Evaluation đang tiếp tục                            | Chưa có kết quả benchmark chất lượng, độ trễ hoặc tải cuối cùng được công bố.                                                                  |
+| Phạm vi đánh giá                                    | Điểm chất lượng chỉ cho cấu hình MMR tắt trên testset tổng hợp; chưa có benchmark độ trễ hoặc tải, và Answer Relevancy thấp, chưa phân tích.        |
 
-Bước tiếp theo: hoàn tất nghiệm thu observability production; chạy xong đánh giá 157 mẫu và chọn MMR theo kết quả; dùng trace thật để tìm các ca lỗi; bổ sung CI build/publish image lên GHCR. Tách observability sang host khác vẫn là quyết định thiết kế chưa chốt.
+Bước tiếp theo: hoàn tất nghiệm thu observability production; phân tích Answer Relevancy thấp và chọn MMR theo kết quả đánh giá thêm; dùng trace thật để tìm các ca lỗi; bổ sung CI build/publish image lên GHCR. Tách observability sang host khác vẫn là quyết định thiết kế chưa chốt.
 
 <a id="vi-agentic"></a>
 
