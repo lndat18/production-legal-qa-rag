@@ -3,9 +3,26 @@
 # GPU NVIDIA dùng được cho Docker hay không, rồi build đúng biến thể torch + ghép đúng file
 # compose. Dùng chung cho cả tác giả tự chạy (máy có GPU) và người khác clone project chạy
 # trên máy của họ (thường CPU-only) — luôn cùng một lệnh: ./deploy/up.sh
+# (hoặc ./deploy/up.sh --pull vX.Y.Z để dùng image dựng sẵn trên GHCR).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
+
+# Chế độ mặc định: build local. `--pull <vX.Y.Z>`: pull image dựng sẵn từ GHCR, không build
+# (deploy_spec.md mục 11.5).
+pull_version=""
+usage() {
+    echo "Cách dùng: ./deploy/up.sh [--pull vX.Y.Z]" >&2
+    exit 1
+}
+case "$#" in
+    0) ;;
+    2)
+        [[ "$1" == "--pull" && "$2" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || usage
+        pull_version="$2"
+        ;;
+    *) usage ;;
+esac
 
 # Đúng 1 file .env ở root cho cả app/deploy/observability (deploy_spec.md mục 7) — không
 # còn deploy/.env riêng.
@@ -44,8 +61,20 @@ fi
 
 # Chỉ định rõ --env-file thay vì để Compose tự dò .env theo cwd — tránh phụ thuộc hành vi
 # auto-detect (có thể khác nhau giữa các phiên bản Compose).
-docker compose --env-file "${env_file}" "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
-docker compose --env-file "${env_file}" "${compose_files[@]}" up -d
+if [[ -n "${pull_version}" ]]; then
+    # Export trong script, không ghi vào .env. Pull lỗi (chưa public/chưa có tag/chưa login)
+    # thì dừng, KHÔNG rơi về build.
+    export API_IMAGE="ghcr.io/lndat18/production-legal-qa-rag:${pull_version}-${torch_variant}"
+    echo "Pull image ${API_IMAGE} (không build)."
+    if ! docker compose --env-file "${env_file}" "${compose_files[@]}" pull api; then
+        echo "Pull ${API_IMAGE} thất bại — kiểm tra tag đã có, package GHCR đã Public (hoặc docker login ghcr.io bằng PAT read:packages). Không tự build." >&2
+        exit 1
+    fi
+    docker compose --env-file "${env_file}" "${compose_files[@]}" up -d --no-build
+else
+    docker compose --env-file "${env_file}" "${compose_files[@]}" build --build-arg "TORCH_VARIANT=${torch_variant}" api
+    docker compose --env-file "${env_file}" "${compose_files[@]}" up -d
+fi
 
 # Chỉ quick tunnel mới cần in URL (URL ngẫu nhiên, đổi mỗi khi container restart — mục 3);
 # named tunnel dùng domain cố định đã cấu hình sẵn trong WEBUI_URL, không cần dò. Đọc thẳng

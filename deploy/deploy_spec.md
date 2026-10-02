@@ -64,6 +64,7 @@
 
 ## 6. Image API (`deploy/Dockerfile`)
 
+- Image có tên local `legal-qa-api:local` (build) hoặc pull từ GHCR qua `API_IMAGE` (mục 11).
 - Base python:3.14-slim, uv từ ghcr.io/astral-sh/uv; torch theo TORCH_VARIANT, CPU mặc định.
 - Tầng deps riêng pyproject.toml/uv.lock → uv sync --frozen --no-dev --no-install-project → copy src/README → cài project.
 - RUN uv dùng --mount=type=cache: đổi dependency không tải lại torch; không prune builder cache tùy tiện.
@@ -89,7 +90,7 @@
 - Thiếu .env lần đầu: copy example rồi dừng để điền; named URL theo WEBUI_URL, xem log cloudflared-named nếu cần.
 - Windows: Docker Desktop WSL2 tự bật; tắt sleep/hibernate khi cắm điện.
 - Backup: backup.sh pg_dump openwebui vào deploy/backups/<ngày>/, gitignore, giữ 7 bản; Redis không backup.
-- Update: git pull → up.sh; đổi UI tag phải nghiệm thu lại.
+- Update: git pull → up.sh (build local) hoặc `up.sh --pull vX.Y.Z` (image GHCR dựng sẵn, mục 11.5); đổi UI tag phải nghiệm thu lại.
 - Logs API để vận hành; nhật ký QA tại Langfuse (4.5); DB chatbot cũ người vận hành drop tay.
 
 ## 9. Nghiệm thu thủ công
@@ -110,9 +111,9 @@
 - **5:** quick tunnel dành thử nghiệm/không uptime; đối chiếu điều khoản trước chia sẻ rộng.
 - **6:** image + checkpoint nặng; WSL2 RAM/disk cho năm service, gợi ý ≥6GB, thêm tài nguyên cho observe/hf_cache.
 
-## 11. CD: build + push image lên GHCR (chốt 2026-10-02, chưa implement)
+## 11. CD: build + push image lên GHCR (chốt 2026-10-02, đã implement)
 
-Số mục 1–10 giữ nguyên; mục này chỉ thêm. Mục 1 "Không làm: CD tự deploy" vẫn đúng: CD ở đây chỉ **xuất bản image**, máy nhà vẫn cập nhật tay.
+Số mục 1–10 giữ nguyên số; mục này chỉ thêm (mục 6/8 chỉ bổ sung 1 dòng nhắc mục này). Mục 1 "Không làm: CD tự deploy" vẫn đúng: CD ở đây chỉ **xuất bản image**, máy nhà vẫn cập nhật tay.
 
 ### 11.1 Mục tiêu, phạm vi, KHÔNG làm
 
@@ -145,7 +146,7 @@ Số mục 1–10 giữ nguyên; mục này chỉ thêm. Mục 1 "Không làm: C
 
 ### 11.4 Workflow (công cụ)
 
-- `permissions` tối thiểu: `contents: read`, `packages: write`; đăng nhập `docker/login-action` với `${{ secrets.GITHUB_TOKEN }}` (không PAT, không secret mới).
+- `permissions` tối thiểu: mặc định `contents: read`; job `gate` thêm `checks: read` (cần để gọi API check-runs, đã implement); job `build` thêm `packages: write`; đăng nhập `docker/login-action` với `${{ secrets.GITHUB_TOKEN }}` (không PAT, không secret mới).
 - Các bước: `actions/checkout` → dọn disk (chỉ biến thể cu126; cpu bỏ qua) → `docker/setup-buildx-action` → login → `docker/build-push-action` (`context: .`, `file: deploy/Dockerfile`, `build-args: TORCH_VARIANT=...`, `push: true`, `platforms: linux/amd64`).
 - Cache: `cache-from/to: type=gha,scope=<biến thể>,mode=min` (scope riêng mỗi biến thể để 2 bản không ghi đè nhau). Chú ý: `RUN --mount=type=cache` (mục 6) **không** được xuất vào cache gha, chỉ cache layer; lần build lẻ vẫn tải lại torch nếu layer deps bị vô hiệu.
 - Dọn disk trước build cu126: xoá `/usr/share/dotnet`, `/usr/local/lib/android`, `/opt/ghc`, `/opt/hostedtoolcache/CodeQL`, `docker image prune -af` (script `rm` ngắn trong workflow; không thêm action bên thứ ba chỉ để dọn disk). Ghi `df -h` trước/sau để đo thật.

@@ -285,7 +285,7 @@ Use `"stream":true` and `curl --no-buffer` for SSE. The API also provides `GET /
 
 | Task                             | Command / location                                                                              |
 | -------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Build/start or update deployment | `./deploy/up.sh`                                                                              |
+| Build/start or update deployment | `./deploy/up.sh` (or `./deploy/up.sh --pull vX.Y.Z` to use the prebuilt GHCR image)         |
 | Stop deployment, retain volumes  | `./deploy/down.sh`                                                                            |
 | Back up OpenWebUI PostgreSQL     | `./deploy/backup.sh` → `deploy/backups/<date>/openwebui.sql.gz`; keeps seven daily backups |
 | Clear answer/retrieval cache     | `./deploy/reset_cache.sh`                                                                     |
