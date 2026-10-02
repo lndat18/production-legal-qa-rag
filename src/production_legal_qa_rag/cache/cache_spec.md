@@ -1,72 +1,86 @@
 # Cache — Cache câu trả lời & kết quả retrieval bằng Redis
 
-> Giữ nguyên số mục vì code/spec khác tham chiếu.
+- Giữ nguyên số mục để không làm hỏng tham chiếu từ code/spec khác.
+- Spec liên quan: [generation_spec.md](../generation/generation_spec.md),
+  [conversation_spec.md](../conversation/conversation_spec.md).
 
 ## 1. Mục tiêu & phạm vi
 
-Giảm chi phí LLM/độ trễ cho câu hỏi lặp lại và bảo vệ hạn mức Groq.
-
-**Làm:** cache câu trả lời hoàn chỉnh và kết quả retrieval theo `standalone_query`; single-flight (cache trống thì chỉ 1 request chạy); phát lại câu trả lời cache như stream thật; version trong khoá để tự vô hiệu khi corpus/prompt/model đổi.
-
-**Không làm:** semantic cache ("Khoản 1 Điều 113" và "Khoản 2 Điều 113" embedding gần y hệt nhưng đáp án khác); cache embedding, guardrail, lỗi/từ chối; cache theo user; invalidation thủ công.
-
-**Tiêu chí số 1:** không bao giờ trả câu trả lời sai/cũ; Redis chết không làm chatbot chết.
+- Giảm chi phí/độ trễ câu hỏi lặp lại, bảo vệ hạn mức Groq.
+- Cache answer hoàn chỉnh/retrieval theo `standalone_query`; single-flight cache miss; replay stream; version
+  key theo corpus/prompt/model.
+- Không làm: semantic cache, embedding/guardrail/error/refusal cache, cache theo user, invalidation thủ công.
+- Không semantic cache vì Khoản 1/2 cùng Điều có embedding gần nhau nhưng đáp án khác.
+- Ưu tiên: không trả answer sai/cũ; Redis lỗi không làm chatbot dừng.
 
 ## 2. Input & Output
 
-- `CachedAnswer`: `text`, `citations: list[Citation]`, `created_at` (không lưu `warnings`/`usage`). `CacheStatus = Literal["answer_hit","retrieval_hit","miss","bypass"]`.
-- `AnswerCache.get/set`, `RetrievalCache.get/set` (theo `standalone_query`), `SingleFlight.acquire(key)` (`leader`/`follower`), `replay(CachedAnswer)` → `token*`, `citations`, `done(usage=None)`.
-- **Mọi hàm nuốt lỗi Redis**: log warning, hành xử như miss/không khoá.
+- `CachedAnswer(text, citations: list[Citation], created_at)`; không lưu warnings/usage.
+- `CacheStatus`: `answer_hit`, `retrieval_hit`, `miss`, `bypass`.
+- `AnswerCache.get/set`, `RetrievalCache.get/set`: theo standalone query.
+- `SingleFlight.acquire(key)`: leader/follower; `replay(CachedAnswer)`: token* → citations → done(usage=None).
+- Mọi hàm bắt lỗi Redis, log warning, xử lý như miss/không lock.
 
 ## 3. Công cụ
 
-Redis 7, `redis-py` asyncio, `hashlib.sha256`, pydantic, Typer (`tools/cache.py`). Client `Redis` tạo một lần ở lifespan API rồi **inject**; `cache/` không đọc `.env`.
+- Redis 7, redis-py asyncio, SHA-256, Pydantic, Typer (`tools/cache.py`).
+- API lifespan tạo một Redis client rồi inject; cache không đọc `.env`.
 
 ## 4. Khoá cache
 
-Chuẩn hoá: NFC → chữ thường → gộp khoảng trắng → bỏ khoảng trắng/`?.!` cuối. **Không bỏ dấu, không bỏ số**.
+- Normalize: NFC → lowercase → gộp whitespace → bỏ whitespace/`?.!` cuối; giữ dấu và số.
+- Key:
 
-```
+```text
 answer    = rag:ans:{corpus_version}:{prompt_version}:{model_name}:{sha256(norm)[:32]}
 retrieval = rag:ret:{corpus_version}:{sha256(norm)[:32]}
 lock      = {answer key}:lock
 ```
 
-- `corpus_version` = 12 ký tự đầu sha256 của `data/bm25/bm25_params.json`; thiếu file → `"unknown"` + cảnh báo; override bằng `CACHE_CORPUS_VERSION`.
-- `prompt_version` = `PROMPT_VERSION` trong `generation/generator.py`, **bắt buộc tăng** khi đổi prompt generation hoặc quy tắc `output_check`. `model_name` = `GenerationSettings.model_name`.
+- `corpus_version`: 12 ký tự đầu SHA-256 `data/bm25/bm25_params.json`; thiếu → `unknown` + warning; override
+  `CACHE_CORPUS_VERSION`.
+- `prompt_version`: `PROMPT_VERSION` trong `generation/generator.py`; tăng khi đổi prompt hoặc `output_check`.
+- `model_name`: `GenerationSettings.model_name`.
 
 ## 5. Chính sách cache
 
-| Cache | Ghi khi | TTL |
-| --- | --- | --- |
-| Câu trả lời | luồng `done` **không `error`, không `warning`**, có ≥1 `[n]` hợp lệ hoặc là câu "không tìm thấy quy định" | 7 ngày |
-| Retrieval | `retrieve()` trả ≥1 chunk | 24 giờ |
-
-Không cache khi `bypass`, `refusal`, `error`, luồng bị client ngắt. Lỗi ghi cache: bỏ qua.
+- Answer TTL 7 ngày: luồng done không error/warning, có ≥1 citation `[n]` hợp lệ hoặc câu “không tìm thấy quy
+  định”.
+- Retrieval TTL 24 giờ: `retrieve()` có ≥1 chunk.
+- Không ghi khi bypass/refusal/error/client ngắt; lỗi ghi bỏ qua.
 
 ## 6. Single-flight
 
-- `SET lock <request_id> NX EX 60` thành công → **leader**: chạy pipeline, ghi cache, nhả khoá trong `finally` (chỉ xoá nếu giá trị còn là `request_id` của mình).
-- Thất bại → **follower**: poll `AnswerCache.get` mỗi 200 ms, tối đa `FOLLOWER_WAIT_SECONDS = 45`; có kết quả → replay; hết hạn hoặc khoá biến mất mà chưa có cache → tự thử làm leader.
-- Follower **không** chiếm slot admission. Redis lỗi → không khoá, mọi request tự chạy.
+- `SET lock <request_id> NX EX 60` thành công → leader chạy pipeline/ghi cache, nhả trong finally.
+- Chỉ xóa lock còn mang request ID của mình.
+- Follower poll answer cache mỗi 200ms, tối đa `FOLLOWER_WAIT_SECONDS=45`; có answer thì replay.
+- Hết chờ hoặc lock mất chưa có cache → thử làm leader.
+- Follower không chiếm admission; Redis lỗi → không lock, request tự chạy.
 
 ## 7. Phát lại
 
-Chia `text` thành mẩu ~4 từ (giữ nguyên khoảng trắng/xuống dòng), `TokenEvent` mỗi ~15 ms, rồi `CitationsEvent`, `DoneEvent(usage=None)`; không phát `status`. Nối mẩu phải đúng từng ký tự với `text` gốc.
+- Chia text khoảng 4 từ/mẩu, giữ whitespace/newline; `TokenEvent` mỗi khoảng 15ms.
+- Sau token: `CitationsEvent`, `DoneEvent(usage=None)`; không status.
+- Nối mẩu phải khớp từng ký tự text gốc.
 
 ## 8. Config
 
-`REDIS_URL` trong `RedisSettings` (`config.py`), dùng chung với quota/rate limit, mỗi thứ một tiền tố (`rag:`, `quota:`, `rl:`). TTL, `FOLLOWER_WAIT_SECONDS`, tốc độ replay là hằng số nội bộ. Env tuỳ chọn: `CACHE_CORPUS_VERSION`.
+- `RedisSettings.redis_url`/`REDIS_URL` tại `config.py`; namespace riêng `rag:`, `quota:`, `rl:`.
+- TTL/wait/replay là hằng nội bộ; env tùy chọn `CACHE_CORPUS_VERSION`.
 
 ## 9. Module
 
-`models.py`, `normalize.py` (`normalize_query`), `keys.py` (`compute_corpus_version`, dựng khoá), `store.py` (`AnswerCache`, `RetrievalCache`), `singleflight.py`, `replay.py`; `tools/cache.py` chạy tay các case mục 10.
+- `models.py`: contract; `normalize.py`: `normalize_query`; `keys.py`: `compute_corpus_version` và key.
+- `store.py`: hai cache; `singleflight.py`: leader/follower; `replay.py`: event stream.
+- `tools/cache.py`: nghiệm thu mục 10.
 
 ## 10. Nghiệm thu thủ công
 
-Cùng câu hỏi 2 lần → lần 2 không gọi Groq generation; hai câu chỉ khác số Khoản → hai khoá; đổi `PROMPT_VERSION` hoặc fit lại BM25 → cache cũ không dùng; 20 request đồng thời cùng câu → đúng 1 lần gọi generation; tắt Redis → chatbot vẫn trả lời, có warning.
+- Cùng câu hai lần: lần hai không gọi generation; khác số Khoản: khác key.
+- Bump prompt version/fit lại BM25: cache cũ không dùng.
+- 20 request đồng thời cùng câu: một generation; Redis tắt: chatbot trả lời, log warning.
 
 ## 11. Rủi ro / điểm mở
 
-- **Bẫy re-index:** `corpus_version` suy từ file BM25; đổi index dense (Pinecone) mà không fit lại BM25 thì khoá không đổi → mỗi lần re-index phải fit lại BM25 hoặc set `CACHE_CORPUS_VERSION`.
-- Nội dung câu trả lời nằm trong Redis: mạng nội bộ, có mật khẩu, không publish cổng ra ngoài.
+- Re-index dense mà không fit BM25 không đổi corpus key; phải fit BM25 hoặc set `CACHE_CORPUS_VERSION`.
+- Answer nằm trong Redis: mạng nội bộ, mật khẩu, không publish cổng.
