@@ -50,10 +50,25 @@
 
 \section*{Summary}
 {\small
-AI Engineer focused on LLM agents and RAG systems that automate knowledge-heavy work.
-1 year building RAG and agent pipelines end to end: hybrid retrieval, reranking,
-answer verification, evaluation and observability.
+AI Engineer focused on RAG and LLM agents that help businesses turn complex documents into actionable answers and automate knowledge-intensive workflows.
+Brings hands-on experience building and deploying a RAG application with answer verification and quality evaluation,
+and is extending that foundation into agents for multi-step tasks.
 }
+
+%==================== EXPERIENCE ====================
+\section*{Experience}
+
+\textbf{AI Engineer Intern}
+\hfill Ho Chi Minh City, Vietnam \\[2pt]
+\textit{TMA Solutions -- Vietnamese software services company}
+\hfill \mbox{March 2026 -- May 2026}
+
+\begin{itemize}
+    \item Developed an end-to-end sign language recognition pipeline to convert sentence-level signing videos into word sequences, covering data preprocessing, CorrNet modeling with \mbox{MediaPipe} keypoints, training, and evaluation
+    \item Improved preprocessing for variable-length sequences and missing keypoints, increasing word-level accuracy within sentences from 90\% to 94\% and reducing word error rate (WER) from 9\% to 7\% on How2Sign
+    \item Adapted the pipeline to the company's sign language dataset, retraining the model from scratch and tuning its architecture and hyperparameters
+\end{itemize}
+
 
 %==================== PROJECTS ====================
 \section*{Projects}
@@ -65,20 +80,14 @@ answer verification, evaluation and observability.
 \vspace{2pt}
 
 \begin{itemize}[topsep=0pt, itemsep=2pt]
-    \item Built an end-to-end RAG chatbot over 6 Vietnamese labor, insurance and tax laws (2,228 structure-aware chunks) that answers with Article/Clause citations, replacing manual legal text lookup
-    \item Designed a hybrid retrieval pipeline: dense + BM25 with Reciprocal Rank Fusion, HyDE, citation-aware candidate search, optional MMR, and a local Vietnamese GPU reranker
-    \item Added a fail-closed verification layer (deterministic citation and number checks + an independent LLM evidence judge, at most one repair): on the 157-question testset it refused 9\% of cases lacking supported evidence and repaired 12\% before release
-    \item Engineered serving reliability: Redis answer/retrieval cache with single-flight, admission control, per-user rate limits, conversation follow-up handling, and throttling across multiple Groq API keys
-    \item Shipped an OpenAI-compatible REST API (FastAPI) with an OpenWebUI chat interface, deployed on a single host with Docker Compose and Cloudflare Tunnel, automated backups, Langfuse traces and Prometheus/Grafana metrics, and a GitHub Actions CI running 1,700+ tests with Ruff and mypy
-    \item Built a RAGAS evaluation pipeline: generated 203 synthetic cases, reviewed them down to a 157-question golden testset (142 single-hop, 15 multi-hop), and scored Context Precision 0.90, Context Recall 0.87, Faithfulness 0.83 and Answer Relevancy 0.43, with checkpointed, resumable runs that handle API quota limits
-    \item[] {\footnotesize
-        \textbf{LLM \& Retrieval:} LangChain, Groq (gpt-oss-120b, gpt-oss-20b), Hugging Face, Pinecone, BM25, PyTorch \\
-        \textbf{Backend \& Deployment:} Python, FastAPI, Redis, PostgreSQL, OpenWebUI, Docker, Cloudflare Tunnel \\
-        \textbf{Observability:} Langfuse, Prometheus, Grafana \\
-        \textbf{Evaluation \& CI/CD:} RAGAS, pytest, Ruff, mypy, GitHub Actions}
+    \item Independently built and deployed a Vietnamese legal Q\&A chatbot from document ingestion through evaluation and serving, covering six laws and 2,228 structure-aware chunks with Article/Clause citations
+    \item Combined dense search and BM25 with HyDE, Reciprocal Rank Fusion, and a local Vietnamese reranker to retrieve semantic matches and exact legal references
+    \item Added citation and number checks plus an independent LLM evidence judge to check answers against retrieved evidence; allowed one repair attempt and refused answers that failed verification
+    \item Evaluated retrieval and generation on 157 synthetic questions: Context Recall 0.86 and Faithfulness 0.83 on 143 answered cases; 14 cases were refused. Built checkpointed evaluation runs with API-key rotation and quota-aware throttling to resume across provider limits
+    \item Delivered an OpenAI-compatible FastAPI API and OpenWebUI interface with Docker Compose and Cloudflare Tunnel; added Redis caching, request limits, backups, tracing, and metrics, with GitHub Actions CI running 1,700+ tests
 \end{itemize}
 
-\vspace{6pt}
+\vspace{3pt}
 
 \href{https://github.com/lndat18/production-legal-agentic-graph-rag}{\textbf{Agentic GraphRAG for Legal Q\&A}} \;|\; In Progress
 \hfill \href{https://github.com/lndat18/production-legal-agentic-graph-rag}{github.com/lndat18/production-legal-agentic-graph-rag}
@@ -86,38 +95,13 @@ answer verification, evaluation and observability.
 \vspace{2pt}
 
 \begin{itemize}[topsep=0pt, itemsep=2pt]
-    \item Building a LangGraph agent on top of the RAG system above that plans, retrieves, calls tools and verifies, to answer legal questions spanning multiple clauses and articles
-    \item Built a legal knowledge graph in Neo4j that models cross-references between articles, clauses and points, so retrieval can follow legal citations across documents
-    \item Designing three cooperating retrieval agents (retrieval planner, hybrid retriever, graph retriever) that decompose a request into subqueries and gather connected provisions
-    \item Designing a personal income tax agent: a deterministic calculator owns the arithmetic while the LLM extracts parameters, with per-bracket breakdowns and legal citations, DOCX/PDF form drafts, effective-date checks, and user confirmation before any external action
-    \item Integrating MCP to expose tools and data sources to the agent and Jev for routing decisions, evaluated with DeepEval and RAGAS on tool-call accuracy, task success rate, numeric error and cost
-    \item[] {\footnotesize
-        \textbf{Agent Orchestration \& Graph:} LangGraph, Neo4j \\
-        \textbf{LLM \& Retrieval:} LangChain, Groq (gpt-oss-120b, gpt-oss-20b), Hugging Face, Pinecone, BM25, PyTorch \\
-        \textbf{Backend \& Deployment:} Python, FastAPI, Redis, PostgreSQL, OpenWebUI, Docker, Cloudflare Tunnel \\
-        \textbf{Observability:} Langfuse, Prometheus, Grafana \\
-        \textbf{Evaluation \& CI/CD:} RAGAS, pytest, Ruff, mypy, GitHub Actions, DeepEval \\
-        \textbf{Tools \& Routing:} MCP, Jev}
+    \item Extending the first project's retrieval and task capabilities, reusing its structured legal corpus, hybrid search, answer verification, conversation handling, caching, API, deployment, and monitoring
+    \item Built a Neo4j knowledge graph linking Articles, Clauses, and Points through legal cross-references; currently testing graph retrieval to gather connected provisions beyond similarity search
+    \item Developing more flexible retrieval with LangGraph: a planner decomposes complex questions, while hybrid and graph retrievers gather evidence and follow cross-references across Clauses, Articles, and documents
+    \item Designing tool-based workflows that extend the chatbot from answering questions to completing tasks, starting with personal income tax calculation and DOCX/PDF form drafts, using deterministic arithmetic, legal citations, and effective-date checks
+    \item Planning Jev for routing decisions and MCP for tool integration, with RAGAS/DeepEval evaluation against the original RAG to measure evidence coverage, tool-call accuracy, task completion, numeric correctness, latency, and cost
 \end{itemize}
 
-\vspace{4pt}
-
-\newpage
-%==================== EXPERIENCE ====================
-\section*{Experience}
-
-\textbf{AI Engineer Intern}
-\hfill Ho Chi Minh City, Vietnam \\[2pt]
-\textit{TMA Solutions -- leading Vietnamese software company (4,000+ engineers, 30+ countries)}
-\hfill \mbox{March 2026 -- May 2026}
-
-\begin{itemize}
-    \item Developed a Sign Language Recognition solution for the hearing-impaired using CorrNet and \mbox{MediaPipe} keypoints
-    \item Improved the preprocessing pipeline to handle variable-length sequences and missing keypoints, raising accuracy from 90\% to 94\% and reducing word error rate (WER) from 9\% to 7\% on the public How2Sign dataset
-    \item Applied the approach validated on How2Sign to the company's own sign language dataset for the same recognition task, retraining the model from scratch and tuning its architecture and hyperparameters for that data
-\end{itemize}
-
-\vspace{4pt}
 
 %==================== EDUCATION ====================
 \section*{Education}
@@ -133,14 +117,25 @@ answer verification, evaluation and observability.
     & \\
 \end{tabularx}
 
-\vspace{4pt}
+
+\newpage
+%==================== SKILLS ====================
+\section*{Technical Skills}
+{\small
+\textbf{Programming Languages:} Python, C, Java\\[3pt]
+\textbf{ML \& Deep Learning Frameworks:} TensorFlow/Keras, PyTorch\\[3pt]
+\textbf{LLM Development Frameworks:} LangChain, LangGraph\\[3pt]
+\textbf{Agent Routing \& Tool Integration:} Jev, MCP\\[3pt]
+\textbf{Model Platforms \& Inference APIs:} Hugging Face, Groq\\[3pt]
+\textbf{Databases \& Data Stores:} Neo4j, PostgreSQL, Pinecone, Redis\\[3pt]
+\textbf{Model Deployment \& Serving:} FastAPI, Docker, Cloudflare Tunnel, GitHub Actions (CI/CD)\\[3pt]
+\textbf{Monitoring \& Evaluation:} Langfuse, Prometheus, Grafana, RAGAS, DeepEval
+}
 
 %==================== CERTIFICATIONS ====================
 \section*{Certifications}
-\vspace{2pt}
-
 {\small
-\begin{itemize}[leftmargin=1.3em, itemsep=2pt, topsep=2pt]
+\begin{itemize}[leftmargin=1.3em, itemsep=3pt, topsep=3pt]
     \item \href{https://www.coursera.org/account/accomplishments/specialization/UGL85YAGNCHO}{\textbf{IBM RAG and Agentic AI}} --- IBM
     \item \href{https://www.coursera.org/account/accomplishments/professional-cert/9QBH57NRHTM3}{\textbf{IBM Generative AI Engineering Professional Certificate}} --- IBM
     \item \href{https://www.coursera.org/account/accomplishments/specialization/certificate/IZ9X71QMBET0}{\textbf{LLMOps (Large Language Model Operations)}} --- Duke University
@@ -151,16 +146,13 @@ answer verification, evaluation and observability.
     \item \href{https://www.coursera.org/account/accomplishments/specialization/KJGHQBH7YZ7D}{\textbf{Deep Learning Specialization}} --- DeepLearning.AI
     \item \href{https://www.coursera.org/account/accomplishments/specialization/KAAR2WXDE49V}{\textbf{Machine Learning Specialization}} --- DeepLearning.AI
     \item \href{https://www.coursera.org/account/accomplishments/certificate/J00HYF1KY9DA}{\textbf{Introduction to Git and GitHub}} --- Google
+    \item \textbf{AWS Certified Cloud Practitioner} --- Amazon Web Services \;|\; In Progress
 \end{itemize}
 }
-\vspace{4pt}
-%==================== ADDITIONAL INFORMATION ====================
-\section*{Additional Information}
-\vspace{2pt}
 
+\section*{Additional Information}
 {\small
-\textbf{Programming Languages:} Python, C, Java\\[2pt]
-\textbf{Language Skills:} \href{https://www.linkedin.com/in/lenhudat-ai-engineer/overlay/Certifications/1973035705/treasury/?profileId=ACoAAEpVFlABCefo1x2LT8ZI6SYLtxl8mEtNv40}{IELTS 5.5 (CEFR B2)}
+\textbf{English:} \href{https://www.linkedin.com/in/lenhudat-ai-engineer/overlay/Certifications/1973035705/treasury/?profileId=ACoAAEpVFlABCefo1x2LT8ZI6SYLtxl8mEtNv40}{IELTS 5.5 (CEFR B2)}
 }
 
 \end{document}
