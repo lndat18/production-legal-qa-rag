@@ -1,0 +1,31 @@
+{
+  "stage": "finished",
+  "status": "stopped_daily_quota",
+  "config": "mmr_off",
+  "testset": "data/eval/phase1/golden_testset.json",
+  "supervisor_pid": 5320,
+  "updated_at_utc": "2026-10-02T04:53:12.220659+00:00",
+  "stop_reason": "daily_quota",
+  "last_llm_summary": {
+    "stage": "score-precision",
+    "exit_code": 1,
+    "summary": {
+      "mmr_off": {
+        "done": 0,
+        "errors": 0,
+        "pending": 157,
+        "missing_upstream": 0,
+        "quota_exhausted": true
+      }
+    }
+  },
+  "generation_answered": 143,
+  "generation_refused": 14,
+  "generation_errors": 0,
+  "answer_scores_done": 133,
+  "answer_scores_errors": 10,
+  "answer_scores_pending": 0,
+  "precision_done": 0,
+  "precision_errors": 0,
+  "precision_pending": 157
+}

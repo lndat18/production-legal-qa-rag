@@ -1,0 +1,1189 @@
+{
+  "testset_size": 157,
+  "retrieval_comparison": {
+    "overall": {
+      "mmr_on": {
+        "mean": 0.8413406126781923,
+        "n": 157,
+        "null": 0
+      },
+      "mmr_off": {
+        "mean": 0.8569002123142251,
+        "n": 157,
+        "null": 0
+      },
+      "wins": 13,
+      "losses": 11,
+      "ties": 133,
+      "identical_chunks": 48,
+      "paired": 157,
+      "excluded": 0
+    },
+    "synthesizer_name": {
+      "single_hop_specific_query_synthesizer": {
+        "mmr_on": {
+          "mean": 0.8524815560026828,
+          "n": 142,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.8661636485580148,
+          "n": 142,
+          "null": 0
+        },
+        "wins": 13,
+        "losses": 10,
+        "ties": 119,
+        "identical_chunks": 41,
+        "paired": 142,
+        "excluded": 0
+      },
+      "multi_hop_specific_query_synthesizer": {
+        "mmr_on": {
+          "mean": 0.7358730158730159,
+          "n": 15,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.7692063492063492,
+          "n": 15,
+          "null": 0
+        },
+        "wins": 0,
+        "losses": 1,
+        "ties": 14,
+        "identical_chunks": 7,
+        "paired": 15,
+        "excluded": 0
+      }
+    },
+    "source_document": {
+      "Văn bản hợp nhất bộ luật lao động.md": {
+        "mmr_on": {
+          "mean": 0.7666666666666667,
+          "n": 37,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.7745173745173746,
+          "n": 37,
+          "null": 0
+        },
+        "wins": 3,
+        "losses": 2,
+        "ties": 32,
+        "identical_chunks": 15,
+        "paired": 37,
+        "excluded": 0
+      },
+      "Luật bảo hiểm y tế.md": {
+        "mmr_on": {
+          "mean": 0.8425925925925926,
+          "n": 18,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.9425925925925925,
+          "n": 18,
+          "null": 0
+        },
+        "wins": 1,
+        "losses": 2,
+        "ties": 15,
+        "identical_chunks": 3,
+        "paired": 18,
+        "excluded": 0
+      },
+      "Luật bảo hiểm xã hội.md": {
+        "mmr_on": {
+          "mean": 0.9022774327122154,
+          "n": 46,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.9145962732919254,
+          "n": 46,
+          "null": 0
+        },
+        "wins": 3,
+        "losses": 3,
+        "ties": 40,
+        "identical_chunks": 14,
+        "paired": 46,
+        "excluded": 0
+      },
+      "Luật thuế thu nhập cá nhân.md": {
+        "mmr_on": {
+          "mean": 0.6666666666666666,
+          "n": 6,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.7777777777777778,
+          "n": 6,
+          "null": 0
+        },
+        "wins": 1,
+        "losses": 1,
+        "ties": 4,
+        "identical_chunks": 0,
+        "paired": 6,
+        "excluded": 0
+      },
+      "Điều kiện lao động và quan hệ lao động.md": {
+        "mmr_on": {
+          "mean": 0.8873015873015873,
+          "n": 42,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.8674603174603174,
+          "n": 42,
+          "null": 0
+        },
+        "wins": 4,
+        "losses": 2,
+        "ties": 36,
+        "identical_chunks": 16,
+        "paired": 42,
+        "excluded": 0
+      },
+      "Quy định mức lương tối thiểu.md": {
+        "mmr_on": {
+          "mean": 0.7232142857142857,
+          "n": 8,
+          "null": 0
+        },
+        "mmr_off": {
+          "mean": 0.7172619047619048,
+          "n": 8,
+          "null": 0
+        },
+        "wins": 1,
+        "losses": 1,
+        "ties": 6,
+        "identical_chunks": 0,
+        "paired": 8,
+        "excluded": 0
+      }
+    }
+  },
+  "context_precision": {
+    "mmr_on": {
+      "overall": {
+        "mean": null,
+        "n": 0,
+        "null": 157
+      },
+      "synthesizer_name": {
+        "single_hop_specific_query_synthesizer": {
+          "mean": null,
+          "n": 0,
+          "null": 142
+        },
+        "multi_hop_specific_query_synthesizer": {
+          "mean": null,
+          "n": 0,
+          "null": 15
+        }
+      },
+      "source_document": {
+        "Văn bản hợp nhất bộ luật lao động.md": {
+          "mean": null,
+          "n": 0,
+          "null": 37
+        },
+        "Luật bảo hiểm y tế.md": {
+          "mean": null,
+          "n": 0,
+          "null": 18
+        },
+        "Luật bảo hiểm xã hội.md": {
+          "mean": null,
+          "n": 0,
+          "null": 46
+        },
+        "Luật thuế thu nhập cá nhân.md": {
+          "mean": null,
+          "n": 0,
+          "null": 6
+        },
+        "Điều kiện lao động và quan hệ lao động.md": {
+          "mean": null,
+          "n": 0,
+          "null": 42
+        },
+        "Quy định mức lương tối thiểu.md": {
+          "mean": null,
+          "n": 0,
+          "null": 8
+        }
+      }
+    },
+    "mmr_off": {
+      "overall": {
+        "mean": null,
+        "n": 0,
+        "null": 157
+      },
+      "synthesizer_name": {
+        "single_hop_specific_query_synthesizer": {
+          "mean": null,
+          "n": 0,
+          "null": 142
+        },
+        "multi_hop_specific_query_synthesizer": {
+          "mean": null,
+          "n": 0,
+          "null": 15
+        }
+      },
+      "source_document": {
+        "Văn bản hợp nhất bộ luật lao động.md": {
+          "mean": null,
+          "n": 0,
+          "null": 37
+        },
+        "Luật bảo hiểm y tế.md": {
+          "mean": null,
+          "n": 0,
+          "null": 18
+        },
+        "Luật bảo hiểm xã hội.md": {
+          "mean": null,
+          "n": 0,
+          "null": 46
+        },
+        "Luật thuế thu nhập cá nhân.md": {
+          "mean": null,
+          "n": 0,
+          "null": 6
+        },
+        "Điều kiện lao động và quan hệ lao động.md": {
+          "mean": null,
+          "n": 0,
+          "null": 42
+        },
+        "Quy định mức lương tối thiểu.md": {
+          "mean": null,
+          "n": 0,
+          "null": 8
+        }
+      }
+    }
+  },
+  "answers": {
+    "mmr_on": {
+      "overall": {
+        "n": 0,
+        "pending": 157,
+        "outcomes": {
+          "answered": {
+            "n": 0,
+            "rate": null
+          },
+          "insufficient_evidence": {
+            "n": 0,
+            "rate": null
+          },
+          "unable_to_verify": {
+            "n": 0,
+            "rate": null
+          },
+          "error": {
+            "n": 0,
+            "rate": null
+          }
+        },
+        "refusal_rate": null,
+        "repair_rate": null,
+        "conditional": {
+          "faithfulness": {
+            "mean": null,
+            "n": 0,
+            "null": 0
+          },
+          "answer_relevancy": {
+            "mean": null,
+            "n": 0,
+            "null": 0
+          }
+        },
+        "end_to_end": {
+          "faithfulness": {
+            "mean": null,
+            "n": 0,
+            "null": 0
+          },
+          "answer_relevancy": {
+            "mean": null,
+            "n": 0,
+            "null": 0
+          }
+        },
+        "excluded_errors": 0
+      },
+      "synthesizer_name": {
+        "single_hop_specific_query_synthesizer": {
+          "n": 0,
+          "pending": 142,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "multi_hop_specific_query_synthesizer": {
+          "n": 0,
+          "pending": 15,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        }
+      },
+      "source_document": {
+        "Văn bản hợp nhất bộ luật lao động.md": {
+          "n": 0,
+          "pending": 37,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật bảo hiểm y tế.md": {
+          "n": 0,
+          "pending": 18,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật bảo hiểm xã hội.md": {
+          "n": 0,
+          "pending": 46,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật thuế thu nhập cá nhân.md": {
+          "n": 0,
+          "pending": 6,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Điều kiện lao động và quan hệ lao động.md": {
+          "n": 0,
+          "pending": 42,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Quy định mức lương tối thiểu.md": {
+          "n": 0,
+          "pending": 8,
+          "outcomes": {
+            "answered": {
+              "n": 0,
+              "rate": null
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": null
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": null
+            },
+            "error": {
+              "n": 0,
+              "rate": null
+            }
+          },
+          "refusal_rate": null,
+          "repair_rate": null,
+          "conditional": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": null,
+              "n": 0,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        }
+      }
+    },
+    "mmr_off": {
+      "overall": {
+        "n": 157,
+        "pending": 0,
+        "outcomes": {
+          "answered": {
+            "n": 143,
+            "rate": 0.910828025477707
+          },
+          "insufficient_evidence": {
+            "n": 5,
+            "rate": 0.03184713375796178
+          },
+          "unable_to_verify": {
+            "n": 9,
+            "rate": 0.05732484076433121
+          },
+          "error": {
+            "n": 0,
+            "rate": 0.0
+          }
+        },
+        "refusal_rate": 0.08917197452229299,
+        "repair_rate": 0.12101910828025478,
+        "conditional": {
+          "faithfulness": {
+            "mean": 0.8317247388373458,
+            "n": 143,
+            "null": 0
+          },
+          "answer_relevancy": {
+            "mean": 0.4323782220221715,
+            "n": 143,
+            "null": 0
+          }
+        },
+        "end_to_end": {
+          "faithfulness": {
+            "mean": 0.7575582016161811,
+            "n": 157,
+            "null": 0
+          },
+          "answer_relevancy": {
+            "mean": 0.3938222022240161,
+            "n": 157,
+            "null": 0
+          }
+        },
+        "excluded_errors": 0
+      },
+      "synthesizer_name": {
+        "single_hop_specific_query_synthesizer": {
+          "n": 142,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 130,
+              "rate": 0.9154929577464789
+            },
+            "insufficient_evidence": {
+              "n": 4,
+              "rate": 0.028169014084507043
+            },
+            "unable_to_verify": {
+              "n": 8,
+              "rate": 0.056338028169014086
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.08450704225352113,
+          "repair_rate": 0.1056338028169014,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.8383257286495963,
+              "n": 130,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.4345189841886268,
+              "n": 130,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.767481300876391,
+              "n": 142,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.39779907003184145,
+              "n": 142,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "multi_hop_specific_query_synthesizer": {
+          "n": 15,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 13,
+              "rate": 0.8666666666666667
+            },
+            "insufficient_evidence": {
+              "n": 1,
+              "rate": 0.06666666666666667
+            },
+            "unable_to_verify": {
+              "n": 1,
+              "rate": 0.06666666666666667
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.13333333333333333,
+          "repair_rate": 0.26666666666666666,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.7657148407148407,
+              "n": 13,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.4109706003576188,
+              "n": 13,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.6636195286195287,
+              "n": 15,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.3561745203099363,
+              "n": 15,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        }
+      },
+      "source_document": {
+        "Văn bản hợp nhất bộ luật lao động.md": {
+          "n": 37,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 36,
+              "rate": 0.972972972972973
+            },
+            "insufficient_evidence": {
+              "n": 1,
+              "rate": 0.02702702702702703
+            },
+            "unable_to_verify": {
+              "n": 0,
+              "rate": 0.0
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.02702702702702703,
+          "repair_rate": 0.05405405405405406,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.8747475500821689,
+              "n": 36,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.37014600352712407,
+              "n": 36,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.8511057244042725,
+              "n": 37,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.36014205748585043,
+              "n": 37,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật bảo hiểm y tế.md": {
+          "n": 18,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 16,
+              "rate": 0.8888888888888888
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": 0.0
+            },
+            "unable_to_verify": {
+              "n": 2,
+              "rate": 0.1111111111111111
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.1111111111111111,
+          "repair_rate": 0.2222222222222222,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.8515714031339031,
+              "n": 16,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.6081791409207271,
+              "n": 16,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.7569523583412472,
+              "n": 18,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.5406036808184241,
+              "n": 18,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật bảo hiểm xã hội.md": {
+          "n": 46,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 40,
+              "rate": 0.8695652173913043
+            },
+            "insufficient_evidence": {
+              "n": 2,
+              "rate": 0.043478260869565216
+            },
+            "unable_to_verify": {
+              "n": 4,
+              "rate": 0.08695652173913043
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.13043478260869565,
+          "repair_rate": 0.10869565217391304,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.7754514000125955,
+              "n": 40,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.44333880725688557,
+              "n": 40,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.6743055652283438,
+              "n": 46,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.3855120063103353,
+              "n": 46,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Luật thuế thu nhập cá nhân.md": {
+          "n": 6,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 5,
+              "rate": 0.8333333333333334
+            },
+            "insufficient_evidence": {
+              "n": 0,
+              "rate": 0.0
+            },
+            "unable_to_verify": {
+              "n": 1,
+              "rate": 0.16666666666666666
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.16666666666666666,
+          "repair_rate": 0.3333333333333333,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.8528571428571429,
+              "n": 5,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.4604049341343952,
+              "n": 5,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.7107142857142857,
+              "n": 6,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.3836707784453293,
+              "n": 6,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Điều kiện lao động và quan hệ lao động.md": {
+          "n": 42,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 40,
+              "rate": 0.9523809523809523
+            },
+            "insufficient_evidence": {
+              "n": 1,
+              "rate": 0.023809523809523808
+            },
+            "unable_to_verify": {
+              "n": 1,
+              "rate": 0.023809523809523808
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.047619047619047616,
+          "repair_rate": 0.11904761904761904,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.8491588809740984,
+              "n": 40,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.3954233234023289,
+              "n": 40,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.8087227437848556,
+              "n": 42,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.37659364133555134,
+              "n": 42,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        },
+        "Quy định mức lương tối thiểu.md": {
+          "n": 8,
+          "pending": 0,
+          "outcomes": {
+            "answered": {
+              "n": 6,
+              "rate": 0.75
+            },
+            "insufficient_evidence": {
+              "n": 1,
+              "rate": 0.125
+            },
+            "unable_to_verify": {
+              "n": 1,
+              "rate": 0.125
+            },
+            "error": {
+              "n": 0,
+              "rate": 0.0
+            }
+          },
+          "refusal_rate": 0.25,
+          "repair_rate": 0.125,
+          "conditional": {
+            "faithfulness": {
+              "mean": 0.7619810744810745,
+              "n": 6,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.48690891173697953,
+              "n": 6,
+              "null": 0
+            }
+          },
+          "end_to_end": {
+            "faithfulness": {
+              "mean": 0.5714858058608059,
+              "n": 8,
+              "null": 0
+            },
+            "answer_relevancy": {
+              "mean": 0.36518168380273464,
+              "n": 8,
+              "null": 0
+            }
+          },
+          "excluded_errors": 0
+        }
+      }
+    }
+  },
+  "operations": {
+    "hyde_null": 0,
+    "hyde_errors": 0,
+    "retrieval_errors": {
+      "mmr_on": 0,
+      "mmr_off": 0
+    },
+    "rerank_fallback": 0,
+    "prompt_versions": [
+      "v11"
+    ]
+  },
+  "interpretation_notes": [
+    "Điểm đo mức khớp với reference do LLM sinh, không phải xác nhận đúng luật tuyệt đối.",
+    "Judge RAGAS cùng họ model với generator; faithfulness chỉ chấm câu đã qua Evidence Judge.",
+    "Single-hop là chỉ số chính; multi-hop specific (testset chuẩn n=15) chỉ đọc như xu hướng.",
+    "Testset không có multi-hop abstract; guardrail không được đo."
+  ]
+}
