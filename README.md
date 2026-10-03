@@ -142,7 +142,7 @@ Model defaults and settings are defined in [config.py](src/production_legal_qa_r
 Status as of **October 1, 2026**:
 
 - **Serving:** The ingestion-to-chat pipeline, API, and single-host Docker deployment have been implemented and manually exercised end to end.
-- **Observability:** Trace and metrics integration is implemented; manual acceptance of the complete production observability stack is still in progress.
+- **Observability:** Trace and metrics integration is implemented and has been manually accepted on the production stack.
 - **Testset:** The synthetic corpus-derived [golden testset](data/eval/phase1/golden_testset.json) contains **157 retained cases: 142 single-hop and 15 specific multi-hop**, selected after reviewing 203 generated cases. It is not an expert-certified legal benchmark.
 - **Evaluation:** Phase 2 has run on all 157 cases with the MMR-off retrieval configuration; results are below. The MMR on/off comparison is close and no winning configuration has been declared. Latency and load have not been benchmarked.
 - **Delivery:** CI runs on every PR and push to `main`. Pushing a `vX.Y.Z` tag builds the `api` image (CPU and CUDA 12.6 variants) and publishes it to GHCR; `v0.1.0` is released. Deploying to the host stays manual with `./deploy/up.sh --pull vX.Y.Z`.
@@ -593,7 +593,7 @@ Model mặc định và các settings nằm trong [config.py](src/production_leg
 Trạng thái tại **01/10/2026**:
 
 - **Phục vụ người dùng:** Pipeline từ xử lý tài liệu đến hỏi đáp, API và triển khai Docker trên một host đã implement, chạy nghiệm thu thủ công end to end.
-- **Observability:** Đã có tích hợp trace và metrics; nghiệm thu thủ công toàn bộ stack observe trên production đang tiếp tục.
+- **Observability:** Đã có tích hợp trace và metrics; đã nghiệm thu thủ công trên stack production.
 - **Testset:** [Golden testset](data/eval/phase1/golden_testset.json) tổng hợp từ corpus gồm **157 mẫu giữ lại: 142 single-hop và 15 multi-hop specific**, sau vòng review 203 mẫu đã sinh. Đây chưa phải benchmark pháp luật được chuyên gia chứng nhận.
 - **Evaluation:** Phase 2 đã chạy trên đủ 157 mẫu với cấu hình retrieval MMR tắt; kết quả ở bên dưới. So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc. Chưa đo độ trễ và tải.
 - **Delivery:** CI chạy cho mỗi PR và mỗi push vào `main`. Push tag `vX.Y.Z` sẽ build image `api` (biến thể CPU và CUDA 12.6) rồi publish lên GHCR; `v0.1.0` đã phát hành. Việc deploy lên máy chủ vẫn làm tay bằng `./deploy/up.sh --pull vX.Y.Z`.

@@ -50,7 +50,7 @@ thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user
 - **Deploy production** (`deploy/`, chỉ phục vụ end-user): `deploy/up.sh` (tự dò GPU NVIDIA) / `deploy/down.sh`,
   public qua Cloudflare quick tunnel; `backup.sh` (pg_dump `openwebui`), `reset_cache.sh` (xoá cache Redis) nằm cạnh
   `up.sh`. Nghiệm thu thật ngày 2026-09-27 và **chạy lại sau #57–#62 ngày 2026-09-30** (đăng ký user thường,
-  hỏi-đáp có citation, cache hoạt động) — phần observe vẫn chưa nghiệm thu, xem "Đang dở". Lưu ý vận hành: `api` cần
+  hỏi-đáp có citation, cache hoạt động) — phần observe đã nghiệm thu thủ công ngày 2026-10-03 (xem "Đã nghiệm thu thêm"). Lưu ý vận hành: `api` cần
   `mem_limit: 3g`; Groq giới hạn rate limit theo (tài khoản, model), không theo API key.
   Bài học 2026-09-30: (1) OpenWebUI lưu cấu hình vào DB (PersistentConfig) — giá trị chỉnh ở Admin Panel
   (vd. New Sign Ups) đè `ENABLE_SIGNUP` trong compose ở các lần khởi động sau; (2) `docker compose down` phải
