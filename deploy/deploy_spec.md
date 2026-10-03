@@ -111,7 +111,7 @@
 - **5:** quick tunnel dành thử nghiệm/không uptime; đối chiếu điều khoản trước chia sẻ rộng.
 - **6:** image + checkpoint nặng; WSL2 RAM/disk cho năm service, gợi ý ≥6GB, thêm tài nguyên cho observe/hf_cache.
 
-## 11. CD: build + push image lên GHCR (chốt 2026-10-02, đã implement)
+## 11. CD: build + push image lên GHCR (chốt 2026-10-02, đã implement, release `v0.1.0` chạy thật 2026-10-03)
 
 Số mục 1–10 giữ nguyên số; mục này chỉ thêm (mục 6/8 chỉ bổ sung 1 dòng nhắc mục này). Mục 1 "Không làm: CD tự deploy" vẫn đúng: CD ở đây chỉ **xuất bản image**, máy nhà vẫn cập nhật tay.
 
@@ -169,12 +169,13 @@ Số mục 1–10 giữ nguyên số; mục này chỉ thêm (mục 6/8 chỉ b�
 - `./deploy/up.sh` không cờ vẫn build local như trước (không hồi quy), tên image local `legal-qa-api:local`.
 - Image pull về không chứa secret, user không root (mục 9); BM25 vẫn mount lúc chạy.
 - Nghiệm thu bằng tag thật (không thử bằng workflow_dispatch/giả lập); lần đầu dùng tag `v0.1.0`, lỗi thì sửa workflow rồi xoá tag + tag lại (chưa ai pull nên chấp nhận được ở phiên bản đầu).
+- Trạng thái nghiệm thu 2026-10-03: tag `v0.1.0` trên commit `4c809ae` → `gate` + 2 job build xanh, GHCR có đủ `v0.1.0-cpu`, `v0.1.0-cu126`, `latest`, package public. **Chưa làm:** `./deploy/up.sh --pull v0.1.0` trên máy sạch, `torch.cuda.is_available()` trong image cu126, kiểm tra không hồi quy của `up.sh` không cờ.
 
 ### 11.7 Rủi ro / điểm mở
 
 - **7 — Dung lượng runner:** runner `ubuntu-latest` ~14GB trống; image cu126 + wheel nvidia có thể vượt khi build. Giảm bằng dọn disk (11.4), đo `df -h`; nếu vẫn thiếu thì chỉ làm gọn tầng deps chứ không đổi runner trả phí.
 - **8 — Cache gha:** hạn mức 10GB/repo, cache torch có thể làm evict lẫn nhau; chấp nhận build chậm hơn, không thêm registry cache.
 - **9 — `data/bm25` & model:** không nằm trong image; máy chạy pull vẫn cần `git clone` repo (compose, `data/bm25`, `tools/`) và `.env`; `up.sh --pull` không thay thế bước đó. Reranker vẫn tải HF lần đầu (mục 6).
-- **10 — Package private mặc định:** lần push đầu GHCR tạo package private; **phải tự set Public thủ công** (GitHub → Packages → Package settings → Change visibility), và kiểm tra "Manage Actions access" cho repo có Write nếu push 403. Không tự động hoá được bằng GITHUB_TOKEN. Chưa public thì `--pull` cần `docker login ghcr.io` bằng PAT `read:packages`.
+- **10 — Quyền package:** quan sát thực tế 2026-10-03: image có label `org.opencontainers.image.source` nên GHCR gắn package vào repo và kế thừa quyền của repo ("Inherit access from source repository"); repo public nên package **public ngay lần push đầu, không cần set thủ công**. Nếu repo private hoặc thiếu label thì package private: đặt Public ở GitHub → Packages → Package settings → Change visibility. Kiểm tra "Manage Actions access" cho repo có Write nếu push 403. Chưa public thì `--pull` cần `docker login ghcr.io` bằng PAT `read:packages`.
 - **11 — Không tự cập nhật:** tag mới không đụng máy đang chạy; cập nhật vẫn là `git pull` + `./deploy/up.sh --pull <version>` (hoặc build). Compose + image phải cùng phiên bản repo, nên pull đúng version của commit đã checkout.
 - **12 — Tag sai/lệch CI:** gate chỉ xác thực check `checks`; tag trên commit chỉ đổi `.md` vẫn qua gate (không rủi ro vì CI vẫn xanh).

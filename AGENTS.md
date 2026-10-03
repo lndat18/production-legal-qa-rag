@@ -46,7 +46,7 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 ## Tiến độ
 
 Trạng thái tại **2026-10-03**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
-thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe end-user, golden testset và Evaluation Phase 2 đã xong.
+thu; CD đã merge (#76) và phát hành thật `v0.1.0` (2026-10-03); observe end-user, golden testset và Evaluation Phase 2 đã xong.
 
 **Đã xong**
 - Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
@@ -89,10 +89,9 @@ thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe en
   không random, không duyệt tay; không pilot bắt buộc.
 
 **Đang nghiệm thu**
-- **CD** (PR #76, `deploy_spec.md` mục 11): `.github/workflows/release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z`
-  (gate: commit thuộc `main` + check `checks` xanh; 2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`.
-  CI xanh trên `main`; **chưa push tag nào** → chưa nghiệm thu thật (tiêu chí ở mục 11.6: tag `v0.1.0`, đặt package Public thủ công,
-  `up.sh --pull` trên máy sạch). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
+- **CD** (PR #76, `deploy_spec.md` mục 11): `release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z` (gate: commit thuộc `main` + check `checks` xanh;
+  2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`. **Đã chạy thật 2026-10-03:** tag `v0.1.0` → gate + build xanh, GHCR đủ 3 tag, package public (kế thừa từ repo public).
+  **Còn lại:** `up.sh --pull v0.1.0` trên máy sạch và `torch.cuda.is_available()` trong image cu126 (mục 11.6). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
 
 **Đã nghiệm thu thêm (2026-10-03)**
 - **Observe end-user**: stack observe + Langfuse trace + Prometheus/Grafana đã nghiệm thu thủ công trên production.
@@ -113,7 +112,7 @@ thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe en
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
-1. Nghiệm thu CD: tag `v0.1.0`, đặt package GHCR Public, `./deploy/up.sh --pull v0.1.0` trên máy sạch (`deploy_spec.md` mục 11.6).
+1. Hoàn tất nghiệm thu CD: `./deploy/up.sh --pull v0.1.0` trên máy sạch + kiểm CUDA trong image cu126 (`deploy_spec.md` mục 11.6).
 2. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
 3. Tách observability sang VM riêng: chưa chốt.
 
