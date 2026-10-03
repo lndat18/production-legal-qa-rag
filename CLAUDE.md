@@ -40,8 +40,8 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 
 ## Tiến độ
 
-Trạng thái tại **2026-10-03**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
-thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe end-user, golden testset và Evaluation Phase 2 đã xong.
+Trạng thái tại **2026-10-03: dự án Hoàn thành (Done)**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
+thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user, golden testset và Evaluation Phase 2 đã xong.
 
 **Đã xong**
 - Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
@@ -50,7 +50,7 @@ thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe en
 - **Deploy production** (`deploy/`, chỉ phục vụ end-user): `deploy/up.sh` (tự dò GPU NVIDIA) / `deploy/down.sh`,
   public qua Cloudflare quick tunnel; `backup.sh` (pg_dump `openwebui`), `reset_cache.sh` (xoá cache Redis) nằm cạnh
   `up.sh`. Nghiệm thu thật ngày 2026-09-27 và **chạy lại sau #57–#62 ngày 2026-09-30** (đăng ký user thường,
-  hỏi-đáp có citation, cache hoạt động) — phần observe vẫn chưa nghiệm thu, xem "Đang dở". Lưu ý vận hành: `api` cần
+  hỏi-đáp có citation, cache hoạt động) — phần observe đã nghiệm thu thủ công ngày 2026-10-03 (xem "Đã nghiệm thu thêm"). Lưu ý vận hành: `api` cần
   `mem_limit: 3g`; Groq giới hạn rate limit theo (tài khoản, model), không theo API key.
   Bài học 2026-09-30: (1) OpenWebUI lưu cấu hình vào DB (PersistentConfig) — giá trị chỉnh ở Admin Panel
   (vd. New Sign Ups) đè `ENABLE_SIGNUP` trong compose ở các lần khởi động sau; (2) `docker compose down` phải
@@ -83,13 +83,10 @@ thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe en
   **157 câu (142 single + 15 multi-hop specific)** = mẫu `keep` của review luna (`data/eval/golden_testset_review.json`),
   không random, không duyệt tay; không pilot bắt buộc.
 
-**Đang nghiệm thu**
-- **CD** (PR #76, `deploy_spec.md` mục 11): `.github/workflows/release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z`
-  (gate: commit thuộc `main` + check `checks` xanh; 2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`.
-  CI xanh trên `main`; **chưa push tag nào** → chưa nghiệm thu thật (tiêu chí ở mục 11.6: tag `v0.1.0`, đặt package Public thủ công,
-  `up.sh --pull` trên máy sạch). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
-
 **Đã nghiệm thu thêm (2026-10-03)**
+- **CD** (PR #76, `deploy_spec.md` mục 11): `release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z` (gate: commit thuộc `main` + check `checks` xanh;
+  2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`. **Đã chạy thật 2026-10-03:** tag `v0.1.0` → gate + build xanh, GHCR đủ 3 tag, package public (kế thừa từ repo public).
+  Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
 - **Observe end-user**: stack observe + Langfuse trace + Prometheus/Grafana đã nghiệm thu thủ công trên production.
 - **Evaluation Phase 2**: đã merge và chạy đủ 157 mẫu, MMR tắt; kết quả RAGAS trong README
   (`data/eval/phase2/report.json`). So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc; chưa đo độ trễ/tải.
@@ -106,11 +103,10 @@ thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe en
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
   abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; `finalize` đã sửa theo review trên nhánh Phase 2.
 
-Roadmap tiếp theo (thứ tự đề xuất):
+Hướng mở rộng sau khi Done (không chặn trạng thái Done; thứ tự đề xuất):
 
-1. Nghiệm thu CD: tag `v0.1.0`, đặt package GHCR Public, `./deploy/up.sh --pull v0.1.0` trên máy sạch (`deploy_spec.md` mục 11.6).
-2. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
-3. Tách observability sang VM riêng: chưa chốt.
+1. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
+2. Tách observability sang VM riêng: chưa chốt.
 
 ## Nguyên tắc & bài học xương máu (đúc kết, chi tiết ở từng spec)
 

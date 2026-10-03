@@ -233,7 +233,7 @@ setsid nohup uv run --group eval --no-group production tools/generate_testset.py
 - **14:** luna giữ 157 (12 quality 2/49 quality 3), không người đối chiếu; 16/23 multi-hop raw chỉ lưu một context, không kiểm được evidence hop hai từ dữ liệu lưu sẵn.
 - Điểm chỉ xu hướng; kiểm case thấp và quality review trước kết luận.
 
-## 11. Phase 2 — Chạy pipeline thật và chấm điểm (code implement 2026-10-01, chưa chạy đánh giá thật)
+## 11. Phase 2 — Chạy pipeline thật và chấm điểm (code implement 2026-10-01, đã chạy đủ 157 mẫu với MMR tắt)
 
 ### 11.1 Mục tiêu, phạm vi
 
