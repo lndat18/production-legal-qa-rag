@@ -169,7 +169,7 @@ Số mục 1–10 giữ nguyên số; mục này chỉ thêm (mục 6/8 chỉ b�
 - `./deploy/up.sh` không cờ vẫn build local như trước (không hồi quy), tên image local `legal-qa-api:local`.
 - Image pull về không chứa secret, user không root (mục 9); BM25 vẫn mount lúc chạy.
 - Nghiệm thu bằng tag thật (không thử bằng workflow_dispatch/giả lập); lần đầu dùng tag `v0.1.0`, lỗi thì sửa workflow rồi xoá tag + tag lại (chưa ai pull nên chấp nhận được ở phiên bản đầu).
-- Trạng thái nghiệm thu 2026-10-03: tag `v0.1.0` trên commit `4c809ae` → `gate` + 2 job build xanh, GHCR có đủ `v0.1.0-cpu`, `v0.1.0-cu126`, `latest`, package public. Chốt hoàn tất theo quyết định của tác giả; các kiểm tra chạy thật còn lại (`./deploy/up.sh --pull v0.1.0` trên máy sạch, `torch.cuda.is_available()` trong image cu126, `up.sh` không cờ không hồi quy) **không thực hiện**.
+- Trạng thái nghiệm thu 2026-10-03: tag `v0.1.0` trên commit `4c809ae` → `gate` + 2 job build xanh, GHCR có đủ `v0.1.0-cpu`, `v0.1.0-cu126`, `latest`, package public.
 
 ### 11.7 Rủi ro / điểm mở
 

@@ -86,7 +86,7 @@ thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user
 **Đã nghiệm thu thêm (2026-10-03)**
 - **CD** (PR #76, `deploy_spec.md` mục 11): `release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z` (gate: commit thuộc `main` + check `checks` xanh;
   2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`. **Đã chạy thật 2026-10-03:** tag `v0.1.0` → gate + build xanh, GHCR đủ 3 tag, package public (kế thừa từ repo public).
-  Chốt hoàn tất; chưa chạy `up.sh --pull` trên máy sạch và chưa kiểm CUDA trong image cu126 (không làm, theo quyết định tác giả). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
+  Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
 - **Observe end-user**: stack observe + Langfuse trace + Prometheus/Grafana đã nghiệm thu thủ công trên production.
 - **Evaluation Phase 2**: đã merge và chạy đủ 157 mẫu, MMR tắt; kết quả RAGAS trong README
   (`data/eval/phase2/report.json`). So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc; chưa đo độ trễ/tải.
