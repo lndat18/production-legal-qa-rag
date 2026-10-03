@@ -65,6 +65,8 @@ services:
 
   api:
     <<: *defaults
+    # Build local gắn tên này; `up.sh --pull` đặt API_IMAGE trỏ GHCR (mục 11.5).
+    image: ${API_IMAGE:-legal-qa-api:local}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

@@ -153,7 +153,7 @@ Status as of **October 1, 2026**:
 
 | Metric            | Mean  | Cases scored | Notes                                                                 |
 | ----------------- | :---: | :----------: | --------------------------------------------------------------------- |
-| Context Precision | 0.899 | 157          | Graded with Claude Haiku.                                             |
+| Context Precision | 0.899 | 157          | All 157 cases scored.                                             |
 | Context Recall    | 0.866 | 157          | MMR on scored 0.841 vs 0.857 for MMR off overall (13 wins, 11 losses, 133 ties). |
 | Faithfulness      | 0.832 | 143          | Only answers that were released; 14 of 157 cases were refused.        |
 | Answer Relevancy  | 0.432 | 143          | Same 143 answered cases; this is the weakest metric and is not yet analyzed. |
@@ -250,6 +250,8 @@ For a fixed domain, configure `COMPOSE_PROFILES=named`, `TUNNEL_TOKEN`, and `WEB
 
 A verified answer includes numbered references such as `[1]` and a source list identifying the document and legal breadcrumb. If retrieved evidence cannot support a verified answer, the system returns a clarification, refusal, or evidence/error message as appropriate. Follow-up questions can use the preceding conversation.
 
+![Demo: legal-qa answering a question in OpenWebUI with numbered citations](docs/demo.png)
+
 **Local API:** Start a local Redis instance or use an existing one. For a new development instance:
 
 ```bash
@@ -283,7 +285,7 @@ Use `"stream":true` and `curl --no-buffer` for SSE. The API also provides `GET /
 
 | Task                             | Command / location                                                                              |
 | -------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Build/start or update deployment | `./deploy/up.sh`                                                                              |
+| Build/start or update deployment | `./deploy/up.sh` (or `./deploy/up.sh --pull vX.Y.Z` to use the prebuilt GHCR image)         |
 | Stop deployment, retain volumes  | `./deploy/down.sh`                                                                            |
 | Back up OpenWebUI PostgreSQL     | `./deploy/backup.sh` → `deploy/backups/<date>/openwebui.sql.gz`; keeps seven daily backups |
 | Clear answer/retrieval cache     | `./deploy/reset_cache.sh`                                                                     |
@@ -441,6 +443,7 @@ production-legal-qa-rag/
 ├── docs/
 │   ├── configuration.md                             # Configuration reference
 │   ├── architecture.png
+│   ├── demo.png
 │   └── techstack/                                  # Technology logos
 ├── .env.example                                     # Environment template
 ├── .dockerignore
@@ -601,7 +604,7 @@ Trạng thái tại **01/10/2026**:
 
 | Metric            | Trung bình | Số mẫu chấm | Ghi chú                                                                |
 | ----------------- | :--------: | :---------: | ---------------------------------------------------------------------- |
-| Context Precision | 0.899      | 157         | Chấm bằng Claude Haiku.                                                |
+| Context Precision | 0.899      | 157         | Chấm đủ 157 mẫu.                                                |
 | Context Recall    | 0.866      | 157         | MMR bật đạt 0.841 so với 0.857 khi tắt (13 thắng, 11 thua, 133 hòa).   |
 | Faithfulness      | 0.832      | 143         | Chỉ tính các câu trả lời được phát hành; 14/157 mẫu bị từ chối.        |
 | Answer Relevancy  | 0.432      | 143         | Cùng 143 mẫu được trả lời; đây là metric thấp nhất, chưa phân tích nguyên nhân. |
@@ -697,6 +700,8 @@ Muốn dùng domain cố định, cấu hình `COMPOSE_PROFILES=named`, `TUNNEL_
 > Điều 113 Bộ luật Lao động quy định gì về nghỉ hằng năm?
 
 Câu trả lời đã kiểm chứng có viện dẫn đánh số như `[1]` cùng danh sách nguồn xác định văn bản và breadcrumb pháp lý. Khi evidence truy xuất không hỗ trợ được câu trả lời đã kiểm chứng, hệ thống trả yêu cầu làm rõ, từ chối hoặc thông báo thiếu evidence/lỗi tùy trường hợp. Câu hỏi tiếp nối có thể dùng ngữ cảnh hội thoại trước đó.
+
+![Demo: legal-qa trả lời câu hỏi trên OpenWebUI kèm viện dẫn đánh số](docs/demo.png)
 
 **API local:** Chạy Redis local hoặc dùng instance có sẵn. Nếu cần tạo instance dev mới:
 
@@ -889,6 +894,7 @@ production-legal-qa-rag/
 ├── docs/
 │   ├── configuration.md                             # Tham chiếu cấu hình
 │   ├── architecture.png
+│   ├── demo.png
 │   └── techstack/                                  # Logo các công nghệ
 ├── .env.example                                     # Mẫu biến môi trường
 ├── .dockerignore
