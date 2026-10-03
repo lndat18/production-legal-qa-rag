@@ -41,12 +41,12 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 | `cache/`        | Cache câu trả lời & kết quả retrieval bằng Redis, single-flight                                    | [cache_spec.md](src/production_legal_qa_rag/cache/cache_spec.md)                      |
 | `api/`          | FastAPI (OpenAI-compatible) + OpenWebUI + Redis + Postgres (chỉ cho OpenWebUI), spec tổng toàn hệ thống | [api_spec.md](src/production_legal_qa_rag/api/api_spec.md)                            |
 | `observability/` | Langfuse trace 1 lượt hỏi + Prometheus `/metrics` cho `api`                                       | [observability_spec.md](src/production_legal_qa_rag/observability/observability_spec.md) |
-| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 đã implement code trên feat/gen-testset-ans, chưa chạy đánh giá thật | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
+| `evaluation/`   | Đánh giá bằng RAGAS: Phase 1 sinh golden testset (đã merge); Phase 2 đã merge và chạy đủ 157 mẫu (MMR tắt; kết quả ở README) | [evaluation_spec.md](src/production_legal_qa_rag/evaluation/evaluation_spec.md)       |
 
 ## Tiến độ
 
-Trạng thái tại **2026-09-30**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
-thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset, Evaluation Phase 2) đang hoàn thiện.
+Trạng thái tại **2026-10-03**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
+thu; CD đã merge (#76), **chờ nghiệm thu bằng tag `v0.1.0`**; observe end-user, golden testset và Evaluation Phase 2 đã xong.
 
 **Đã xong**
 - Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
@@ -88,16 +88,18 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   **157 câu (142 single + 15 multi-hop specific)** = mẫu `keep` của review luna (`data/eval/golden_testset_review.json`),
   không random, không duyệt tay; không pilot bắt buộc.
 
-**Đang nghiệm thu code**
-- **Evaluation Phase 2 — code**: đã implement các stage CLI/resume/report, `precomputed` retrieval,
-  throttle router/wrapper và `finalize` theo review trên nhánh `feat/gen-testset-ans`
-  (`evaluation_spec.md` mục 11.12). Chưa chạy đánh giá thật 157 câu; đang qua vòng tester/reviewer.
+**Đang nghiệm thu**
+- **CD** (PR #76, `deploy_spec.md` mục 11): `.github/workflows/release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z`
+  (gate: commit thuộc `main` + check `checks` xanh; 2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`.
+  CI xanh trên `main`; **chưa push tag nào** → chưa nghiệm thu thật (tiêu chí ở mục 11.6: tag `v0.1.0`, đặt package Public thủ công,
+  `up.sh --pull` trên máy sạch). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
 
-**Chưa làm**
-- **CD** (GitHub Actions build + push image lên GHCR; không SSH tự động vào máy nhà): chưa brainstorm chi tiết,
-  hiện cập nhật thủ công bằng `git pull` → `./deploy/up.sh`.
+**Đã nghiệm thu thêm (2026-10-03)**
+- **Observe end-user**: stack observe + Langfuse trace + Prometheus/Grafana đã nghiệm thu thủ công trên production.
+- **Evaluation Phase 2**: đã merge và chạy đủ 157 mẫu, MMR tắt; kết quả RAGAS trong README
+  (`data/eval/phase2/report.json`). So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc; chưa đo độ trễ/tải.
 
-**Đang hoàn thiện**
+**Golden testset (đã xong)**
 - **Golden testset** (`data/eval/`): job `tools/generate_testset.py generate` **đã chạy hết, không còn process** (kiểm tra 2026-09-30 ~22:10):
   **49/50 đơn vị `done`, 1 `skipped`**, raw có **203 câu** (180 single-hop, 23 multi-hop specific,
   **0 multi-hop abstract**) — đã vượt 180; **chốt 2026-10-01: luna (Codex) review 203 mẫu, testset cuối = 157 mẫu `keep` (142 single + 15 multi-hop specific) trong `golden_testset.json` (đã sinh), không random, không duyệt tay**. Đơn vị `skipped` duy nhất:
@@ -108,18 +110,12 @@ thu; **CD chưa làm**; các mục còn lại (observe end-user, golden testset,
   (`generate` không tự chạy lại unit `skipped`). Hệ số token đo được 3,94 token/ký tự (thấp hơn ước tính 5,5).
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
   abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; `finalize` đã sửa theo review trên nhánh Phase 2.
-- **Nghiệm thu thủ công observe** (bật stack, tạo project + key Langfuse, điền `LANGFUSE_*` vào `.env`,
-  `./deploy/up.sh`, xem trace/metrics thật) — đang làm.
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
-1. Nghiệm thu observe trên production (bật stack observe cùng lúc với `./deploy/up.sh` để xem trace/metrics thật).
-2. Golden testset **xong** (49/50 đơn vị, 203 câu raw → luna review → `golden_testset.json` 157 mẫu; BLLĐ#5 bỏ, abstract = 0 chấp nhận).
-3. Hoàn tất tester/reviewer Evaluation Phase 2 (`/develop-cycle` trên `evaluation_spec.md`, branch `feat/gen-testset-ans`) → chạy full (không pilot
-   bắt buộc; S5 lần đầu `--limit 2`);
-   sau đó lấy mẫu Q&A thật từ Langfuse.
-4. **CD** (chưa làm): GitHub Actions build + push image lên GHCR (không SSH tự động vào máy nhà).
-   Tách observability sang VM riêng: chưa chốt.
+1. Nghiệm thu CD: tag `v0.1.0`, đặt package GHCR Public, `./deploy/up.sh --pull v0.1.0` trên máy sạch (`deploy_spec.md` mục 11.6).
+2. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
+3. Tách observability sang VM riêng: chưa chốt.
 
 ## Nguyên tắc & bài học xương máu (đúc kết, chi tiết ở từng spec)
 
