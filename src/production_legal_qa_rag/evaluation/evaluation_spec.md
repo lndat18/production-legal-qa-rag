@@ -1,7 +1,7 @@
 # Evaluation — RAGAS: sinh golden testset (Phase 1) và chấm hệ thống (Phase 2): Reference Spec
 
 - Giữ nguyên số mục, đặc biệt 3.x/4.x/11.x và các nhãn nghiệm thu/rủi ro được tham chiếu.
-- Mốc trạng thái 2026-10-01: Phase 1 đã implement (PR #55/#60/#63/#64/#66), raw 203 → review luna → 157 mẫu keep; Phase 2 đã có code trên feat/gen-testset-ans, chưa hoàn tất đánh giá thật.
+- Mốc trạng thái 2026-10-03: Phase 1 đã implement (PR #55/#60/#63/#64/#66), raw 203 → review luna → 157 mẫu keep; Phase 2 đã merge và chạy đủ 157 mẫu (MMR tắt), kết quả ở README và `data/eval/phase2/report.json`.
 - Spec là contract triển khai; có code/checks không đồng nghĩa đã nghiệm thu bằng dịch vụ thật.
 - Spec liên quan: [retrieval_spec.md](../retrieval/retrieval_spec.md), [generation_spec.md](../generation/generation_spec.md), [embedding_spec.md](../embedding/embedding_spec.md), [conversation_spec.md](../conversation/conversation_spec.md).
 
@@ -355,7 +355,7 @@ setsid nohup uv run --group eval --no-group production tools/generate_testset.py
 
 ### 11.12 Kế hoạch implement và mặc định đã chốt
 
-- Nhánh feat/gen-testset-ans: module 11.7 + finalize review 4.2; testset 157 đã có, không chặn Phase 2.
+- Đã merge vào main (không còn nhánh feat/gen-testset-ans): module 11.7 + finalize review 4.2; testset 157 đã có, không chặn Phase 2.
 - Default workers 9, config bắt buộc S5/S6/S4b, max_wait throttle rộng; estimate draft/repair là hằng nội bộ.
 - Kiểm local 2026-10-01, không dịch vụ thật: evaluate(raise_exceptions=False) trả NaN, checkpoint thành error; GenerationPipeline/HyDE chạy fake trong eval venv.
 - Đã smoke resume/JSONL/reuse recall/quota ngày/refusal-error/strip citation/acquire-settle; finalize raw/review thật ra 157.

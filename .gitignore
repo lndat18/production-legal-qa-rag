@@ -22,3 +22,9 @@ data/eval/**/*.tmp
 
 # Phase 2 embedding vectors are local intermediates.
 data/eval/phase2/embeddings.jsonl
+
+# LaTeX build artifacts
+*.aux
+*.fls
+*.fdb_latexmk
+*.out
