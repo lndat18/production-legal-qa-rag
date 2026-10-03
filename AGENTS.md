@@ -46,7 +46,7 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 ## Tiến độ
 
 Trạng thái tại **2026-10-03**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
-thu; CD đã merge (#76) và phát hành thật `v0.1.0` (2026-10-03); observe end-user, golden testset và Evaluation Phase 2 đã xong.
+thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user, golden testset và Evaluation Phase 2 đã xong.
 
 **Đã xong**
 - Pipeline `formatting/` → `chunking/` → `embedding/` → `retrieval/` → `generation/` →
@@ -88,12 +88,10 @@ thu; CD đã merge (#76) và phát hành thật `v0.1.0` (2026-10-03); observe e
   **157 câu (142 single + 15 multi-hop specific)** = mẫu `keep` của review luna (`data/eval/golden_testset_review.json`),
   không random, không duyệt tay; không pilot bắt buộc.
 
-**Đang nghiệm thu**
+**Đã nghiệm thu thêm (2026-10-03)**
 - **CD** (PR #76, `deploy_spec.md` mục 11): `release.yml` build + push image `api` lên GHCR theo tag `vX.Y.Z` (gate: commit thuộc `main` + check `checks` xanh;
   2 biến thể `-cpu`/`-cu126`, `latest` = cpu); `./deploy/up.sh --pull <vX.Y.Z>`. **Đã chạy thật 2026-10-03:** tag `v0.1.0` → gate + build xanh, GHCR đủ 3 tag, package public (kế thừa từ repo public).
-  **Còn lại:** `up.sh --pull v0.1.0` trên máy sạch và `torch.cuda.is_available()` trong image cu126 (mục 11.6). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
-
-**Đã nghiệm thu thêm (2026-10-03)**
+  Chốt hoàn tất; chưa chạy `up.sh --pull` trên máy sạch và chưa kiểm CUDA trong image cu126 (không làm, theo quyết định tác giả). Không SSH tự động vào máy nhà; cập nhật vẫn thủ công.
 - **Observe end-user**: stack observe + Langfuse trace + Prometheus/Grafana đã nghiệm thu thủ công trên production.
 - **Evaluation Phase 2**: đã merge và chạy đủ 157 mẫu, MMR tắt; kết quả RAGAS trong README
   (`data/eval/phase2/report.json`). So sánh MMR bật/tắt chênh lệch nhỏ, chưa chọn cấu hình thắng cuộc; chưa đo độ trễ/tải.
@@ -112,9 +110,8 @@ thu; CD đã merge (#76) và phát hành thật `v0.1.0` (2026-10-03); observe e
 
 Roadmap tiếp theo (thứ tự đề xuất):
 
-1. Hoàn tất nghiệm thu CD: `./deploy/up.sh --pull v0.1.0` trên máy sạch + kiểm CUDA trong image cu126 (`deploy_spec.md` mục 11.6).
-2. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
-3. Tách observability sang VM riêng: chưa chốt.
+1. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
+2. Tách observability sang VM riêng: chưa chốt.
 
 ## Nguyên tắc & bài học xương máu (đúc kết, chi tiết ở từng spec)
 
