@@ -45,7 +45,7 @@ mục** vì code/spec khác tham chiếu (`conversation_spec.md` mục 12.1, `ob
 
 ## Tiến độ
 
-Trạng thái tại **2026-10-03**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
+Trạng thái tại **2026-10-03: dự án Hoàn thành (Done)**. Tóm tắt: phần lõi (pipeline → API → deploy end-user) đã xong và nghiệm
 thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user, golden testset và Evaluation Phase 2 đã xong.
 
 **Đã xong**
@@ -108,7 +108,7 @@ thu; CD đã xong (#76, phát hành `v0.1.0` ngày 2026-10-03); observe end-user
   Cảnh báo `KG không có cụm cho loại abstract: bỏ N câu` vẫn xuất hiện đều.
   abstract = 0: **đã chốt chấp nhận** (`evaluation_spec.md` mục 4.6); `golden_testset.json` đã sinh; `finalize` đã sửa theo review trên nhánh Phase 2.
 
-Roadmap tiếp theo (thứ tự đề xuất):
+Hướng mở rộng sau khi Done (không chặn trạng thái Done; thứ tự đề xuất):
 
 1. Lấy mẫu Q&A thật từ Langfuse để đánh giá bổ sung; chọn cấu hình MMR; đo độ trễ/tải.
 2. Tách observability sang VM riêng: chưa chốt.

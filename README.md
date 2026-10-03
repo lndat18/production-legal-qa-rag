@@ -385,7 +385,8 @@ Main packages, pipeline tools, corpus files, and deployment configuration:
 production-legal-qa-rag/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                                   # CI checks
+│       ├── ci.yml                                   # CI checks
+│       └── release.yml                              # Build + publish api image to GHCR on vX.Y.Z tag
 ├── src/
 │   └── production_legal_qa_rag/
 │       ├── formatting/                              # DOCX → structured Markdown
@@ -736,7 +737,7 @@ Dùng `"stream":true` và `curl --no-buffer` để nhận SSE. API còn có `GET
 
 | Tác vụ                                       | Lệnh / địa chỉ                                                                               |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Build/khởi động hoặc cập nhật deployment | `./deploy/up.sh`                                                                               |
+| Build/khởi động hoặc cập nhật deployment | `./deploy/up.sh` (hoặc `./deploy/up.sh --pull vX.Y.Z` để dùng image GHCR dựng sẵn)             |
 | Dừng deployment, giữ volumes                 | `./deploy/down.sh`                                                                             |
 | Backup PostgreSQL của OpenWebUI               | `./deploy/backup.sh` → `deploy/backups/<ngày>/openwebui.sql.gz`; giữ bảy bản theo ngày |
 | Xóa cache câu trả lời/retrieval            | `./deploy/reset_cache.sh`                                                                      |
@@ -836,7 +837,8 @@ Các package chính, tools pipeline, dữ liệu corpus và cấu hình triển 
 production-legal-qa-rag/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                                   # Kiểm tra CI
+│       ├── ci.yml                                   # Kiểm tra CI
+│       └── release.yml                              # Build + publish image api lên GHCR khi có tag vX.Y.Z
 ├── src/
 │   └── production_legal_qa_rag/
 │       ├── formatting/                              # DOCX → Markdown có cấu trúc
