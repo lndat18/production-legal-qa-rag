@@ -28,3 +28,5 @@ data/eval/phase2/embeddings.jsonl
 *.fls
 *.fdb_latexmk
 *.out
+
+/resume/
